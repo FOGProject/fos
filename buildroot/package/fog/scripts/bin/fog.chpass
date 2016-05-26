@@ -1,0 +1,67 @@
+#!/bin/bash
+. /usr/share/fog/lib/funcs.sh
+. /bin/fog.donate
+clearScreen
+displayBanner
+disks=""
+disk=""
+hd=""
+parts=""
+part=""
+dots "Creating chntpw partition"
+[[ ! -d /chntpw ]] && mkdir -p /chntpw >/dev/null 2>&1
+if [[ ! -d /chntpw ]]; then
+    echo "Failed"
+    debugPause
+    handleError "Unable to create chntpw folder ($0)\n   Args Passed: $*"
+fi
+echo "Done"
+debugPause
+dots "Using disk"
+getHardDisk
+if [[ -z $hd ]]; then
+    echo "Failed"
+    debugPause
+    handleError "Could not locate disk to work from ($0)\n   Args Passed: $*"
+fi
+echo "$hd"
+debugPause
+sam=""
+getSAMLoc
+getPartitions "$hd"
+for part in $parts; do
+    fsTypeSetting "$part"
+    case $fstype in
+        [Nn][Tt][Ff][Ss])
+            echo " * Mounting partition $part"
+            ntfs-3g -o remove_hiberfile,rw "$part" /chntpw >/dev/null 2>&1
+            if [[ ! $? -eq 0 ]]; then
+                echo " * Failed to mount $part"
+                debugPause
+                continue
+            fi
+            if [[ ! -f $sam ]]; then
+                echo " * Unable to locate SAM file"
+                debugPause
+                umount /chntpw
+                continue
+            fi
+            dots "Removing password"
+            chntpw "$sam"
+            if [[ ! $? -eq 0 ]]; then
+                echo "Failed"
+                debugPause
+                umount /chntpw
+                continue
+            fi
+            echo "Done"
+            debugPause
+            ;;
+        *)
+            dots "Not working with partition"
+            echo "$part"
+            debugPause
+            continue
+            ;;
+    esac
+done
