@@ -1,6 +1,6 @@
-diff -rupN partclone-0.2.88-original/partclone-0.2.88.patch partclone-0.2.88-new/partclone-0.2.88.patch
---- partclone-0.2.88-original/partclone-0.2.88.patch	1969-12-31 19:00:00.000000000 -0500
-+++ partclone-0.2.88-new/partclone-0.2.88.patch	2016-04-01 11:44:05.868972959 -0400
+diff -rupN partclone-0.2.88/partclone-0.2.88.patch partclone-0.2.88-new/partclone-0.2.88.patch
+--- partclone-0.2.88/partclone-0.2.88.patch	1969-12-31 19:00:00.000000000 -0500
++++ partclone-0.2.88-new/partclone-0.2.88.patch	2016-05-29 16:02:10.439369965 -0400
 @@ -0,0 +1,65 @@
 +diff -rupN partclone-0.2.88-original/src/progress.c partclone-0.2.88-new/src/progress.c
 +--- partclone-0.2.88-original/src/progress.c	2016-02-18 22:15:26.000000000 -0500
@@ -67,9 +67,32 @@ diff -rupN partclone-0.2.88-original/partclone-0.2.88.patch partclone-0.2.88-new
 +     } else {
 +         mvwprintw(p_win, 0, 0, _("Total Time: %s Remaining: %s "), prog_stat.Eformated, prog_stat.Rformated);
 + 	if((prog->flag == IO) || (prog->flag == NO_BLOCK_DETAIL))
-diff -rupN partclone-0.2.88-original/src/progress.c partclone-0.2.88-new/src/progress.c
---- partclone-0.2.88-original/src/progress.c	2016-02-18 22:15:26.000000000 -0500
-+++ partclone-0.2.88-new/src/progress.c	2016-04-01 12:10:16.296957982 -0400
+diff -rupN partclone-0.2.88/src/Makefile.am partclone-0.2.88-new/src/Makefile.am
+--- partclone-0.2.88/src/Makefile.am	2016-02-18 22:15:26.000000000 -0500
++++ partclone-0.2.88-new/src/Makefile.am	2016-05-29 16:40:06.679348257 -0400
+@@ -22,7 +22,7 @@ EXFATFS_SOURCE=exfat/cluster.c exfat/utf
+ F2FS_SOURCE=f2fs/fsck.c f2fs/libf2fs.c f2fs/fsck.h f2fs/mount.c f2fs/f2fs_fs.h f2fs/list.h f2fs/f2fs.h
+ 
+ if ENABLE_STATIC
+-AM_LDFLAGS=-static
++AM_LDFLAGS=
+ endif
+ 
+ if ENABLE_TINFO
+diff -rupN partclone-0.2.88/src/Makefile.in partclone-0.2.88-new/src/Makefile.in
+--- partclone-0.2.88/src/Makefile.in	2016-02-18 22:15:26.000000000 -0500
++++ partclone-0.2.88-new/src/Makefile.in	2016-05-29 16:15:37.039362272 -0400
+@@ -749,6 +749,7 @@ xfs/atomic.h xfs/libxfs_priv.h xfs/xfs_a
+ EXFATFS_SOURCE = exfat/cluster.c exfat/utf.c exfat/utils.c exfat/lookup.c exfat/io.c exfat/log.c exfat/node.c exfat/mount.c exfat/time.c
+ F2FS_SOURCE = f2fs/fsck.c f2fs/libf2fs.c f2fs/fsck.h f2fs/mount.c f2fs/f2fs_fs.h f2fs/list.h f2fs/f2fs.h
+ @ENABLE_STATIC_TRUE@AM_LDFLAGS = -static
++@ENABLE_STATIC_FALSE@AM_LDFLAGS =
+ AM_CFLAGS = -D_FILE_OFFSET_BITS=64 $(am__append_2) $(am__append_3)
+ partclone_info_SOURCES = info.c partclone.c partclone.h fs_common.h
+ partclone_restore_SOURCES = main.c partclone.c progress.c ddclone.c ddclone.h partclone.h progress.h gettext.h
+diff -rupN partclone-0.2.88/src/progress.c partclone-0.2.88-new/src/progress.c
+--- partclone-0.2.88/src/progress.c	2016-02-18 22:15:26.000000000 -0500
++++ partclone-0.2.88-new/src/progress.c	2016-05-29 16:02:10.443369965 -0400
 @@ -182,6 +182,47 @@ static void calculate_speed(struct progr
      strncpy(prog_stat->Rformated, Rformated, sizeof(prog_stat->Rformated));
  }
