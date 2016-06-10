@@ -10,7 +10,7 @@ PARTCLONE_SITE = http://partclone.nchc.org.tw/download/stable/$(PARTCLONE_VERSIO
 PARTCLONE_INSTALL_STAGING = YES
 PARTCLONE_AUTORECONF = YES
 PARTCLONE_DEPENDENCIES += attr e2fsprogs libgcrypt lzo xz zlib xfsprogs ncurses host-pkgconf
-PARTCLONE_CONF_OPTS = --enable-static --enable-xfs --enable-btrfs --enable-ntfs --enable-extfs --enable-fat --enable-hfsp --enable-ncursesw
+PARTCLONE_CONF_OPTS = --enable-static --enable-xfs --enable-btrfs --enable-ntfs --enable-extfs --enable-fat --enable-hfsp
 
 define PARTCLONE_LINK_LIBRARIES_TOOL
 	ln -f -s $(BUILD_DIR)/xfsprogs-*/include/xfs $(STAGING_DIR)/usr/include/

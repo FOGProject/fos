@@ -7,4 +7,3 @@ config BR2_PACKAGE_PARTCLONE
 	  http://partclone.org
 
 comment "partclone requires a toolchain with LARGEFILE+WCHAR support"
-        depends on !(BR2_LARGEFILE && BR2_USE_WCHAR)
