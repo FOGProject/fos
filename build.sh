@@ -90,7 +90,7 @@ if [ "$buildFS" == "y" ]; then
 	#cp ../fs$arch.config .config
 	if [ "$arch" != "$currentArch" ]; then
 		echo -n "Different architecture detected so we must clean........"
-		make clean > /dev/null
+		make clean -j $(nproc) > /dev/null
 		echo "Done"
 		echo -n "Copying over Config file........"
 		echo "Done"
@@ -98,15 +98,15 @@ if [ "$buildFS" == "y" ]; then
 	if [ "$confirm" != "n" ]; then
 		read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
 		if [ "$config" == "y" ]; then
-			make menuconfig
+			make menuconfig -j $(nproc)
 		fi
 		read -p "We are ready to build are you [y|n]?" ready
 		if [ "$ready" == "y" ]; then
 			echo "This make take a long time. Get some coffee, you'll be here a while!"			
-			make
+			make -j $(nproc)
 		fi
 	else
-		make
+		make -j $(nproc)
 	fi
 	cd ..
 	if [ "$arch" == "x64" ]; then
@@ -136,32 +136,32 @@ if [ "$buildKernel" == "y" ]; then
 	cp ../configs/kernel$arch.config .config
 	if [ "$arch" != "$currentArch" ]; then
 		echo -n "Different architecture detected so we must clean........"
-		make clean > /dev/null
+		make clean -j $(nproc) > /dev/null
 		echo "Done"
 	fi
 	if [ "$confirm" != "n" ]; then
 		read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
 			if [ "$config" == "y" ]; then
 				if [ "$arch" == "x64" ]; then
-					make menuconfig
+					make menuconfig -j $(nproc)
 				else
-					make ARCH=i386 menuconfig
+					make ARCH=i386 menuconfig -j $(nproc)
 				fi
 			fi
 			read -p "We are ready to build are you [y|n]?" ready
 			if [ "$ready" == "y" ]; then
 				echo "This make take a long time. Get some coffee, you'll be here a while!"		
 				if [ "$arch" == "x64" ]; then
-					make bzImage
+					make bzImage -j $(nproc)
 				else
-					make ARCH=i386 bzImage
+					make ARCH=i386 bzImage -j $(nproc)
 				fi
 			fi
 	else
 		if [ "$arch" == "x64" ]; then
-			make bzImage
+			make bzImage -j $(nproc)
 		else
-			make ARCH=i386 bzImage
+			make ARCH=i386 bzImage -j $(nproc)
 		fi
 	fi
 	if [ "$arch" == "x64" ]; then
