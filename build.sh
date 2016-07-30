@@ -25,11 +25,7 @@ while getopts "$optspec" o; do
                         Usage
                         exit 2
                     fi
-                    if [[ $val != x86 && $val != x64 ]]; then
-                        echo "Can only run using x86 or x64"
-                        Usage
-                        exit 2
-                    fi
+                    hasa=1
                     arch=$val
                     ;;
                 arch=*)
@@ -40,11 +36,7 @@ while getopts "$optspec" o; do
                         Usage
                         exit 2
                     fi
-                    if [[ $val != x86 && $val != x64 ]]; then
-                        echo "Can only run using x86 or x64"
-                        Usage
-                        exit 2
-                    fi
+                    hasa=1
                     arch=$val
                     ;;
                 version)
@@ -89,12 +81,8 @@ while getopts "$optspec" o; do
             exit 0
             ;;
         a)
+            hasa=1
             arch=${OPTARG}
-            if [[ $arch != x86 && $arch != x64 ]]; then
-                echo "Can only run using x86 or x64"
-                Usage
-                exit 2
-            fi
             ;;
         v)
             kernelVersion=${OPTARG}
@@ -184,7 +172,8 @@ if [[ $buildFS == 'y' ]]; then
         make -j $(nproc)
     fi
     cd ..
-    [[ $arch == x64 ]] && cp buildsource/output/images/rootfs.cpio.xz dist/init32.xz || cp buildsource/output/images/rootfs.cpio.xz dist/init.xz
+    [[ ! -d dist ]] && mkdir dist
+    [[ $arch == x64 ]] && cp buildsource/output/images/rootfs.cpio.xz dist/init.xz || cp buildsource/output/images/rootfs.cpio.xz dist/init32.xz
 fi
 if [[ $buildKernel == y ]]; then
     if [[ ! -d kernelsource ]]; then
@@ -222,6 +211,7 @@ if [[ $buildKernel == y ]]; then
     else
         [[ $arch == x64 ]] && make -j $(nproc) bzImage || make ARCH=i386 -j $(nproc) bzImage
     fi
+    [[ ! -d ../dist ]] && mkdir ../dist
     [[ $arch == x64 ]] && cp arch/x86/boot/bzImage ../dist/bzImage || cp arch/x86/boot/bzImage ../dist/bzImage32
     cd ..
 fi
