@@ -10,7 +10,6 @@
 #               Modified for RHS Linux by Damien Neil
 #               Modified for FOG by Chuck Syperski
 #
-/usr/bin/psplash-write "MSG Getting Ready..."
 ln -s /proc/self/fd /dev/fd
 ln -s /proc/self/fd/0 /dev/stdin
 ln -s /proc/self/fd/1 /dev/stdout
@@ -20,5 +19,13 @@ if [[ $mdraid == true ]]; then
     mdadm --incremental --run --scan
 fi
 [[ -n $keymap ]] && loadkeys $keymap
-/usr/share/fog/bootloader.sh
-
+case $isdebug in
+    [Yy][Ee][Ss]|[Yy])
+        fog.debug
+        ;;
+    *)
+        fog
+        echo " * Rebooting system as task is complete"
+        [[ $shutdown -eq 1 ]] && poweroff || reboot -f
+        ;;
+esac

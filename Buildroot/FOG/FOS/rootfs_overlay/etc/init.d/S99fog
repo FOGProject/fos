@@ -20,5 +20,12 @@ if [[ $mdraid == true ]]; then
     mdadm --incremental --run --scan
 fi
 [[ -n $keymap ]] && loadkeys $keymap
-/usr/share/fog/bootloader.sh
+/usr/bin/psplash-write "MSG Contacting FOG Server..."
+/usr/bin/psplash-write "PROGRESS 80"
 
+/usr/bin/psplash-write "MSG Starting FOS..."
+/usr/bin/psplash-write "PROGRESS 90"
+appURL="http://google.com"
+startx &
+sleep 10
+/usr/bin/psplash-write "QUIT"
