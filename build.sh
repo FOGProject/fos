@@ -128,7 +128,7 @@ deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-mul
 echo -n "Please wait while we check your and or install dependencies........"
 apt-get install $deps -y > /dev/null
 echo "Done"
-echo "Preparing the build environment please wait........"
+echo "# Preparing the build environment please wait #"
 [[ ! -f "arch" ]] && echo $arch > arch
 currentArch=$(cat arch)
 if [[ $buildFS == 'y' ]]; then
