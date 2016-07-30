@@ -25,7 +25,11 @@ while getopts "$optspec" o; do
                         Usage
                         exit 2
                     fi
-                    hasa=1
+                    if [[ $val != x86 && $val != x64 ]]; then
+                        echo "Can only run using x86 or x64"
+                        Usage
+                        exit 2
+                    fi
                     arch=$val
                     ;;
                 arch=*)
@@ -36,7 +40,11 @@ while getopts "$optspec" o; do
                         Usage
                         exit 2
                     fi
-                    hasa=1
+                    if [[ $val != x86 && $val != x64 ]]; then
+                        echo "Can only run using x86 or x64"
+                        Usage
+                        exit 2
+                    fi
                     arch=$val
                     ;;
                 version)
@@ -81,8 +89,12 @@ while getopts "$optspec" o; do
             exit 0
             ;;
         a)
-            hasa=1
             arch=${OPTARG}
+            if [[ $arch != x86 && $arch != x64 ]]; then
+                echo "Can only run using x86 or x64"
+                Usage
+                exit 2
+            fi
             ;;
         v)
             kernelVersion=${OPTARG}
