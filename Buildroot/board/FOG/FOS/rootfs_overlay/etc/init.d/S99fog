@@ -10,7 +10,7 @@
 #               Modified for RHS Linux by Damien Neil
 #               Modified for FOG by Chuck Syperski
 #
-/usr/bin/psplash-write "MSG Getting Ready..."
+/usr/bin/psplash "MSG Getting Ready..."
 ln -s /proc/self/fd /dev/fd
 ln -s /proc/self/fd/0 /dev/stdin
 ln -s /proc/self/fd/1 /dev/stdout
@@ -21,4 +21,3 @@ if [[ $mdraid == true ]]; then
 fi
 [[ -n $keymap ]] && loadkeys $keymap
 /usr/share/fog/bootloader.sh
-

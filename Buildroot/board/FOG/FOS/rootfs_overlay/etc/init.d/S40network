@@ -2,8 +2,6 @@
 #
 # Start the network....
 #
-/usr/bin/psplash-write "MSG Starting Network..."
-/usr/bin/psplash-write "PROGRESS 70"
 if [[ -n $has_usb_nic ]]; then
     echo "Please unplug your device and replug it into the usb port"
     echo -n "Please press enter key to connect [Enter]"
@@ -12,7 +10,6 @@ if [[ -n $has_usb_nic ]]; then
     sleep 5
 fi
 # Enable loopback interface
-/usr/bin/psplash-write "MSG Adding Loopback Device..."
 echo -e "auto lo\niface lo inet loopback\n\n" >> /etc/network/interfaces
 /sbin/ip addr add 127.0.0.1/8 dev lo
 /sbin/ip link set lo up
@@ -23,7 +20,6 @@ read o_ifaces <<< $(/sbin/ip -0 -o addr show | awk -F'[: ]+' '/link[/]?ether/ &&
 ifaces="$p_ifaces $o_ifaces"
 for iface in $ifaces; do
     echo "Starting $iface interface and waiting for the link to come up"
-/usr/bin/psplash-write "MSG Starting $iface interface and waiting for the link to come up"
     echo -e "auto $iface\niface $iface inet dhcp\n\n" >> /etc/network/interfaces
     /sbin/ip link set $iface up
 
