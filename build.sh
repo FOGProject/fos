@@ -142,13 +142,16 @@ if [[ $buildFS == 'y' ]]; then
         cp -R buildroot-$brVersion/* buildsource
         rm -R buildroot-$brVersion
         echo "Done"
-        echo -n "Adding Custom Packages to Build Root........"
-        #oldPackages=$(cat buildsource/package/Config.in)
-        cat Buildroot/package/newConf.in >> buildsource/package/Config.in
-        rsync -avPrI Buildroot/ buildsource > /dev/null
-        #echo $newPackages$oldPackages > buildsource/package/Config.in
-        echo "Done"
     fi
+    echo -n "Adding Custom Packages to Build Root........"
+    #oldPackages=$(cat buildsource/package/Config.in)
+    if [[ ! -f .packConfigDone ]]; then
+        cat Buildroot/package/newConf.in >> buildsource/package/Config.in
+        touch .packConfDone
+    fi
+    rsync -avPrI Buildroot/ buildsource > /dev/null
+    #echo $newPackages$oldPackages > buildsource/package/Config.in
+    echo "Done"
     cp configs/fs$arch.config buildsource/.config
     cd buildsource
     echo "your working dir is $PWD"
