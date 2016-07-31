@@ -18,6 +18,3 @@ if [ "$type" == "web" ] && [ "$fogserver" != "" ]; then
 	/usr/bin/psplash-write "MSG Starting FOS..."
 	/usr/bin/psplash-write "PROGRESS 90"
 fi
-
-
-
