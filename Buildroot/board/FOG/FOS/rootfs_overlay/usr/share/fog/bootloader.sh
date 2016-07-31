@@ -9,7 +9,7 @@ for var in $(cat /proc/cmdline); do
     printf -v "$name" -- "$value"
 done
 IFS=$oIFS
-nodepath= $(which node)
+nodepath=$(which node)
 if [ "$type" == "web" ] && [ "$fogserver" != "" ]; then
 	/usr/bin/psplash-write "MSG Contacting FOG Server..."
 	/usr/bin/psplash-write "PROGRESS 80"
