@@ -21,12 +21,23 @@ null::sysinit:/bin/mount -a
 null::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
 ::sysinit:/etc/init.d/rcS
-tty0::respawn:-/bin/bash
-# Put a getty on the serial port
-#ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100 # GENERIC_SERIAL
+# Start an "askfirst' shell on the console (whatever that may be)
+::askfirst:-/bin/bash
+tty2::askfirst:-/bin/bash
+tty3::askfirst:-/bin/bash
+tty4::askfirst:-/bin/bash
+
+# /sbin/getty invocations for selected ttys
+tty4::respawn:/sbin/getty 38400 tty5
+tty5::respawn:/sbin/getty 38400 tty6
+
+# Stuff to do when restarting the init process
+::restart:/sbin/init
 
 # Stuff to do for the 3-finger salute
 ::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r
+::shutdown:/sbin/swapoff -a
 
 # Stuff to do before rebooting
 null::shutdown:/usr/bin/killall klogd
