@@ -10,7 +10,7 @@ for var in $(cat /proc/cmdline); do
 done
 IFS=$oIFS
 nodepath=$(which node)
-if [ "$type" == "web" ] && [ "$fogserver" != "" ]; then
+if [[ $type == web && -n $fogserver ]]; then
 	/usr/bin/psplash-write "MSG Contacting FOG Server..."
 	/usr/bin/psplash-write "PROGRESS 80"
 	wget http://$fogserver/boot/bootloader.js -O /usr/share/fog/bootloader.js
