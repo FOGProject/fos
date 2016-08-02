@@ -145,9 +145,9 @@ if [[ $buildFS == 'y' ]]; then
     fi
     echo -n "Adding Custom Packages to Build Root........"
     #oldPackages=$(cat buildsource/package/Config.in)
-    if [[ ! -f .packConfDone ]]; then
+    if [[ ! -f buildsource/.packConfDone ]]; then
         cat Buildroot/package/newConf.in >> buildsource/package/Config.in
-        touch .packConfDone
+        touch buildsource/.packConfDone
     fi
     rsync -avPrI Buildroot/ buildsource > /dev/null
     #echo $newPackages$oldPackages > buildsource/package/Config.in
