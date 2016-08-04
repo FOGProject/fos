@@ -22,7 +22,7 @@ null::sysinit:/bin/hostname -F /etc/hostname
 # now run any rc scripts
 ::sysinit:/etc/init.d/rcS
 # Start an "askfirst' shell on the console (whatever that may be)
-::askfirst:-/bin/bash
+::respawn:-/bin/bash
 tty2::askfirst:-/bin/bash
 tty3::askfirst:-/bin/bash
 tty4::askfirst:-/bin/bash
