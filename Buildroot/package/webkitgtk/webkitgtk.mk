@@ -87,7 +87,7 @@ endif
 endif
 
 WEBKITGTK_HEADER_FILES = \
-    math.h fenv.h stdlib.h complex.h cstdlib tgmath.h cmath
+    math.h fenv.h complex.h cstdlib tgmath.h cmath
 
 define WEBKITGTK_PATCH_FIX
 	$(foreach headerfile, $(WEBKITGTK_HEADER_FILES), \
@@ -95,19 +95,17 @@ define WEBKITGTK_PATCH_FIX
 		cp -f $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile){,.orig}; \
 		$(call MESSAGE, "Changing insert_next to insert on file $(headerfile)"); \
 		sed -i 's/include_next/include/g' $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile); \
-		$(call MESSAGE,"Creating link $(headerfile) for use"); \
-        ln -sf $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile) $(STAGING_DIR)/usr/include/$(headerfile)
 	)
 endef
 define WEBKITGTK_PATCH_FIX_REVERT
 	$(foreach headerfile, $(WEBKITGTK_HEADER_FILES), \
-		$(call MESSAGE,"Creating link $(headerfile).orig for use"); \
-        ln -sf $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile).orig $(STAGING_DIR)/usr/include/$(headerfile)
+		$(call MESSAGE,"Moving back $(headerfile).orig for use"); \
+        mv -$(STAGING_DIR)/../include/c++/6.1.0/$(headerfile).orig $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile)
 	)
 endef
 
-WEBKITGTK_POST_PATCH_HOOKS += WEBKITGTK_PATCH_FIX
+#WEBKITGTK_POST_PATCH_HOOKS += WEBKITGTK_PATCH_FIX
 
-WEBKITGTK_POST_TARGET_INSTALL_HOOKS += WEBKITGTK_PATCH_FIX_REVERT
+#WEBKITGTK_POST_TARGET_INSTALL_HOOKS += WEBKITGTK_PATCH_FIX_REVERT
 
 $(eval $(cmake-package))
