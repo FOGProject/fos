@@ -87,14 +87,14 @@ endif
 endif
 
 WEBKITGTK_HEADER_FILES = \
-    math.h fenv.h complex.h cstdlib tgmath.h cmath
+    cstdlib cmath stdlib.h complex.h fenv.h tgmath.h math.h
 
 define WEBKITGTK_PATCH_FIX
 	$(foreach headerfile, $(WEBKITGTK_HEADER_FILES), \
 		$(call MESSAGE,"Creating backup of original file $(headerfile)"); \
 		cp -f $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile){,.orig}; \
 		$(call MESSAGE, "Changing insert_next to insert on file $(headerfile)"); \
-		sed -i 's/include_next/include/g' $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile); \
+		sed -i 's/include_next/include/g' $(STAGING_DIR)/../include/c++/6.1.0/$(headerfile)
 	)
 endef
 define WEBKITGTK_PATCH_FIX_REVERT
@@ -104,7 +104,7 @@ define WEBKITGTK_PATCH_FIX_REVERT
 	)
 endef
 
-#WEBKITGTK_POST_PATCH_HOOKS += WEBKITGTK_PATCH_FIX
+#WEBKITGTK_POST_CONFIGURE_HOOKS += WEBKITGTK_PATCH_FIX
 
 #WEBKITGTK_POST_TARGET_INSTALL_HOOKS += WEBKITGTK_PATCH_FIX_REVERT
 

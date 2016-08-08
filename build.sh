@@ -176,7 +176,9 @@ if [[ $buildFS == 'y' ]]; then
     fi
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    [[ $arch == x64 ]] && cp buildsource/output/images/rootfs.cpio.xz dist/init.xz || cp buildsource/output/images/rootfs.cpio.xz dist/init32.xz
+    compiledfile='buildsource/output/images/rootfs.ext4.xz'
+    [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init32.xz'
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 fi
 if [[ $buildKernel == y ]]; then
     if [[ ! -d kernelsource ]]; then

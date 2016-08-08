@@ -21,3 +21,4 @@ if [[ $mdraid == true ]]; then
 fi
 [[ -n $keymap ]] && loadkeys $keymap
 /usr/share/fog/bootloader.sh
+/usr/share/fog/launchKiosk.sh
