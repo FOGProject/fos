@@ -10,7 +10,7 @@
 #               Modified for RHS Linux by Damien Neil
 #               Modified for FOG by Chuck Syperski
 #
-/usr/bin/psplash "MSG Getting Ready..."
+/usr/bin/psplash-write "MSG Getting Ready..."
 ln -s /proc/self/fd /dev/fd
 ln -s /proc/self/fd/0 /dev/stdin
 ln -s /proc/self/fd/1 /dev/stdout
@@ -20,5 +20,9 @@ if [[ $mdraid == true ]]; then
     mdadm --incremental --run --scan
 fi
 [[ -n $keymap ]] && loadkeys $keymap
+/usr/bin/psplash-write "MSG Contacting FOG Server..."
+/usr/bin/psplash-write "PROGRESS 80"
 /usr/share/fog/bootloader.sh
+/usr/bin/psplash-write "MSG Starting FOS..."
+/usr/bin/psplash-write "PROGRESS 90"
 /usr/share/fog/launchKiosk.sh

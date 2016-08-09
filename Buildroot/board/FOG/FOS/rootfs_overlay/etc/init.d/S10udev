@@ -28,14 +28,15 @@ test -r $UDEV_CONFIG || exit 6
 case "$1" in
     start)
         printf "Populating ${udev_root:-/dev} using udev: "
-/usr/bin/psplash-write "MSG Starting Device Discovery..."
-	/usr/bin/psplash-write "PROGRESS 40"
+        /usr/bin/psplash-write "MSG Starting Device Discovery..."
+        /usr/bin/psplash-write "PROGRESS 40"
         printf '\000\000\000\000' > /proc/sys/kernel/hotplug
         $UDEV_BIN -d || (echo "FAIL" && exit 1)
         udevadm trigger --type=subsystems --action=add
         udevadm trigger --type=devices --action=add
         udevadm settle --timeout=30 || echo "udevadm settle failed"
         echo "done"
+        /usr/bin/psplash-write "MSG Started Device Discovery"
         ;;
     stop)
         # Stop execution of events
