@@ -1,0 +1,14 @@
+#!/bin/bash
+########################################
+# Write the image stream to the device.#
+# Arguments:                           #
+#   $1 The target to write to.         #
+########################################
+target="$1"
+if [[ -z $target ]]
+then
+  echo "No target passed"
+  echo "  Usage: $0 /dev/sda1"
+  exit 1
+fi
+pigz -d -c </tmp/pigz1 | partclone.restore --ignore_crc -O $target
