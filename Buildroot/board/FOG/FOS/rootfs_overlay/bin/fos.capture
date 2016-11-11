@@ -17,4 +17,4 @@ if [[ -z $fstype ]] ; then
 fi
 mkfifo /tmp/data1
 partclone.$fstype -fsck-src-part -c -s $target -O /tmp/data1 &
->&1 cat /tmp/data1
+(>&1 cat /tmp/data1)
