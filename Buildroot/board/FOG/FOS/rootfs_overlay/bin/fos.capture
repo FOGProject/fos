@@ -1,0 +1,20 @@
+#!/bin/bash
+########################################
+#   Read the image from the device.    #
+# Arguments:                           #
+#   $1 The target to capture           #
+#   $2 The type of partclone capture   #
+########################################
+target="$1"
+fstype="$2"
+if [[ -z $target ]] ; then
+    (>&2 echo "No target passed\n  Usage: $0 /dev/sda1 ntfs")
+    exit 1
+fi
+if [[ -z $fstype ]] ; then
+    (>&2 echo "No fstype passed\n  Usage: $0 /dev/sda1 ntfs")
+    exit 2
+fi
+mkfifo /tmp/data1
+partclone.$fstype -fsck-src-part -c -s $target -O /tmp/data1 &
+>&1 cat /tmp/data1
