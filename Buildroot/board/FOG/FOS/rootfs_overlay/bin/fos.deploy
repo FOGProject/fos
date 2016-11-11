@@ -11,4 +11,4 @@ then
   echo "  Usage: $0 /dev/sda1"
   exit 1
 fi
-pigz -d -c <&0 | partclone.restore --ignore_crc -O $target
+pigz -d -c | partclone.restore --ignore_crc -O $target
