@@ -34,15 +34,14 @@ oIFS="$IFS"
 # Change to \n
 IFS=$'\n'
 
-# Restructure choices into an array.
-choices=$(echo -e $choices)
-
+choices=$(echo -e ${choices})
 # Begin the loop waiting for information
 while :; do
     (>&1 echo -e "\n\n\n")
     select choice in $choices; do
         case $REPLY in
             1)
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "Reboot initiated")
                 (>&1 echo "Running commaind:")
                 (>&1 echo " reboot -f")
@@ -50,23 +49,25 @@ while :; do
                 ;;
             2)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "===================================================")
                 (>&1 echo "=                Network Information              =")
                 (>&1 echo "===================================================")
                 (>&1 echo "Gathered IP Information")
                 (>&1 echo "Running command:")
                 (>&1 echo " ip addr")
-                (ip addr)
+                (ip addr 2>/dev/null)
                 (>&1 echo "===================================================")
                 (>&1 echo "=                  DNS Information                =")
                 (>&1 echo "===================================================")
                 (>&1 echo "Gathered DNS Information")
                 (>&1 echo "Running command:")
                 (>&1 echo " cat /etc/resolv.conf")
-                (cat /etc/resolv.conf)
+                (cat /etc/resolv.conf 2>/dev/null)
                 ;;
             3)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "===================================================")
                 (>&1 echo "=             Partition Information               =")
                 (>&1 echo "===================================================")
@@ -77,13 +78,14 @@ while :; do
                 ;;
             4)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "===================================================")
                 (>&1 echo "=              FOG Compatibility Test             =")
                 (>&1 echo "===================================================")
-                (>&1 echo "Getting disk(s) (stored to variable named \$tmpDisk")
+                (>&1 echo "Getting disk(s) (stored to variable named \$tmpDisk)")
                 (>&1 echo "Running command:")
                 (>&1 echo " parted --list | grep \"Disk\"")
-                tmpDsik=$(parted --list | grep "Disk")
+                tmpDisk=$(parted --list | grep "Disk")
                 (>&1 echo "Getting network information (stored to variable named \$tmpNic)")
                 (>&1 echo "Running command:")
                 (>&1 echo " ip addr | grep \"link/ether\"")
@@ -118,6 +120,7 @@ while :; do
                 ;;
             5)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "===================================================")
                 (>&1 echo "=                   Ping a Host                   =")
                 (>&1 echo "===================================================")
@@ -140,6 +143,7 @@ while :; do
                 ;;
             6)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "===================================================")
                 (>&1 echo "=               System MAC Address'               =")
                 (>&1 echo "===================================================")
@@ -147,6 +151,7 @@ while :; do
                 ;;
             7)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "===================================================")
                 (>&1 echo "=              System DMI Information             =")
                 (>&1 echo "===================================================")
@@ -176,10 +181,12 @@ while :; do
                 ;;
             *)
                 clear
+                (>&1 echo -e "\n\n\n")
                 (>&1 echo "Invalid entry, try again!")
                 ;;
         esac
         waitenter
+        break
     done
 done
 # Reset input field separator to the original.
