@@ -21,8 +21,8 @@ fi
 (>&1 echo "Running command:")
 if [[ -n $compressed ]] ; then
     (>&1 echo "pigz -d -c | partclone.restore --ignore_crc -O \"$target\"")
-    pigz -d -c | partclone.restore --ignore_crc -O "$target"
+    (pigz -d -c | partclone.restore --ignore_crc -O "$target")
 else
     (>&1 echo "partclone.restore --ignore_crc -O \"$target\"")
-    partclone.restore --ignore_crc -O "$target"
+    (partclone.restore --ignore_crc -O "$target")
 fi
