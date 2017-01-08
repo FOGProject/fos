@@ -1,0 +1,50 @@
+#!/bin/bash
+########################################
+#   Wipe data from the drive.          #
+# Arguments:                           #
+#   $1 The target to wipe              #
+#   $2 The mode of wipe                #
+########################################
+target="$1"
+mode="$2"
+
+# Function just prints usage.
+usage() {
+    (>&1 echo -e "Usage:\n $0 <drive> <type>\n\n Valid types are:")
+    (>&1 echo " full     - Used to wipe a drive fully with random data.")
+    (>&1 echo " normal   - Writes zero's to the entire drive.")
+    (>&1 echo " fast     - Writes zero's over the partition table.")
+    (>&1 echo " fastwipe - Alias to fast.")
+    (>&1 echo)
+    (>&1 echo "Wipes a drive.")
+}
+if [[ -z $target ]] ; then
+    (>&2 echo -e "No target passed\n")
+    usage
+    exit 1
+fi
+if [[ -z $mode ]] ; then
+    (>&2 echo -e "No mode passed\n")
+    usage
+    exit 2
+fi
+case $mode in
+    full)
+        (>&1 echo "Full wipe started")
+        (>&1 echo "Running command:")
+        (>&1 echo " shred -f -v -z -n 3 \"$target\"")
+        shred -f -v -z -n 3 "$target"
+        ;;
+    normal)
+        (>&1 echo "Normal wipe started")
+        (>&1 echo "Running command:")
+        (>&1 echo " dd if=/dev/zero of=\"$target\"")
+        dd if=/dev/zero of="$target"
+        ;;
+    fast|fastwipe)
+        (>&1 echo "Fast wipe started")
+        (>&1 echo "Running command:")
+        (>&1 echo " dd if=/dev/zero of=\"$target\" bs=512 count=100000")
+        dd if=/dev/zero of="$target" bs=512 count=100000
+        ;;
+esac

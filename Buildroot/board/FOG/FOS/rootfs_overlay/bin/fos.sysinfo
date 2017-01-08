@@ -1,0 +1,185 @@
+#!/bin/bash
+########################################
+# Gives system information and tests   #
+#  compatibility.                      #
+########################################
+
+# Function just prints usage.
+usage() {
+    (>&1 echo -e "Usage:\n $0")
+    (>&1 echo)
+    (>&1 echo "Gives a menu to receive information about this system.")
+}
+
+# Function prints 3 new lines after message
+#  informs the user to press enter key
+#  and prints 3 new lines when enter is pressed.
+waitenter() {
+    (>&1 echo -e "\n\n\n")
+    (>&1 echo " * Press [Enter] to continue")
+    read -s tmp
+    (>&1 echo -e "\n\n\n")
+}
+
+# The choices available to the user:
+choices="Reboot\nNetwork Information\nPartition Information\nCheck Compatiblity\nPing System\nDisplay MAC Address\nShow DMI Information"
+
+# Get original prompt.
+oPS3="$PS3"
+# Change prompt to what we want.
+PS3="Please enter your choice: "
+
+# Get original input field separator.
+oIFS="$IFS"
+# Change to \n
+IFS=$'\n'
+
+# Restructure choices into an array.
+choices=$(echo -e $choices)
+
+# Begin the loop waiting for information
+while :; do
+    (>&1 echo -e "\n\n\n")
+    select choice in $choices; do
+        case $REPLY in
+            1)
+                (>&1 echo "Reboot initiated")
+                (>&1 echo "Running commaind:")
+                (>&1 echo " reboot -f")
+                reboot -f
+                ;;
+            2)
+                clear
+                (>&1 echo "===================================================")
+                (>&1 echo "=                Network Information              =")
+                (>&1 echo "===================================================")
+                (>&1 echo "Gathered IP Information")
+                (>&1 echo "Running command:")
+                (>&1 echo " ip addr")
+                ip addr
+                (>&1 echo "===================================================")
+                (>&1 echo "=                  DNS Information                =")
+                (>&1 echo "===================================================")
+                (>&1 echo "Gathered DNS Information")
+                (>&1 echo "Running command:")
+                (>&1 echo " cat /etc/resolv.conf")
+                cat /etc/resolv.conf
+                ;;
+            3)
+                clear
+                (>&1 echo "===================================================")
+                (>&1 echo "=             Partition Information               =")
+                (>&1 echo "===================================================")
+                (>&1 echo "Gathered partition information")
+                (>&1 echo "Running command:")
+                (>&1 echo " parted --list")
+                parted --list
+                ;;
+            4)
+                clear
+                (>&1 echo "===================================================")
+                (>&1 echo "=              FOG Compatibility Test             =")
+                (>&1 echo "===================================================")
+                (>&1 echo "Getting disk(s) (stored to variable named \$tmpDisk")
+                (>&1 echo "Running command:")
+                (>&1 echo " parted --list | grep \"Disk\"")
+                tmpDsik=$(parted --list | grep "Disk")
+                (>&1 echo "Getting network information (stored to variable named \$tmpNic)")
+                (>&1 echo "Running command:")
+                (>&1 echo " ip addr | grep \"link/ether\"")
+                tmpNic=$(ip addr | grep "link/ether")
+                [[ -n $tmpDisk ]] && dsk="Pass" || dsk="Fail"
+                [[ -n $tmpNic ]] && nic="Pass" || nic="Fail"
+                if [[ $dsk == Pass && $nic == Pass ]] ; then
+                    compatible="= Computer appears to be compatible with FOG!     ="
+                else
+                    compatible="= Computer is NOT compatible with FOG!            ="
+                fi
+                (>&1 echo "===================================================")
+                (>&1 echo "=                      Results                    =")
+                (>&1 echo "===================================================")
+                (>&1 echo "= Network..................................[$dsk] =")
+                (>&1 echo "= Disk.....................................[$nic] =")
+                (>&1 echo "=                                                 =")
+                (>&1 echo $compatible)
+                (>&1 echo "===================================================")
+                if [[ $dsk == Fail || $nic == Fail ]] ; then
+                    (>&1 echo)
+                    (>&1 echo "===================================================")
+                    (>&1 echo "= Try using a newer kernel that may be compatible =")
+                    (>&1 echo "= with this computer.                             =")
+                    (>&1 echo "=                                                 =")
+                    (>&1 echo "= New kernels can be downloaded from the GUI.     =")
+                    (>&1 echo "= From the FOG Menu Select:                       =")
+                    (>&1 echo "= FOG Configuration Page->                        =")
+                    (>&1 echo "=     Kernel Update                               =")
+                    (>&1 echo "===================================================")
+                fi
+                ;;
+            5)
+                clear
+                (>&1 echo "===================================================")
+                (>&1 echo "=                   Ping a Host                   =")
+                (>&1 echo "===================================================")
+                regex='(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
+                phost=""
+                while [[ -z $phost ]] ; do
+                    (>&1 echo " Enter host to ping: ")
+                    read phost
+                    phost=$(echo $phost)
+                    if [[ -z $phost || $phost =~ $regex ]] ; then
+                        phost=""
+                        (>&2 " Invalid entry, try again!")
+                    fi
+                done
+                (>&1 echo "Pinging $phost")
+                (>&1 echo "Running command:")
+                (>&1 echo " ping -c 4 \"$phost\"")
+                unset phost
+                ;;
+            6)
+                clear
+                (>&1 echo "===================================================")
+                (>&1 echo "=               System MAC Address'               =")
+                (>&1 echo "===================================================")
+                (>&1 echo "   $mac   ")
+                ;;
+            7)
+                clear
+                (>&1 echo "===================================================")
+                (>&1 echo "=              System DMI Information             =")
+                (>&1 echo "===================================================")
+                bios="bios-vendor bios-version bios-release-date"
+                system="system-manufacturer system-product-name system-version system-serial-number system-uuid"
+                baseboard="baseboard-manufacturer baseboard-product-name baseboard-version baseboard-serial-number baseboard-asset-tag"
+                chassis="chassis-manufacturer chassis-type chassis-version chassis-serial-number chassis-asset-tag"
+                processor="processor-family processor-manufacturer processor-version processor-frequency"
+                dmis="${bios} ${system} ${baseboard} ${chassis} ${processor}"
+                i=0
+                IFS=$oIFS
+                for dmi in $dmis ; do
+                    str="SMI String: $dmi\n"
+                    (>&1 echo "Getting dmi info for $dmi (stored in variable called \$info")
+                    (>&1 echo "Running command:")
+                    (>&1 echo " dmidecode --string \"$dmi\"")
+                    info=$(dmidecode --string "$dmi")
+                    (>&1 echo "$str   $info\n\n")
+                    let i+=1
+                    if [[ $i == 5 ]] ; then
+                        echo " * Press [Enter] to proceed."
+                        read tmp
+                        i=0
+                    fi
+                done
+                IFS=$'\n'
+                ;;
+            *)
+                clear
+                (>&1 echo "Invalid entry, try again!")
+                ;;
+        esac
+        waitenter
+    done
+done
+# Reset input field separator to the original.
+IFS=$oIFS
