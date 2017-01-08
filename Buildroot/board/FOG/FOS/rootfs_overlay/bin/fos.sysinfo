@@ -56,14 +56,14 @@ while :; do
                 (>&1 echo "Gathered IP Information")
                 (>&1 echo "Running command:")
                 (>&1 echo " ip addr")
-                ip addr
+                (ip addr)
                 (>&1 echo "===================================================")
                 (>&1 echo "=                  DNS Information                =")
                 (>&1 echo "===================================================")
                 (>&1 echo "Gathered DNS Information")
                 (>&1 echo "Running command:")
                 (>&1 echo " cat /etc/resolv.conf")
-                cat /etc/resolv.conf
+                (cat /etc/resolv.conf)
                 ;;
             3)
                 clear
@@ -73,7 +73,7 @@ while :; do
                 (>&1 echo "Gathered partition information")
                 (>&1 echo "Running command:")
                 (>&1 echo " parted --list")
-                parted --list
+                (parted --list)
                 ;;
             4)
                 clear
@@ -135,6 +135,7 @@ while :; do
                 (>&1 echo "Pinging $phost")
                 (>&1 echo "Running command:")
                 (>&1 echo " ping -c 4 \"$phost\"")
+                (ping -c 4 "$phost")
                 unset phost
                 ;;
             6)
@@ -166,7 +167,7 @@ while :; do
                     (>&1 echo "$str   $info\n\n")
                     let i+=1
                     if [[ $i == 5 ]] ; then
-                        echo " * Press [Enter] to proceed."
+                        (>&1 echo " * Press [Enter] to proceed.")
                         read tmp
                         i=0
                     fi

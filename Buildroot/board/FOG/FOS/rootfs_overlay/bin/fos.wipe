@@ -33,18 +33,18 @@ case $mode in
         (>&1 echo "Full wipe started")
         (>&1 echo "Running command:")
         (>&1 echo " shred -f -v -z -n 3 \"$target\"")
-        shred -f -v -z -n 3 "$target"
+        (shred -f -v -z -n 3 "$target")
         ;;
     normal)
         (>&1 echo "Normal wipe started")
         (>&1 echo "Running command:")
         (>&1 echo " dd if=/dev/zero of=\"$target\"")
-        dd if=/dev/zero of="$target"
+        (dd if=/dev/zero of="$target")
         ;;
     fast|fastwipe)
         (>&1 echo "Fast wipe started")
         (>&1 echo "Running command:")
         (>&1 echo " dd if=/dev/zero of=\"$target\" bs=512 count=100000")
-        dd if=/dev/zero of="$target" bs=512 count=100000
+        (dd if=/dev/zero of="$target" bs=512 count=100000)
         ;;
 esac

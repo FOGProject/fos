@@ -28,7 +28,7 @@ fi
 (>&1 echo "Created fifo.")
 (>&1 echo "Running command:")
 (>&1 echo " mkfifo /tmp/data1")
-mkfifo /tmp/data1
+(mkfifo /tmp/data1)
 (>&1 echo "Capture started.")
 (>&1 echo "Running command:")
 (>&1 echo " partclone.$fstype --fsck-src-part -c -s \"$target\" -O /tmp/data1 &")

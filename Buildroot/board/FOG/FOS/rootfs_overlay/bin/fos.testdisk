@@ -18,4 +18,4 @@ fi
 (>&1 echo "Testdisk started")
 (>&1 echo "Running command:")
 (>&1 echo " testdisk \"$target\"")
-testdisk "$target"
+(testdisk "$target")
