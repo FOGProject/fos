@@ -7,14 +7,30 @@
 ########################################
 target="$1"
 fstype="$2"
+
+# Function just prints usage.
+usage() {
+    (>&1 echo -e "Usage:\n $0 <drive> <type>\n\n The type value is a volume type")
+    (>&1 echo "such as ntfs or ext4")
+    (>&1 echo)
+    (>&1 echo "Captures image from drive.")
+}
 if [[ -z $target ]] ; then
-    (>&2 echo "No target passed\n  Usage: $0 /dev/sda1 ntfs")
+    (>&2 echo -e "No target passed\n")
+    usage
     exit 1
 fi
 if [[ -z $fstype ]] ; then
-    (>&2 echo "No fstype passed\n  Usage: $0 /dev/sda1 ntfs")
+    (>&2 echo "No fstype passed\n")
+    usage
     exit 2
 fi
+(>&1 echo "Created fifo.")
+(>&1 echo "Running command:")
+(>&1 echo " mkfifo /tmp/data1")
 mkfifo /tmp/data1
-partclone.$fstype -fsck-src-part -c -s $target -O /tmp/data1 &
+(>&1 echo "Capture started.")
+(>&1 echo "Running command:")
+(>&1 echo " partclone.$fstype --fsck-src-part -c -s \"$target\" -O /tmp/data1 &")
+partclone.$fstype -fsck-src-part -c -s "$target" -O /tmp/data1 &
 (>&1 cat /tmp/data1)
