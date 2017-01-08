@@ -147,7 +147,11 @@ while :; do
                 (>&1 echo "===================================================")
                 (>&1 echo "=               System MAC Address'               =")
                 (>&1 echo "===================================================")
-                (>&1 echo "   $mac   ")
+                (>&1 echo "Getting MAC address (stored to variable named \$tmpMac)")
+                (>&1 echo "Running command:")
+                (>&1 echo " ip -0 -o addr show | sed -n 's/^.*link\\/ether \\(.*\\) brd.*$/\\1/p'")
+                tmpMac=$(ip -0 -o addr show | sed -n 's/^.*link\/ether \(.*\) brd.*$/\1/p')
+                (>&1 echo "   $tmpMac   ")
                 ;;
             7)
                 clear

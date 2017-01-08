@@ -33,4 +33,4 @@ fi
 (>&1 echo "Running command:")
 (>&1 echo " partclone.$fstype --fsck-src-part -c -s \"$target\" -O /tmp/data1 &")
 partclone.$fstype -fsck-src-part -c -s "$target" -O /tmp/data1 &
-(>&1 cat /tmp/data1)
+(cat /tmp/data1)
