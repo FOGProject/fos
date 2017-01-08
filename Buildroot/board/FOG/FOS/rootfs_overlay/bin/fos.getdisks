@@ -1,0 +1,14 @@
+#!/bin/bash
+########################################
+# Gets disks on the system.            #
+########################################
+
+# Function just prints usage.
+usage() {
+    (>&1 echo -e "Usage:\n $0")
+    (>&1 echo)
+    (>&1 echo "Gets disks on the system.")
+}
+
+hd=$(lsblk -dfpnJI 3,8,9,179,259 -o KNAME)
+(>&1 echo $hd)

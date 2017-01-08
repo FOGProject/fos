@@ -1,0 +1,23 @@
+#!/bin/bash
+########################################
+# Get partitions on the disk.          #
+# Arguments:                           #
+#   $1 The target to get partitions.   #
+########################################
+
+target="$1"
+
+# Function just prints usage.
+usage() {
+    (>&1 echo -e "Usage:\n $0 <drive>")
+    (>&1 echo)
+    (>&1 echo "Get partitions on the passed disk.")
+}
+
+if [[ -z $target ]] ; then
+    (>&2 echo -e "No target passed\n")
+    usage
+    exit 1
+fi
+partitions=$(lsblk -aflpnJI 3,8,9,179,259 -o KNAME,TYPE $target)
+(>&1 echo $partitions)
