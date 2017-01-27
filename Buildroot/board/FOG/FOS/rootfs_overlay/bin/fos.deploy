@@ -1,6 +1,7 @@
 #!/bin/bash
 ########################################
-# Write the image stream to the device.#
+# Write the image stream to the        #
+#   device.                            #
 # Arguments:                           #
 #   $1 The target to write to.         #
 #   $2 Tell if data is compressed.     #
