@@ -15,7 +15,7 @@ fixed="$4"
 
 # Function just prints usage.
 usage() {
-    (>&1 echo -e "Usage:\n $0 <partition> <partition number> [fixed partition numbers]\n\nExpands the partition")
+    (>&1 echo -e "Usage:\n $0 <partition> <partition number> <volume format> [fixed partition numbers]\n\nExpands the partition")
 }
 
 if [[ -z $target ]] ; then
@@ -36,3 +36,16 @@ fi
 
 is_fixed=$(echo "$fixed" | awk "/(^${partnumber}$|^${partnumber}:|:${partnumber}:|:${partnumber}$)/{print 1}")
 [[ $is_fixed -eq 1 ]] && return 0
+(partprobe)
+case $fstype in
+    ntfs)
+        (ntfsfix -bd ${target})
+        (ntfsresize -vfbP ${target})
+        (ntfsfix -bd ${target})
+        ;;
+    ext[2-4]|extfs)
+        (e2fsck -fp ${target})
+        (resize2fs ${target})
+        (e2fsck -fp ${target})
+        ;;
+esac
