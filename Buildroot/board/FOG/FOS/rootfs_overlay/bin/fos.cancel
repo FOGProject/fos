@@ -1,6 +1,0 @@
-#!/bin/bash
-########################################
-# Cancels the tasking as needed.       #
-########################################
-
-[[ $result == true ]] && handleError "Task has been cancelled" 100
