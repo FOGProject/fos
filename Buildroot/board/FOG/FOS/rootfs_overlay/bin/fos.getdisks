@@ -10,5 +10,4 @@ usage() {
     (>&1 echo "Gets disks on the system.")
 }
 
-hd=$(lsblk -dfpnJI 3,8,9,179,259 -o KNAME)
-(>&1 echo $hd)
+(lsblk -dfpnJ -o NAME)
