@@ -19,6 +19,10 @@ percent="$5"
 usage() {
     (>&1 echo -e "Usage:\n $0 <partition> <partition number> <volume format> [fixed partition numbers]\n\nShrinks the partition")
 }
+# Calculates sent data allowing for floating point.
+calculate() {
+    echo $(awk 'BEGIN{printf "%.0f\n", '$*'}')
+}
 if [[ -z $target ]]; then
     (>&2 echo -e "No target passed\n")
     usage
@@ -44,18 +48,28 @@ case $fstype in
         (ntfsresize -c ${target})
         [[ ! $? -eq 0 ]] && return 4
         size=$(ntfsresize -vfiP "${target}" | sed -n 's/.*you might resize at\s\+\([0-9]\+\).*$/\1/pi')
-        newsize=$((size * percent / 1000))
+        sizeadd=$(calculate "${percent}/100*${size}/1000+300000")
+        newsize=$(calculate "${size}/1000+${sizeadd}")
         teststr=$(yes | ntfsresize -fns ${newsize}k ${target} | egrep -o "(ended successfully|bigger than the device size|volume size is already OK)" | tr -d '[[:space:]]')
-        [[ ${teststr} != endedsuccessfully ]] && return 0
+        case ${teststr} in
+            volumesizeisalreadyOK)
+                return 0
+                ;;
+            biggerthanthedevicesize)
+                return 5
+                ;;
+        esac
         (yes | ntfsresize -fs ${newsize}k ${target})
-        [[ ! $? -eq 0 ]] && return 5
+        [[ ! $? -eq 0 ]] && return 6
         (ntfsfix -bd ${target})
         ;;
     ext[2-4]|extfs)
         (e2fsck -fp ${target})
-        blocksize=$(resize2fs -P ${target} | sed -n 's/.*filesystem\([:]\|\)\s\+\([0-9]\+\).*$/\2/pi')
-        size=$(dumpe2fs ${target} | sed -n 's/^block\s\+size[:]\s\+\([0-9]\+\).*$/\1/pi')
-        newsize=$((size * blocksize * ${percent}));
+        size=$(resize2fs -P ${target} | sed -n 's/.*filesystem\([:]\|\)\s\+\([0-9]\+\).*$/\2/pi')
+        blocksize=$(dumpe2fs ${target} | sed -n 's/^block\s\+size[:]\s\+\([0-9]\+\).*$/\1/pi')
+        size=$(calculate "${size}*${blocksize}")
+        sizeadd=$(calculate "${percent}/100*${size}/1024")
+        newsize=$(calculate "${size}/1024+${sizeadd}")
         (resize2fs ${target} -M)
         [[ ! $? -eq 0 ]] && return 5
         (e2fsck -fp ${target})
