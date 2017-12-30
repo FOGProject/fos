@@ -10,19 +10,23 @@
 #               Modified for RHS Linux by Damien Neil
 #               Modified for FOG by Chuck Syperski
 #
-/usr/bin/psplash-write "MSG Getting Ready..."
-ln -s /proc/self/fd /dev/fd
-ln -s /proc/self/fd/0 /dev/stdin
-ln -s /proc/self/fd/1 /dev/stdout
-ln -s /proc/self/fd/2 /dev/stderr
+[[ ! -h /dev/fd ]] && ln -s /proc/self/fd /dev/fd
+[[ ! -h /dev/stdin ]] && ln -s /proc/self/fd/0 /dev/stdin
+[[ ! -h /dev/stdout ]] && ln -s /proc/self/fd/1 /dev/stdout
+[[ ! -h /dev/stderr ]] && ln -s /proc/self/fd/2 /dev/stderr
 if [[ $mdraid == true ]]; then
+    mdadm --auto-detect
     mdadm --assemble --scan
     mdadm --incremental --run --scan
 fi
 [[ -n $keymap ]] && loadkeys $keymap
-/usr/bin/psplash-write "MSG Contacting FOG Server..."
-/usr/bin/psplash-write "PROGRESS 80"
-/usr/share/fog/bootloader.sh
-/usr/bin/psplash-write "MSG Starting FOS..."
-/usr/bin/psplash-write "PROGRESS 90"
-/usr/share/fog/launchKiosk.sh
+case $isdebug in
+    [Yy][Ee][Ss]|[Yy])
+        fog.debug
+        ;;
+    *)
+        fog
+        echo " * Rebooting system as task is complete"
+        [[ $shutdown -eq 1 ]] && poweroff || reboot -f
+        ;;
+esac

@@ -110,73 +110,63 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-[[ -z $arch ]] && arch='x64'
-if [[ $arch != 'x64' && $arch != 'x86' ]]; then
-    echo "Unsupported Architecture build type $arch"
-    Usage
-    exit 3
-fi
-brVersion="2016.05"
+brVersion="2017.02.1"
 [[ -z $kernelVersion ]] && kernelVersion="4.5.4"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.gz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
 [[ -z $buildKernel ]] && buildKernel="none"
 [[ -z $buildFS ]] && buildFS="none"
-[[ -z $arch ]] && arch="none"
 [[ -z $confirm ]] && confirm="y"
-echo -n "Please wait while we check your and or install dependencies........"
-apt-get install $deps -y > /dev/null
-echo "Done"
-echo "# Preparing the build environment please wait #"
+#echo -n "Please wait while we check your and or install dependencies........"
+#apt-get install $deps -y > /dev/null
+#echo "Done"
+#echo "# Preparing the build environment please wait #"
 [[ ! -f "arch" ]] && echo $arch > arch
 currentArch=$(cat arch)
 if [[ $buildFS == 'y' ]]; then
-    if [[ ! -d buildsource ]]; then
-        mkdir buildsource
+    if [[ ! -d initsource$arch ]]; then
         echo -n "Downloading Build Root Source Package........"
         wget $brURL -qO buildroot.tar.bz2 > /dev/null
         echo "Done"
         echo -n "Expanding Build Root Sources........"
         tar xf buildroot.tar.bz2
-        cp -R buildroot-$brVersion/* buildsource
-        rm -R buildroot-$brVersion
+        mv buildroot-$brVersion initsource$arch
         echo "Done"
     fi
     echo -n "Adding Custom Packages to Build Root........"
-    #oldPackages=$(cat buildsource/package/Config.in)
-    if [[ ! -f buildsource/.packConfDone ]]; then
-        cat Buildroot/package/newConf.in >> buildsource/package/Config.in
-        touch buildsource/.packConfDone
+    #oldPackages=$(cat initsource$arch/package/Config.in)
+    if [[ ! -f initsource$arch/.packConfDone ]]; then
+        cat Buildroot/package/newConf.in >> initsource$arch/package/Config.in
+        touch initsource$arch/.packConfDone
     fi
-    rsync -avPrI Buildroot/ buildsource > /dev/null
-    #echo $newPackages$oldPackages > buildsource/package/Config.in
+    rsync -avPrI Buildroot/ initsource$arch > /dev/null
+    #echo $newPackages$oldPackages > initsource$arch/package/Config.in
     echo "Done"
-    cp configs/fs$arch.config buildsource/.config
-    cd buildsource
+    cp configs/fs$arch.config initsource$arch/.config
+    cd initsource$arch
     echo "your working dir is $PWD"
     #cp ../fs$arch.config .config
     if [[ $arch != $currentArch ]]; then
         echo -n "Different architecture detected so we must clean........"
-        make clean -j $(nproc) > /dev/null
+        make clean
         echo "Done"
         echo -n "Copying over Config file........"
         echo "Done"
     fi
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
-        [[ $config == y ]] && make menuconfig -j $(nproc)
+        [[ $config == y ]] && make menuconfig
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            make -j $(nproc)
+            make
         fi
-    else
-        make -j $(nproc)
     fi
+    make
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    compiledfile='buildsource/output/images/rootfs.ext4.xz'
+    compiledfile="initsource$arch/output/images/rootfs.ext4.xz"
     [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init32.xz'
     [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 fi
@@ -187,9 +177,8 @@ if [[ $buildKernel == y ]]; then
         wget $kernelURL -qO kernel.tar.gz >/dev/null
         echo "Done"
         echo -n "Expanding Kernel Sources........"
-        tar xf kernel.tar.gz
-        cp -R linux-$kernelVersion/* kernelsource
-        rm -R linux-$kernelVersion
+        tar xzf kernel.tar.gz
+        mv linux-$kernelVersion kernelsource
         echo "Done"
     fi
     cd kernelsource
@@ -207,6 +196,8 @@ if [[ $buildKernel == y ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
             [[ $arch == x64 ]] && make menuconfig -j $(nproc) || make ARCH=i386 menuconfig -j $(nproc)
+	else
+            [[ $arch == x64 ]] && make oldconfig || make ARCH=i386 oldconfig
         fi
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready ]]; then

@@ -1,6 +1,5 @@
 #!/bin/bash
 . /usr/share/fog/lib/funcs.sh
-. /bin/fog.donate
 . /bin/fog.checkin
 . /bin/fog.mount
 . /bin/fog.checkmount
@@ -36,6 +35,8 @@ preparePartitions() {
                     if [[ -d $imagePath ]]; then
                         prepareResizeDownloadPartitions "$hd" 1 "$imagePath" "$osid" "$imgPartitionType"
                     else
+                        startsector="63s"
+                        restorePartitionTablesAndBootLoaders "$hd" 1 "$imagePath" "$osid" "$imgPartitionType"
                         dots "Removing partition"
                         parted -s $hd rm 1 >/dev/null 2>&1
                         if [[ ! $? -eq 0 ]]; then
@@ -73,7 +74,11 @@ preparePartitions() {
                     ;;
                 [5-7]|9)
                     [[ ! -d $imagePath && ! -f $imagePath/sys.img.000 ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
-                    if [[ ! -f $imagePath/sys.img.000 ]]; then
+                    sfdiskOriginalPartitionFileName "$imagePath" "1"
+                    sfdiskLegacyOriginalPartitionFileName "$imagePath" "1"
+                    sfdiskfilename="$sfdiskoriginalpartitionfilename"
+                    [[ ! -r $sfdiskfilename ]] && sfdiskfilename="$sfdisklegacyoriginalpartitionfilename"
+                    if [[ ! -f $imagePath/sys.img.000 || -f $sfdiskfilename ]]; then
                         prepareResizeDownloadPartitions "$hd" 1 "$imagePath" "$osid" "$imgPartitionType"
                     else
                         echo " * Using legacy style partition setup"
@@ -93,7 +98,6 @@ preparePartitions() {
                         case $do_fill in
                             1)
                                 fillDiskWithPartitions "$hd" "$imagePath" 1
-                                echo "Done"
                                 ;;
                             *)
                                 startsector="2048s"
@@ -167,7 +171,7 @@ preparePartitions() {
                                     3)
                                         dots "Removing partition data"
                                         sgdisk -Z $hd >/dev/null 2>&1
-                                        sgdisk -gel $imagePath/gpt.bak $hd >/dev/null 2>&1
+                                        sgdisk -gl $imagePath/gpt.bak $hd >/dev/null 2>&1
                                         if [[ ! $? -eq 0 ]]; then
                                             echo "Failed"
                                             debugPause
@@ -227,14 +231,14 @@ putDataBack() {
     getPartitions "$hd"
     [[ -z $parts ]] && echo -e " * Seems like you are trying to restore to an empty disk. Be aware this will most probably cause trouble.\n"
     echo "   +--------------------------------+"
-    echo "   |  Attempting to download image  |"
+    echo "   |   Attempting to deploy image   |"
     echo "   +--------------------------------+"
     [[ $imgFormat -eq 1 || $imgLegacy -eq 1 ]] && echo "   |         Using Partimage        |" || echo "   |         Using Partclone        |"
     echo "   +--------------------------------+"
     [[ $mc == yes ]] && usleep 10000000 || usleep 3000000
     case $imgType in
         dd)
-            restorePartition "$hd" 1 "$imagePath/$img" "$mc"
+            restorePartition "$hd" 1 "$imagePath/${img}*" "$mc"
             ;;
         n|mps|mpa)
             [[ $imgType == +(n|mps) ]] && disks="$hd"

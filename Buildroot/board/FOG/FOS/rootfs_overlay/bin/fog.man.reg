@@ -1,6 +1,5 @@
 #!/bin/bash
 . /usr/share/fog/lib/funcs.sh
-. /bin/fog.donate
 clearScreen
 displayBanner
 disks=""
@@ -8,12 +7,10 @@ disk=""
 hd=""
 getHardDisk
 sysman=""
-sysman64=""
 sysproduct=""
-sysproduct64=""
 sysversion=""
-sysversion64=""
 sysserial=""
+sysuuid=""
 systype=""
 biosversion=""
 biosvendor=""
@@ -33,7 +30,11 @@ caseman=""
 casever=""
 caseserial=""
 casesasset=""
+sysman64=""
+sysproduct64=""
+sysversion64=""
 sysserial64=""
+sysuuid64=""
 systype64=""
 biosversion64=""
 biosvendor64=""
@@ -57,7 +58,10 @@ dots "Using disk device"
 echo $hd
 echo " * Starting host registration"
 mac=$(getMACAddresses | base64)
-exists=$(wget --post-data="mac=$mac" -qO - http://${web}service/man.hostexists.php 2>/dev/null)
+sysuuid=$(dmidecode -s system-uuid)
+sysuuid=${sysuuid,,}
+sysuuid=$(echo $sysuuid | base64)
+exists=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac" ${web}service/man.hostexists.php 2>/dev/null)
 checkAndSet() {
     local testvar="$1"
     local onlynum="$2"
@@ -86,9 +90,9 @@ setIDs() {
         dummy=$(echo $dummy | sed -e 's/^,//' -e 's/,$//')
         case $dummy in
             [?])
-                url="http://${web}service/${str}listing.php"
+                url="${web}service/${str}listing.php"
                 clearScreen
-                res=$(echo -e $(wget -qO - $url 2>/dev/null))
+                res=$(echo -e $(curl -ks $url 2>/dev/null))
                 i=0
                 IFS=$'\n'
                 for line in $res; do
@@ -162,12 +166,12 @@ while [[ $res != "#!ok" ]]; do
         usleep 2000000
     fi
     host=$(echo $host | base64)
-    res=$(wget --post-data="host=$host" -qO - http://${web}service/hostnameloop.php 2>/dev/null)
+    res=$(curl -Lks --data "host=$host" ${web}service/hostnameloop.php 2>/dev/null)
     [[ $res != "#!ok" ]] && echo "$res"
 done
 imageid=""
 setIDs "imageid" "image" "" "" 20
-if [[ $(wget -qO - http://${web}service/locationcheck.php 2>/dev/null) == "##" ]]; then
+if [[ $(curl -Lks ${web}service/locationcheck.php 2>/dev/null) == "##" ]]; then
     while [[ -z $askme ]]; do
         echo -n "    Would you like to assign a location for this host? (y/N) "
         read askme
@@ -271,7 +275,7 @@ other2=$(echo $other2 | base64)
 echo " * You entered all required information, "
 askme=""
 while [[ -z $askme ]]; do
-    echo -n "    Would you like to image this computer now? (y/N) "
+    echo -n "    Would you like to deploy image to this computer now? (y/N) "
     read askme
     case $askme in
         [Nn]|[Nn][Oo]|"")
@@ -289,15 +293,17 @@ while [[ -z $askme ]]; do
                 read -s password
                 user64=$(echo $username | tr -d '\012' | base64)
                 pass64=$(echo $password | tr -d '\012' | base64)
-                ret=$(wget --post-data="mac=$mac&username=$user64&password=$pass64" -qO - http://${web}service/checkcredentials.php 2>/dev/null)
+                ret=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&username=$user64&password=$pass64" ${web}service/checkcredentials.php 2>/dev/null)
                 case $ret in
                     '#!ok')
-                        echo " * This host will reboot and imaging will start!"
+                        echo
+                        echo " * This host will reboot and deployment will start!"
                         ret=$tmp
                         realdoimage=$(echo -n 1 | base64)
                         break
                         ;;
                     '#!il')
+                        echo
                         echo " * Error: Invalid Login! ($retry remaining)"
                         let retry-=1
                         ;;
@@ -314,7 +320,7 @@ done
 dots "Attempting to register host"
 res=""
 while [[ -z $res ]]; do
-    res=$(wget --post-data="mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&username=$user64&groupid=$group64&snapinid=$snapin64&productKey=$productKey" -qO - http://${web}service/auto.register.php 2>/dev/null)
+    res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&username=$user64&groupid=$group64&snapinid=$snapin64&productKey=$productKey" ${web}service/auto.register.php 2>/dev/null)
     echo "$res"
     usleep 2000000
 done
