@@ -111,9 +111,9 @@ while getopts "$optspec" o; do
     esac
 done
 brVersion="2017.02.1"
-[[ -z $kernelVersion ]] && kernelVersion="4.5.4"
+[[ -z $kernelVersion ]] && kernelVersion="4.13.4"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
-kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.gz"
+kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
 [[ -z $buildKernel ]] && buildKernel="none"
 [[ -z $buildFS ]] && buildFS="none"
@@ -122,6 +122,7 @@ deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-mul
 #apt-get install $deps -y > /dev/null
 #echo "Done"
 #echo "# Preparing the build environment please wait #"
+cd /home/builder/fos
 [[ ! -f "arch" ]] && echo $arch > arch
 currentArch=$(cat arch)
 if [[ $buildFS == 'y' ]]; then
@@ -171,31 +172,34 @@ if [[ $buildFS == 'y' ]]; then
     [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 fi
 if [[ $buildKernel == y ]]; then
-    if [[ ! -d kernelsource ]]; then
-        mkdir kernelsource
+    if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
         echo -n "Downloading Kernel Source Package........"
-        wget $kernelURL -qO kernel.tar.gz >/dev/null
-        echo "Done"
-        echo -n "Expanding Kernel Sources........"
-        tar xzf kernel.tar.gz
-        mv linux-$kernelVersion kernelsource
+        wget $kernelURL -q
         echo "Done"
     fi
-    cd kernelsource
-    echo -n "Cloning Linux-Firmware in directory........"
-    git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
-    echo "Done"
+    if [[ ! -d kernelsource$arch ]]; then
+        echo -n "Expanding Kernel Sources........"
+        tar xJf linux-$kernelVersion.tar.xz
+        mv linux-$kernelVersion kernelsource$arch
+        echo "Done"
+    fi
+    cd kernelsource$arch
+    if [[ ! -d linux-firmware ]]; then
+        echo -n "Cloning Linux-Firmware in directory........"
+        git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
+        echo "Done"
+    fi
     echo "your working dir is $PWD"
     cp ../configs/kernel$arch.config .config
-    if [[ $arch != $currentArch ]]; then
-        echo -n "Different architecture detected so we must clean........"
-        make clean -j $(nproc) > /dev/null
-        echo "Done"
-    fi
+#    if [[ $arch != $currentArch ]]; then
+#        echo -n "Different architecture detected so we must clean........"
+#        make clean -j $(nproc) > /dev/null
+#        echo "Done"
+#    fi
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
-            [[ $arch == x64 ]] && make menuconfig -j $(nproc) || make ARCH=i386 menuconfig -j $(nproc)
+            [[ $arch == x64 ]] && make menuconfig || make ARCH=i386 menuconfig
 	else
             [[ $arch == x64 ]] && make oldconfig || make ARCH=i386 oldconfig
         fi
@@ -211,4 +215,3 @@ if [[ $buildKernel == y ]]; then
     [[ $arch == x64 ]] && cp arch/x86/boot/bzImage ../dist/bzImage || cp arch/x86/boot/bzImage ../dist/bzImage32
     cd ..
 fi
-echo $arch > arch
