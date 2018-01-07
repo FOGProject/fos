@@ -1,15 +1,16 @@
 #!/bin/bash
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
-    echo -e "\t\t-a --arch [x86|x64] pick the architecture to build. Defaults to x64"
-    echo -e "\t\t-f --filesystm (optional) Build the FOG filesystem"
-    echo -e "\t\t-k --kernel (optional) Build the FOG kernel"
-    echo -e "\t\t-v --version (optional) Specify a kernel version to build"
-    echo -e "\t\t-n --noconfirm (optional) Build systems without confirmation"
-    echo -e "\t\t-h --help -? Display this message"
+    echo -e "\t\t-a --arch [x86|x64] (optional) pick the architecture to build. Default is to build for both."
+    echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
+    echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
+    echo -e "\t\t-v --version (optional) Specify a kernel version to build."
+    echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
+    echo -e "\t\t-n --noconfirm (optional) Build systems without confirmation."
+    echo -e "\t\t-h --help -? Display this message."
 }
 [[ -n $arch ]] && unset $arch
-optspec="?hknfh-:a:v:"
+optspec="?hknfh-:a:v:p:"
 while getopts "$optspec" o; do
     case "${o}" in
         -)
@@ -58,11 +59,30 @@ while getopts "$optspec" o; do
                     fi
                     kernelVersion=${val}
                     ;;
-                kernel)
-                    buildKernel="y"
+                path)
+                    val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
+                    if [[ -z $val ]]; then
+                        echo "Option --${OPTARG} requires a value"
+                        Usage
+                        exit 2
+                    fi
+                    buildPath=${val}
                     ;;
-                filesystem)
-                    buildFS="y"
+                path=*)
+                    val=${OPTARG#*=}
+                    opt=${OPTARG%=$val}
+                    if [[ -z $val ]]; then
+                        echo "Option --${opt} requires a value"
+                        Usage
+                        exit 2
+                    fi
+                    buildPath=${val}
+                    ;;
+                kernel-only)
+                    buildKernelOnly="y"
+                    ;;
+                filesystem-only)
+                    buildFSOnly="y"
                     ;;
                 noconfirm)
                     confirm="n"
@@ -87,11 +107,14 @@ while getopts "$optspec" o; do
         v)
             kernelVersion=${OPTARG}
             ;;
+        p)
+            buildPath=${OPTARG}
+            ;;
         k)
-            buildKernel="y"
+            buildKernelOnly="y"
             ;;
         f)
-            buildFS="y"
+            buildFSOnly="y"
             ;;
         n)
             confirm="n"
@@ -115,103 +138,145 @@ brVersion="2017.02.1"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
-[[ -z $buildKernel ]] && buildKernel="none"
-[[ -z $buildFS ]] && buildFS="none"
+[[ -z $arch ]] && arch="x64 x86"
+[[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 #echo -n "Please wait while we check your and or install dependencies........"
 #apt-get install $deps -y > /dev/null
 #echo "Done"
 #echo "# Preparing the build environment please wait #"
-cd /home/builder/fos
-[[ ! -f "arch" ]] && echo $arch > arch
-currentArch=$(cat arch)
-if [[ $buildFS == 'y' ]]; then
-    if [[ ! -d initsource$arch ]]; then
-        echo -n "Downloading Build Root Source Package........"
-        wget $brURL -qO buildroot.tar.bz2 > /dev/null
-        echo "Done"
+mkdir -p $buildPath && cd $buildPath || exit 1
+
+
+function buildFilesystem() {
+    local arch="$1"
+    echo "Building FS for arch $arch"
+    if [[ ! -d fssource$arch ]]; then
+	if [[ ! -f buildroot-$brVersion.tar.bz2 ]]; then
+            echo -n "Downloading Build Root Source Package........"
+            wget -q $brURL
+            echo "Done"
+	fi
         echo -n "Expanding Build Root Sources........"
-        tar xf buildroot.tar.bz2
-        mv buildroot-$brVersion initsource$arch
+        tar xjf buildroot-$brVersion.tar.bz2
+        mv buildroot-$brVersion fssource$arch
         echo "Done"
+        echo -n "Adding Custom Packages to Build Root........"
+        if [[ ! -f fssource$arch/.packConfDone ]]; then
+            cat Buildroot/package/newConf.in >> fssource$arch/package/Config.in
+            touch fssource$arch/.packConfDone
+        fi
+        rsync -avPrI Buildroot/ fssource$arch > /dev/null
+        echo "Done"
+    else
+	echo "Build directory fssource$arch already exists, will reuse it."
     fi
-    echo -n "Adding Custom Packages to Build Root........"
-    #oldPackages=$(cat initsource$arch/package/Config.in)
-    if [[ ! -f initsource$arch/.packConfDone ]]; then
-        cat Buildroot/package/newConf.in >> initsource$arch/package/Config.in
-        touch initsource$arch/.packConfDone
+    if [[ -f fssource$arch/.config ]]; then
+	echo "Configuration fssource$arch/.config already exists, will reuse it."
+    else
+        echo -n "Copying our buildroot configuration to start with........"
+        cp configs/fs$arch.config fssource$arch/.config
+	echo "Done"
     fi
-    rsync -avPrI Buildroot/ initsource$arch > /dev/null
-    #echo $newPackages$oldPackages > initsource$arch/package/Config.in
-    echo "Done"
-    cp configs/fs$arch.config initsource$arch/.config
-    cd initsource$arch
+    cd fssource$arch
     echo "your working dir is $PWD"
-    #cp ../fs$arch.config .config
-    if [[ $arch != $currentArch ]]; then
-        echo -n "Different architecture detected so we must clean........"
-        make clean
-        echo "Done"
-        echo -n "Copying over Config file........"
-        echo "Done"
-    fi
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
-        [[ $config == y ]] && make menuconfig
+        if [[ $config == y ]]; then
+            make menuconfig
+        else
+            echo "Ok, running make oldconfig instead to ensure the config is clean."
+            make oldconfig
+        fi
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
             make
+        else
+            echo "Nothing to build!? Skipping."
+	    cd ..
+            return
         fi
+    else
+	make oldconfig && make
     fi
-    make
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    compiledfile="initsource$arch/output/images/rootfs.ext4.xz"
+    compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
     [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init32.xz'
     [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
-fi
-if [[ $buildKernel == y ]]; then
-    if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
-        echo -n "Downloading Kernel Source Package........"
-        wget $kernelURL -q
-        echo "Done"
-    fi
+}
+
+function buildKernel() {
+    local arch="$1"
+    echo "Building kernel for $arch"
     if [[ ! -d kernelsource$arch ]]; then
+        if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
+            echo -n "Downloading Kernel Source Package........"
+            wget -q $kernelURL
+            echo "Done"
+        fi
         echo -n "Expanding Kernel Sources........"
         tar xJf linux-$kernelVersion.tar.xz
         mv linux-$kernelVersion kernelsource$arch
         echo "Done"
+        cd kernelsource$arch
+        if [[ ! -d linux-firmware ]]; then
+            echo -n "Cloning Linux-Firmware in directory........"
+            git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
+            echo "Done"
+        fi
+    else
+	echo "Build directory kernelsource$arch already exists, will reuse it."
+        cd kernelsource$arch
     fi
-    cd kernelsource$arch
-    if [[ ! -d linux-firmware ]]; then
-        echo -n "Cloning Linux-Firmware in directory........"
-        git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
-        echo "Done"
+    if [[ -f .config ]]; then
+	echo "Configuration kernelsource$arch/.config already exists, will reuse it."
+    else
+        echo -n "Copying our buildroot configuration to start with........"
+        cp ../configs/kernel$arch.config .config
+	echo "Done"
     fi
     echo "your working dir is $PWD"
-    cp ../configs/kernel$arch.config .config
-#    if [[ $arch != $currentArch ]]; then
-#        echo -n "Different architecture detected so we must clean........"
-#        make clean -j $(nproc) > /dev/null
-#        echo "Done"
-#    fi
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
             [[ $arch == x64 ]] && make menuconfig || make ARCH=i386 menuconfig
 	else
+            echo "Ok, running make oldconfig instead to ensure the config is clean."
             [[ $arch == x64 ]] && make oldconfig || make ARCH=i386 oldconfig
         fi
         read -p "We are ready to build are you [y|n]?" ready
-        if [[ $ready ]]; then
+        if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
             [[ $arch == x64 ]] && make -j $(nproc) bzImage || make ARCH=i386 -j $(nproc) bzImage
+        else
+            echo "Nothing to build!? Skipping."
+            cd ..
+            return
         fi
     else
-        [[ $arch == x64 ]] && make -j $(nproc) bzImage || make ARCH=i386 -j $(nproc) bzImage
+        if [[ $arch == x64 ]]; then
+            make oldconfig
+            make -j $(nproc) bzImage
+        else
+            make ARCH=i386 oldconfig
+            make ARCH=i386 -j $(nproc) bzImage
+        fi
     fi
-    [[ ! -d ../dist ]] && mkdir ../dist
-    [[ $arch == x64 ]] && cp arch/x86/boot/bzImage ../dist/bzImage || cp arch/x86/boot/bzImage ../dist/bzImage32
     cd ..
-fi
+    mkdir -p dist
+    compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
+    [[ $arch == x64 ]] && cp $compiledfile dist/bzImage || cp $compiledfile dist/bzImage32
+}
+
+
+for buildArch in $arch
+do
+    if [[ -z $buildKernelOnly ]]; then
+        buildFilesystem $buildArch
+    fi
+    if [[ -z $buildFSOnly ]]; then
+        buildKernel $buildArch
+    fi
+done
