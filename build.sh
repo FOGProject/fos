@@ -202,7 +202,7 @@ function buildFilesystem() {
     fi
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
+    compiledfile="fssource$arch/output/images/rootfs.ext2.xz"
     [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init32.xz'
     [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 }
