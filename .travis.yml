@@ -1,11 +1,14 @@
 language: c
 os:
  - linux
+env:
+  global:
+    - MAKEFLAGS="-j 2"
 
 before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y wget subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib cpio bc unzip locales texinfo
-  
+
 matrix:
   include:
    - env: NAME="x86 Kernel"
