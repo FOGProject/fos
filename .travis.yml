@@ -8,7 +8,11 @@ before_install:
   
 matrix:
   include:
-  - script: ./build.sh -fn -a x86
-  - script: ./build.sh -fn -a x64  
-  - script: ./build.sh -kn -a x86
-  - script: ./build.sh -kn -a x86
+   - env: NAME="x86 Kernel"
+     script: ./build.sh -kn -a x86
+   - env: NAME="x64 Kernel"
+     script: ./build.sh -kn -a x64  
+   - env: NAME="x86 FS"
+     script: ./build.sh -fn -a x86
+   - env: NAME="x64 FS"
+     script: ./build.sh -fn -a x64
