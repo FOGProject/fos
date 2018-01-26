@@ -6,4 +6,9 @@ before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y wget subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib cpio bc unzip locales texinfo
   
-script: ./build.sh -n
+matrix:
+  include:
+  - script: ./build.sh -fn -a x86
+  - script: ./build.sh -fn -a x64  
+  - script: ./build.sh -kn -a x86
+  - script: ./build.sh -kn -a x86
