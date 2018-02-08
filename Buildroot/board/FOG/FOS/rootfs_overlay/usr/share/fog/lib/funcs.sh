@@ -697,7 +697,8 @@ writeImage()  {
             ;;
         *)
             [[ -z $file ]] && handleError "No source file passed (${FUNCNAME[0]})\n   Args Passed: $*"
-            cat $file >/tmp/pigz1 &
+            #cat $file >/tmp/pigz1 &
+            curl -Lkso /tmp/pigz1 ${web}/api/image/${img}/$(basename ${file}) &
             ;;
     esac
     local format=$imgLegacy
