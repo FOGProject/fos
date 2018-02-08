@@ -217,7 +217,7 @@ function buildKernel() {
             echo "Done"
         fi
         echo -n "Expanding Kernel Sources........"
-        tar xJf linux-$kernelVersion.tar.xz
+        tar -xJf linux-$kernelVersion.tar.xz
         mv linux-$kernelVersion kernelsource$arch
         echo "Done"
         cd kernelsource$arch
@@ -227,15 +227,33 @@ function buildKernel() {
             echo "Done"
         fi
     else
-	echo "Build directory kernelsource$arch already exists, will reuse it."
+        echo "Build directory kernelsource$arch already exists, will attempt to reuse it."
+        if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
+            echo    "Kernel files where not present"
+            echo -n "Removing kernelsource$arch..............."
+            rm -rf kernelsource$arch
+            echo "Done"
+            echo -n "Downloading Kernel Source Package........"
+            wget -q $kernelURL
+            echo "Done"
+            echo -n "Expanding Kernel Sources........"
+            tar -xJF linux-$kernelVersion.tar.xz
+            mv linux-$kernelVersion kernelsource$arch
+            echo "Done"
+        fi
         cd kernelsource$arch
+        if [[ ! -d linux-firmware ]]; then
+            echo -n "Cloning Linux-Firmware in directory......"
+            git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
+            echo "Done"
+        fi
     fi
     if [[ -f .config ]]; then
-	echo "Configuration kernelsource$arch/.config already exists, will reuse it."
+        echo "Configuration kernelsource$arch/.config already exists, will reuse it."
     else
         echo -n "Copying our buildroot configuration to start with........"
         cp ../configs/kernel$arch.config .config
-	echo "Done"
+        echo "Done"
     fi
     echo "your working dir is $PWD"
     if [[ $confirm != n ]]; then
