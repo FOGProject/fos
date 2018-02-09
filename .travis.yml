@@ -7,7 +7,7 @@ env:
 
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y wget subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib cpio bc unzip locales texinfo
+  - sudo apt-get install -y wget subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib cpio bc unzip locales texinfo libelf-dev
 
 matrix:
   include:
