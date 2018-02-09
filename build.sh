@@ -185,28 +185,23 @@ function buildFilesystem() {
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
-            [[ $arch == x64 ]] && make menuconfig || make ARCH=i486 menuconfig
+            make menuconfig
         else
             echo "Ok, running make oldconfig instead to ensure the config is clean."
-            [[ $arch == x64 ]] && make oldconfig || make ARCH=i486 oldconfig
+            make oldconfig
         fi
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            [[ $arch == x64 ]] &&  make -j $(nproc) >buildroot$arch.log && make -j $(nproc) ARCH=i486 >buildroot$arch.log
+            make -j $(nproc) >buildroot$arch.log
         else
             echo "Nothing to build!? Skipping."
 	    cd ..
             return
         fi
     else
-        if [[ $arch == x64 ]]; then
-            make oldconfig
-            make -j $(nproc) >buildroot$arch.log
-        else
-            make ARCH=i486 oldconfig
-            make -j $(nproc) ARCH=i486 >buildroot$arch.log
-        fi
+        make oldconfig
+        make -j $(nproc) >buildroot$arch.log
     fi
     cd ..
     kill $PING_LOOP_PID
