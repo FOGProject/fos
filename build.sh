@@ -133,8 +133,8 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-brVersion="2017.02.1"
-[[ -z $kernelVersion ]] && kernelVersion="4.13.4"
+brVersion="2017.11.2"
+[[ -z $kernelVersion ]] && kernelVersion="4.15.2"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
@@ -191,19 +191,19 @@ function buildFilesystem() {
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            make -j $(nproc) > buildroot$arch.log
+            make -j $(nproc)
         else
             echo "Nothing to build!? Skipping."
 	    cd ..
             return
         fi
     else
-	make oldconfig && make > buildroot$arch.log
+	make oldconfig && make
     fi
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    compiledfile="fssource$arch/output/images/rootfs.ext2.xz"
-    [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init32.xz'
+    compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
+    [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init_32.xz'
     [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 }
 
@@ -267,7 +267,7 @@ function buildKernel() {
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            [[ $arch == x64 ]] && make -j $(nproc) bzImage > kernel$arch.log || make ARCH=i386 -j $(nproc) bzImage > kernel$arch.log
+            [[ $arch == x64 ]] && make -j $(nproc) bzImage || make ARCH=i386 -j $(nproc) bzImage
         else
             echo "Nothing to build!? Skipping."
             cd ..
@@ -276,10 +276,10 @@ function buildKernel() {
     else
         if [[ $arch == x64 ]]; then
             make oldconfig
-            make -j $(nproc) bzImage > kernel$arch.log
+            make -j $(nproc) bzImage
         else
             make ARCH=i386 oldconfig
-            make ARCH=i386 -j $(nproc) bzImage > kernel$arch.log
+            make ARCH=i386 -j $(nproc) bzImage
         fi
     fi
     cd ..
