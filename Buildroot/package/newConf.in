@@ -8,5 +8,4 @@ menu "Packages for FOG"
     source "package/libmspack/Config.in"
     source "package/gptfdisk/Config.in"
     source "package/partimage/Config.in"
-    source "package/zstd/Config.in"
 endmenu
