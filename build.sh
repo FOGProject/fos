@@ -191,14 +191,14 @@ function buildFilesystem() {
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            make
+            make -j $(nproc) > buildroot$arch.log
         else
             echo "Nothing to build!? Skipping."
 	    cd ..
             return
         fi
     else
-	make oldconfig && make
+	make oldconfig && make > buildroot$arch.log
     fi
     cd ..
     [[ ! -d dist ]] && mkdir dist
@@ -267,7 +267,7 @@ function buildKernel() {
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            [[ $arch == x64 ]] && make -j $(nproc) bzImage || make ARCH=i386 -j $(nproc) bzImage
+            [[ $arch == x64 ]] && make -j $(nproc) bzImage > kernel$arch.log || make ARCH=i386 -j $(nproc) bzImage > kernel$arch.log
         else
             echo "Nothing to build!? Skipping."
             cd ..
@@ -276,10 +276,10 @@ function buildKernel() {
     else
         if [[ $arch == x64 ]]; then
             make oldconfig
-            make -j $(nproc) bzImage
+            make -j $(nproc) bzImage > kernel$arch.log
         else
             make ARCH=i386 oldconfig
-            make ARCH=i386 -j $(nproc) bzImage
+            make ARCH=i386 -j $(nproc) bzImage > kernel$arch.log
         fi
     fi
     cd ..

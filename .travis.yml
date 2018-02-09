@@ -3,7 +3,7 @@ os:
  - linux
 env:
   global:
-    - MAKEFLAGS="-j 2"
+    - MAKEFLAGS="-j $(nproc)"
 
 before_install:
   - sudo apt-get -qq update
