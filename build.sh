@@ -180,6 +180,8 @@ function buildFilesystem() {
     fi
     cd fssource$arch
     echo "your working dir is $PWD"
+    bash -c "while true; do echo \$(date) - building ...; sleep 30s; done" &
+    PING_LOOP_PID=$!
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
@@ -191,16 +193,17 @@ function buildFilesystem() {
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            make -j $(nproc)
+            make -j $(nproc) >fssource$arch/buildroot$arch.log
         else
             echo "Nothing to build!? Skipping."
 	    cd ..
             return
         fi
     else
-	make oldconfig && make
+        make oldconfig && make -j $(nproc) >fssource$arch/buildroot$arch.log
     fi
     cd ..
+    kill $PING_LOOP_PID
     [[ ! -d dist ]] && mkdir dist
     compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
     [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init_32.xz'
