@@ -1,14 +1,32 @@
+# FOG Operating System (FOS)
+This is the operating system environment used for imaging with FOG. This is a linux based operating system with all the scripts and programs required for perform imaging tasks.
+
+# What does this docker image do?
 Builds FOG Operating System (FOS) inits as well as kernels used by fog.
 
-This container does not contain FOS or the kernels, It is just a full build environment.
+# What do we need?
+1. You'll need to install docker on your system.
+2. You'll need to install git on your system.
+3. You'll need to clone the fos repository.
 
-NOTE: `/path/to/fos/repo` is not the real path, this is the path to the fos repository local to the machine you plan on running this on. Typically this would be something like `~/fos`. This is the only path you will need to change to build.
+# How do I get the fos repository?
+Pull the fos repository with:
 
-To pull the fogproject/fos-builder image run:
+```
+git clone https://github.com/fogproject/fos
+```
+
+# How do I get the docker image?
+Pull the fos-builder image with:
 ```
 docker pull fogproject/fos-builder
 ```
 
+##### NOTES:
+1. This container does not contain FOS or the kernels, It is just a full build environment.
+2. `/path/to/fos/repo` is not the real path, this is the path to the fos repository local to the machine you plan on running this on. Typically this would be something like `~/fos`. This is the only path you will need to change to build.
+
+#### How to build?
 To build the FOS and/or kernels, once pulled:
 
 ##### Build Everything
