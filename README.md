@@ -2,7 +2,12 @@ Builds FOG Operating System (FOS) inits as well as kernels used by fog.
 
 This container does not contain FOS or the kernels, It is just a full build environment.
 
-NOTE: /path/to/fos/repo is not the real path, this is the path to the fos repository local to the machine you plan on running this on. Typically this would be something like ~/fos. This is the only path you will need to change to build.
+NOTE: `/path/to/fos/repo` is not the real path, this is the path to the fos repository local to the machine you plan on running this on. Typically this would be something like `~/fos`. This is the only path you will need to change to build.
+
+To pull the fogproject/fos-builder image run:
+```
+docker pull fogproject/fos-builder
+```
 
 To build the FOS and/or kernels, once pulled:
 
