@@ -235,6 +235,7 @@ function buildKernel() {
             git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
             echo "Done"
         fi
+        make mrproper
     else
         echo "Build directory kernelsource$arch already exists, will attempt to reuse it."
         if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
@@ -256,7 +257,6 @@ function buildKernel() {
             git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
             echo "Done"
         fi
-        make mrproper
     fi
     if [[ -f .config ]]; then
         echo "Configuration kernelsource$arch/.config already exists, will reuse it."
