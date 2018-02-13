@@ -94,7 +94,7 @@ doInventory() {
     caseman=$(dmidecode -s chassis-manufacturer)
     casever=$(dmidecode -s chassis-version)
     caseserial=$(dmidecode -s chassis-serial-number)
-    casesasset=$(dmidecode -s chassis-asset-tag)
+    caseasset=$(dmidecode -s chassis-asset-tag)
     sysman64=$(echo $sysman | base64)
     sysproduct64=$(echo $sysproduct | base64)
     sysversion64=$(echo $sysversion | base64)
@@ -118,7 +118,7 @@ doInventory() {
     caseman64=$(echo $caseman | base64)
     casever64=$(echo $casever | base64)
     caseserial64=$(echo $caseserial | base64)
-    casesasset64=$(echo $casesasset | base64)
+    caseasset64=$(echo $caseasset | base64)
 }
 # Gets the location of the SAM registry if found
 getSAMLoc() {
