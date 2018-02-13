@@ -152,11 +152,11 @@ function buildFilesystem() {
     local arch="$1"
     echo "Building FS for arch $arch"
     if [[ ! -d fssource$arch ]]; then
-	if [[ ! -f buildroot-$brVersion.tar.bz2 ]]; then
+        if [[ ! -f buildroot-$brVersion.tar.bz2 ]]; then
             echo -n "Downloading Build Root Source Package........"
             wget -q $brURL
             echo "Done"
-	fi
+        fi
         echo -n "Expanding Build Root Sources........"
         tar xjf buildroot-$brVersion.tar.bz2
         mv buildroot-$brVersion fssource$arch
@@ -169,14 +169,17 @@ function buildFilesystem() {
         rsync -avPrI Buildroot/ fssource$arch > /dev/null
         echo "Done"
     else
-	echo "Build directory fssource$arch already exists, will reuse it."
+        echo "Build directory fssource$arch already exists, will reuse it."
+        echo -n "Ensuring changes are accounted for....."
+        rsync -avPrI Buildroot/ fssource$arch > /dev/null
+        echo "Done"
     fi
     if [[ -f fssource$arch/.config ]]; then
-	echo "Configuration fssource$arch/.config already exists, will reuse it."
+        echo "Configuration fssource$arch/.config already exists, will reuse it."
     else
         echo -n "Copying our buildroot configuration to start with........"
         cp configs/fs$arch.config fssource$arch/.config
-	echo "Done"
+        echo "Done"
     fi
     cd fssource$arch
     echo "your working dir is $PWD"
@@ -196,17 +199,17 @@ function buildFilesystem() {
             [[ $arch == x64 ]] && make -j $(nproc) >buildroot$arch.log || make ARCH=i486 -j $(nproc) >buildroot$arch.log
         else
             echo "Nothing to build!? Skipping."
-	    cd ..
+            cd ..
             return
         fi
     else
         [[ $arch == x64 ]] && {
-            make oldconfig
-            make -j $(nproc) >buildroot$arch.log
-        } || {
-            make ARCH=i486 oldconfig
-            make ARCH=i486 -j $(nproc) >buildroot$arch.log
-        }
+        make oldconfig
+        make -j $(nproc) >buildroot$arch.log
+    } || {
+    make ARCH=i486 oldconfig
+    make ARCH=i486 -j $(nproc) >buildroot$arch.log
+}
     fi
     cd ..
     kill $PING_LOOP_PID
@@ -270,7 +273,7 @@ function buildKernel() {
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
             [[ $arch == x64 ]] && make menuconfig || make ARCH=i386 menuconfig
-	else
+        else
             echo "Ok, running make oldconfig instead to ensure the config is clean."
             [[ $arch == x64 ]] && make oldconfig || make ARCH=i386 oldconfig
         fi
