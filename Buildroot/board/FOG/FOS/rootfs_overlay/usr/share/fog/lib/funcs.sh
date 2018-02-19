@@ -807,6 +807,7 @@ makeAllSwapSystems() {
     [[ -z $imgPartitionType ]] && handleError "No image partition type passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local swapuuidfilename=""
     swapUUIDFileName "$imagePath" "$disk_number"
+    [[ -r "$swapuuidfilename" ]] || return
     local parts=""
     local part=""
     local part_number=0
