@@ -85,10 +85,10 @@ restoreUUIDInformation() {
     for part in $parts; do
         partitionIsSwap "$part"
         getPartitionNumber "$part"
+        local escape_part=$(escapeItem $part)
         [[ $is_swap -gt 0 ]] && continue
-        pat="/^.*\/dev\/[A-Za-z0-9]+([Pp]|)[$part_number].*"
-        partuuid=$(awk -F[,\ ] "match(\$0, ${pat}uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[2]))}" $sfdiskoriginalpartitionfilename)
-        parttype=$(awk -F[,\ ] "match(\$0, ${pat}type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[2]))}" $sfdiskoriginalpartitionfilename)
+        partuuid=$(awk -F[,\ ] "match(\$0, /^${escape_part} : .*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $sfdiskoriginalpartitionfilename)
+        parttype=$(awk -F[,\ ] "match(\$0, /^${escape_part} : .*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $sfdiskoriginalpartitionfilename)
         dots "Partition type being set to"
         echo $parttype
         debugPause
@@ -354,8 +354,7 @@ makeSwapSystem() {
     local part_number=""
     local escape_part=$(escapeItem $part)
     getPartitionNumber "$part"
-    local pat="/^\/dev\/[A-Za-z0-9]+([Pp]|)[$part_number]\ /"
-    local uuid=$(awk "$pat{print \$2}" $file)
+    local uuid=$(awk "/^${escape_part} /{print \$2}" $file)
     local hasgpt=0
     hasGPT "$disk"
     case $hasgpt in
