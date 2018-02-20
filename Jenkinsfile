@@ -11,7 +11,7 @@ pipeline {
         parallel (
           kernel: {
             sh './build.sh -kn -a x86'
-          }
+          },
           filesytem: {
             sh './build.sh -fn -a x86'
           }
@@ -23,7 +23,7 @@ pipeline {
         parallel (
           kernel: {
             sh './build.sh -kn -a x64'
-          }
+          },
           filesytem: {
             sh './build.sh -fn -a x64'
           }
