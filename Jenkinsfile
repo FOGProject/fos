@@ -2,25 +2,25 @@
 
 stage('Build') {
   parallel x86Kernel: {
-    node {
+    node('fos') {
       checkout scm
       sh './build.sh -kn -a x86'
     }
   },
   x64Kernel: {
-    node {
+    node('fos') {
       checkout scm
       sh './build.sh -kn -a x64'
     }
   },
   x86Filesystem: {
-    node {
+    node('fos') {
       checkout scm
       sh './build.sh -fn -a x86'
     }
   },
   x64Filesystem: {
-    node {
+    node('fos') {
       checkout scm
       sh './build.sh -fn -a x64'
     }
