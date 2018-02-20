@@ -2,10 +2,13 @@ pipeline {
   agent { node { label 'fos' } }
   
   stages {
-    stage('Build') {
+    stage('SCM') {
       steps {
         checkout scm
-        
+      }
+    },
+    stage('Build') {
+      steps {
         parallel (
           "Kernel - x86": {
             sh './build.sh -kn -a x86'
