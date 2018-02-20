@@ -8,32 +8,28 @@ pipeline {
       }
     },
     stage('Build x86') {
-      parallel {
-        stage('Kernel') {
-          steps {
+      steps {
+        parallel (
+          kernel: {
             sh './build.sh -kn -a x86'
-          }
-        },
-        stage('Filesystem') {
-          steps {
+          },
+          filesytem: {
             sh './build.sh -fn -a x86'
           }
-        }
+        )
       }
     },
     stage('Build x64') {
-      parallel {
-        stage('Kernel') {
-          steps {
+      steps {
+        parallel (
+          kernel: {
             sh './build.sh -kn -a x64'
-          }
-        },
-        stage('Filesystem') {
-          steps {
+          },
+          filesytem: {
             sh './build.sh -fn -a x64'
           }
-        }
+        )
       }
-    }
+    },
   }
 }
