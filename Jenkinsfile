@@ -19,7 +19,7 @@ stage('Build') {
       sh './build.sh -fn -a x86'
     }
   },
-  x86Filesystem: {
+  x64Filesystem: {
     node {
       checkout scm
       sh './build.sh -fn -a x64'
