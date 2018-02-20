@@ -7,24 +7,33 @@ pipeline {
         checkout scm
       }
     },
-    stage('Build') {
-      steps {
-        parallel (
-          "Kernel - x86": {
+    stage('Build x86') {
+      parallel {
+        stage('Kernel') {
+          steps {
             sh './build.sh -kn -a x86'
-          },
-          "Kernel - x64": {
-            sh './build.sh -kn -a x64'
-          },
-          "Filesystem - x86": {
+          }
+        },
+        stage('Filesystem') {
+          steps {
             sh './build.sh -fn -a x86'
-          },
-          "Filesystem - x64": {
-            sh './build.sh -fn -a x64'
-          },
-          
-        )
+          }
+        }
       }
-    }
+    },
+    stage('Build x64') {
+      parallel {
+        stage('Kernel') {
+          steps {
+            sh './build.sh -kn -a x64'
+          }
+        },
+        stage('Filesystem') {
+          steps {
+            sh './build.sh -fn -a x64'
+          }
+        }
+      }
+    },
   }
 }
