@@ -1,5 +1,10 @@
 pipeline {
-  agent { node { label 'fos' } }
+  agent { 
+    docker { 
+      image 'fogproject/fos-builder'
+      args '-v $PWD:/home/builder/fos:Z -u builder'
+    }
+  }
   stages {
     stage('SCM') {
       steps {
@@ -10,10 +15,10 @@ pipeline {
       steps {
         parallel (
           kernel: {
-            sh './build.sh -kn -a x86'
+            sh '/home/builder/fos/build.sh -kn -a x86'
           },
           filesytem: {
-            sh './build.sh -fn -a x86'
+            sh '/home/builder/fos/build.sh -fn -a x86'
           }
         )
       }
@@ -22,10 +27,10 @@ pipeline {
       steps {
         parallel (
           kernel: {
-            sh './build.sh -kn -a x64'
+            sh '/home/builder/fos/build.sh -kn -a x64'
           },
           filesytem: {
-            sh './build.sh -fn -a x64'
+            sh '/home/builder/fos/build.sh -fn -a x64'
           }
         )
       }
