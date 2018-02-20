@@ -7,7 +7,7 @@ stage('Build') {
       sh './build.sh -kn -a x86'
     }
   },
-  x86Kernel: {
+  x64Kernel: {
     node {
       checkout scm
       sh './build.sh -kn -a x64'
