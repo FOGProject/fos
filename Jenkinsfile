@@ -34,5 +34,11 @@ pipeline {
         )
       }
     }
+    stage('Upload artifacts') {
+      steps {
+        archiveArtifacts artifacts: 'dist/*', fingerprint: true
+      }
+    }
+    
   }
 }
