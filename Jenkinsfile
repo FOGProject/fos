@@ -29,7 +29,7 @@ pipeline {
             sh './build.sh -kn -a x64'
           },
           filesytem: {
-            sh '.s/build.sh -fn -a x64'
+            sh './build.sh -fn -a x64'
           }
         )
       }
