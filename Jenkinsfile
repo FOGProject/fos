@@ -9,11 +9,11 @@ pipeline {
     stage('SCM') {
       steps {
         checkout scm
+        echo $PWD
       }
     }
     stage('Build x86') {
       steps {
-        checkout scm
         parallel (
           kernel: {
             sh '/home/builder/fos/build.sh -kn -a x86'
