@@ -251,7 +251,7 @@ function buildKernel() {
             echo "Done"
             echo -n "Expanding Kernel Sources........"
             tar -xJF linux-$kernelVersion.tar.xz
-            mv linux-$kernelVersion kernelsource$arch
+            mv linux-$kernelVersion/* kernelsource$arch/
             echo "Done"
         fi
         cd kernelsource$arch
