@@ -13,6 +13,7 @@ pipeline {
     }
     stage('Build x86') {
       steps {
+        checkout scm
         parallel (
           kernel: {
             sh '/home/builder/fos/build.sh -kn -a x86'
@@ -25,6 +26,7 @@ pipeline {
     }
     stage('Build x64') {
       steps {
+        checkout scm
         parallel (
           kernel: {
             sh '/home/builder/fos/build.sh -kn -a x64'
