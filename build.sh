@@ -1,7 +1,7 @@
 #!/bin/bash
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
-    echo -e "\t\t-a --arch [x86|x64] (optional) pick the architecture to build. Default is to build for both."
+    echo -e "\t\t-a --arch [x86|x64|arm] (optional) pick the architecture to build. Default is to build for all."
     echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
     echo -e "\t\t-v --version (optional) Specify a kernel version to build."
@@ -138,7 +138,7 @@ brVersion="2017.11.2"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
-[[ -z $arch ]] && arch="x64 x86"
+[[ -z $arch ]] && arch="x64 x86 arm"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 #echo -n "Please wait while we check your and or install dependencies........"
@@ -188,14 +188,63 @@ function buildFilesystem() {
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
-            [[ $arch == x64 ]] && make menuconfig || make ARCH=i486 menuconfig
+            case "${arch}" in
+                x64)
+                    make menuconfig
+                    ;;
+                x86)
+                    make ARCH=i486 menuconfig
+                    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- menuconfig
+                    ;;
+                #arm64)
+                #    make ARCH=arm64 menuconfig
+                #    ;;
+                *)
+                    make menuconfig
+                    ;;
+            esac
         else
             echo "Ok, running make oldconfig instead to ensure the config is clean."
-            [[ $arch == x64 ]] && make oldconfig || make ARCH=i486 oldconfig
+            case "${arch}" in
+                x64)
+                    make oldconfig
+                    ;;
+                x86)
+                    make ARCH=i486 oldconfig
+                    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- oldconfig
+                    ;;
+                #arm64)
+                #    make ARCH=arm64 oldconfig
+                #    ;;
+                *)
+                    make oldconfig
+                    ;;
+            esac
         fi
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
+            case "${arch}" in
+                x64)
+                    make -j $(nproc) >buildroot$arch.log
+                    ;;
+                x86)
+                    make ARCH=i486 -j $(nproc) >buildroot$arch.log
+                    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- -k -j $(nproc) >buildroot$arch.log
+                    ;;
+                #arm64)
+                #    make ARCH=arm64 -j $(nproc) >buildroot$arch.log
+                #    ;;
+                *)
+                    make -j $(nproc) > buildroot$arch.log
+                    ;;
+            esac
             [[ $arch == x64 ]] && make -j $(nproc) >buildroot$arch.log || make ARCH=i486 -j $(nproc) >buildroot$arch.log
         else
             echo "Nothing to build!? Skipping."
@@ -203,13 +252,28 @@ function buildFilesystem() {
             return
         fi
     else
-        [[ $arch == x64 ]] && {
-        make oldconfig
-        make -j $(nproc) >buildroot$arch.log
-    } || {
-    make ARCH=i486 oldconfig
-    make ARCH=i486 -j $(nproc) >buildroot$arch.log
-}
+        case "${arch}" in
+            x64)
+                make oldconfig
+                make -j $(nproc) >buildroot$arch.log
+                ;;
+            x86)
+                make ARCH=i486 oldconfig
+                make ARCH=i486 -j $(nproc) >buildroot$arch.log
+                ;;
+            arm)
+                make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- oldconfig
+                make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- -k -j $(nproc) >buildroot$arch.log
+                ;;
+            #arm64)
+            #    make ARCH=arm64 oldconfig
+            #    make ARCH=arm64 -j $(nproc) >buildroot$arch.log
+            #    ;;
+            *)
+                make oldconfig
+                make -j $(nproc) >buildroot$arch.log
+                ;;
+        esac
     fi
     cd ..
     kill $PING_LOOP_PID
@@ -272,28 +336,91 @@ function buildKernel() {
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
-            [[ $arch == x64 ]] && make menuconfig || make ARCH=i386 menuconfig
+            case "${arch}" in
+                x64)
+                    make menuconfig
+                    ;;
+                x86)
+                    make ARCH=i386 menuconfig
+                    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- menuconfig
+                    ;;
+                #arm64)
+                #    make ARCH=arm64 menuconfig
+                #    ;;
+                *)
+                    make menuconfig
+                    ;;
+            esac
         else
             echo "Ok, running make oldconfig instead to ensure the config is clean."
-            [[ $arch == x64 ]] && make oldconfig || make ARCH=i386 oldconfig
+            case "${arch}" in
+                x64)
+                    make oldconfig
+                    ;;
+                x86)
+                    make ARCH=i386 oldconfig
+                    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- oldconfig
+                    ;;
+                #arm64)
+                #    make ARCH=arm64 oldconfig
+                #    ;;
+                *)
+                    make oldconfig
+                    ;;
+            esac
         fi
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            [[ $arch == x64 ]] && make -j $(nproc) bzImage || make ARCH=i386 -j $(nproc) bzImage
+            case "${arch}" in
+                x64)
+                    make -j $(nproc) bzImage
+                    ;;
+                x86)
+                    make ARCH=i386 -j $(nproc) bzImage
+                    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- -k -j $(nproc) bzImage
+                    ;;
+                #arm64)
+                #    make ARCH=arm64 -j $(nproc) bzImage
+                #    ;;
+                *)
+                    make -j $(nproc) bzImage
+                    ;;
+            esac
         else
             echo "Nothing to build!? Skipping."
             cd ..
             return
         fi
     else
-        if [[ $arch == x64 ]]; then
-            make oldconfig
-            make -j $(nproc) bzImage
-        else
-            make ARCH=i386 oldconfig
-            make ARCH=i386 -j $(nproc) bzImage
-        fi
+        case "${arch}" in
+            x64)
+                make oldconfig
+                make -j $(nproc) bzImage
+                ;;
+            x86)
+                make ARCH=i386 oldconfig
+                make ARCH=i386 -j $(nproc) bzImage
+                ;;
+            arm)
+                make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- oldconfig
+                make ARCH=arm CROSS_COMPILE=/usr/bin/arm-linux-gnueabi- -k -j $(nproc) bzImage
+                ;;
+            #arm64)
+            #    make ARCH=arm64 oldconfig
+            #    make ARCH=arm64 -j $(nproc) bzImage
+            #    ;;
+            *)
+                make oldconfig
+                make -j $(nproc) bzImage
+                ;;
+        esac
     fi
     cd ..
     mkdir -p dist
