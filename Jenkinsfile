@@ -14,10 +14,10 @@ pipeline {
       steps {
         parallel (
           kernel: {
-            sh '/home/builder/fos/build.sh -kn -a x86'
+            sh './build.sh -kn -a x86'
           },
           filesytem: {
-            sh '/home/builder/fos/build.sh -fn -a x86'
+            sh './build.sh -fn -a x86'
           }
         )
       }
@@ -26,10 +26,10 @@ pipeline {
       steps {
         parallel (
           kernel: {
-            sh '/home/builder/fos/build.sh -kn -a x64'
+            sh './build.sh -kn -a x64'
           },
           filesytem: {
-            sh '/home/builder/fos/build.sh -fn -a x64'
+            sh '.s/build.sh -fn -a x64'
           }
         )
       }
