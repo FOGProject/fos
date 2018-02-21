@@ -1,15 +1,13 @@
 pipeline {
   agent { 
-    docker { 
-      image 'fogproject/fos-builder'
-      args '-v $PWD:/home/builder/fos:Z -u builder'
+    node { 
+      label 'fos'
     }
   }
   stages {
     stage('SCM') {
       steps {
         checkout scm
-        echo $PWD
       }
     }
     stage('Build x86') {
@@ -26,7 +24,6 @@ pipeline {
     }
     stage('Build x64') {
       steps {
-        checkout scm
         parallel (
           kernel: {
             sh '/home/builder/fos/build.sh -kn -a x64'
