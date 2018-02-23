@@ -231,9 +231,13 @@ function buildFilesystem() {
             case "${arch}" in
                 x64)
                     make -j $(nproc) >buildroot$arch.log
+                    status=$?
+                    [[ $status -gt 0 ]] && exit $status
                     ;;
                 x86)
                     make ARCH=i486 -j $(nproc) >buildroot$arch.log
+                    status=$?
+                    [[ $status -gt 0 ]] && exit $status
                     ;;
                 #arm)
                 #    make ARCH=arm CROSS_COMPILE=arm-linux- -j $(nproc) >buildroot$arch.log
@@ -243,9 +247,10 @@ function buildFilesystem() {
                 #    ;;
                 *)
                     make -j $(nproc) > buildroot$arch.log
+                    status=$?
+                    [[ $status -gt 0 ]] && exit $status
                     ;;
             esac
-            [[ $arch == x64 ]] && make -j $(nproc) >buildroot$arch.log || make ARCH=i486 -j $(nproc) >buildroot$arch.log
         else
             echo "Nothing to build!? Skipping."
             cd ..
@@ -256,10 +261,14 @@ function buildFilesystem() {
             x64)
                 make oldconfig
                 make -j $(nproc) >buildroot$arch.log
+                status=$?
+                [[ $status -gt 0 ]] && exit $status
                 ;;
             x86)
                 make ARCH=i486 oldconfig
                 make ARCH=i486 -j $(nproc) >buildroot$arch.log
+                status=$?
+                [[ $status -gt 0 ]] && exit $status
                 ;;
             #arm)
             #    make ARCH=arm CROSS_COMPILE=arm-linux- oldconfig
@@ -272,6 +281,8 @@ function buildFilesystem() {
             *)
                 make oldconfig
                 make -j $(nproc) >buildroot$arch.log
+                status=$?
+                [[ $status -gt 0 ]] && exit $status
                 ;;
         esac
     fi
@@ -379,9 +390,12 @@ function buildKernel() {
             case "${arch}" in
                 x64)
                     make -j $(nproc) bzImage
+                    status=$?
+                    [[ $status -gt 0 ]] && exit $status
                     ;;
                 x86)
                     make ARCH=i386 -j $(nproc) bzImage
+                    [[ $status -gt 0 ]] && exit $status
                     ;;
                 #arm)
                 #    make ARCH=arm CROSS_COMPILE=arm-linux- -j $(nproc) bzImage
@@ -391,6 +405,8 @@ function buildKernel() {
                 #    ;;
                 *)
                     make -j $(nproc) bzImage
+                    status=$?
+                    [[ $status -gt 0 ]] && exit $status
                     ;;
             esac
         else
@@ -403,10 +419,14 @@ function buildKernel() {
             x64)
                 make oldconfig
                 make -j $(nproc) bzImage
+                status=$?
+                [[ $status -gt 0 ]] && exit $status
                 ;;
             x86)
                 make ARCH=i386 oldconfig
                 make ARCH=i386 -j $(nproc) bzImage
+                status=$?
+                [[ $status -gt 0 ]] && exit $status
                 ;;
             #arm)
             #    make ARCH=arm CROSS_COMPILE=arm-linux- oldconfig
@@ -419,6 +439,8 @@ function buildKernel() {
             *)
                 make oldconfig
                 make -j $(nproc) bzImage
+                status=$?
+                [[ $status -gt 0 ]] && exit $status
                 ;;
         esac
     fi
