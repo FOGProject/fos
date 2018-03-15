@@ -1,7 +1,7 @@
 #!/bin/bash
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
-    echo -e "\t\t-a --arch [x86|x64] (optional) pick the architecture to build. Default is to build for all."
+    echo -e "\t\t-a --arch [x86|x64|arm|arm64] (optional) pick the architecture to build. Default is to build for all."
     echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
     echo -e "\t\t-v --version (optional) Specify a kernel version to build."
@@ -138,7 +138,7 @@ brVersion="2017.11.2"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
-[[ -z $arch ]] && arch="x64 x86"
+[[ -z $arch ]] && arch="x64 x86 arm arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 #echo -n "Please wait while we check your and or install dependencies........"
@@ -195,12 +195,12 @@ function buildFilesystem() {
                 x86)
                     make ARCH=i486 menuconfig
                     ;;
-                #arm)
-                #    make ARCH=arm CROSS_COMPILE=arm-linux- menuconfig
-                #    ;;
-                #arm64)
-                #    make ARCH=arm64 menuconfig
-                #    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig
+                    ;;
+                arm64)
+                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
+                    ;;
                 *)
                     make menuconfig
                     ;;
@@ -214,12 +214,12 @@ function buildFilesystem() {
                 x86)
                     make ARCH=i486 oldconfig
                     ;;
-                #arm)
-                #    make ARCH=arm CROSS_COMPILE=arm-linux- oldconfig
-                #    ;;
-                #arm64)
-                #    make ARCH=arm64 oldconfig
-                #    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                    ;;
+                arm64)
+                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+                    ;;
                 *)
                     make oldconfig
                     ;;
@@ -230,21 +230,21 @@ function buildFilesystem() {
             echo "This make take a long time. Get some coffee, you'll be here a while!"
             case "${arch}" in
                 x64)
-                    make -j $(nproc) >buildroot$arch.log
+                    make -j $(nproc) >buildroot$arch.log 2>&1
                     status=$?
                     [[ $status -gt 0 ]] && exit $status
                     ;;
                 x86)
-                    make ARCH=i486 -j $(nproc) >buildroot$arch.log
+                    make ARCH=i486 -j $(nproc) >buildroot$arch.log 2>&1
                     status=$?
                     [[ $status -gt 0 ]] && exit $status
                     ;;
-                #arm)
-                #    make ARCH=arm CROSS_COMPILE=arm-linux- -j $(nproc) >buildroot$arch.log
-                #    ;;
-                #arm64)
-                #    make ARCH=arm64 -j $(nproc) >buildroot$arch.log
-                #    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                    ;;
+                arm64)
+                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                    ;;
                 *)
                     make -j $(nproc) > buildroot$arch.log
                     status=$?
@@ -260,27 +260,27 @@ function buildFilesystem() {
         case "${arch}" in
             x64)
                 make oldconfig
-                make -j $(nproc) >buildroot$arch.log
+                make -j $(nproc) >buildroot$arch.log 2>&1
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
             x86)
                 make ARCH=i486 oldconfig
-                make ARCH=i486 -j $(nproc) >buildroot$arch.log
+                make ARCH=i486 -j $(nproc) >buildroot$arch.log 2>&1
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
-            #arm)
-            #    make ARCH=arm CROSS_COMPILE=arm-linux- oldconfig
-            #    make ARCH=arm CROSS_COMPILE=arm-linux- -j $(nproc) >buildroot$arch.log
-            #    ;;
-            #arm64)
-            #    make ARCH=arm64 oldconfig
-            #    make ARCH=arm64 -j $(nproc) >buildroot$arch.log
-            #    ;;
+            arm)
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                ;;
+            arm64)
+                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) >buildroot$arch.log 2>&1
+                ;;
             *)
                 make oldconfig
-                make -j $(nproc) >buildroot$arch.log
+                make -j $(nproc) >buildroot$arch.log 2>&1
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
@@ -289,8 +289,29 @@ function buildFilesystem() {
     cd ..
     kill $PING_LOOP_PID
     [[ ! -d dist ]] && mkdir dist
-    compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
-    [[ $arch == x64 ]] && initfile='dist/init.xz' || initfile='dist/init_32.xz'
+    case "${arch}" in
+        x*)
+	    compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
+            ;;
+        arm*)
+	    compiledfile="fssource$arch/output/images/rootfs.cpio.gz"
+            ;;
+    esac
+    case "${arch}" in
+        x64)
+            initfile='dist/init.xz'
+            ;;
+        x86)
+            initfile='dist/init_32.xz'
+            ;;
+        arm)
+            initfile='dist/arm_init_32.cpio.gz'
+            ;;
+        arm64)
+            initfile='dist/arm_init.cpio.gz'
+            ;;
+    esac
+
     [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 }
 
@@ -354,12 +375,12 @@ function buildKernel() {
                 x86)
                     make ARCH=i386 menuconfig
                     ;;
-                #arm)
-                #    make ARCH=arm CROSS_COMPILE=arm-linux- menuconfig
-                #    ;;
-                #arm64)
-                #    make ARCH=arm64 menuconfig
-                #    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig
+                    ;;
+                arm64)
+                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
+                    ;;
                 *)
                     make menuconfig
                     ;;
@@ -373,12 +394,12 @@ function buildKernel() {
                 x86)
                     make ARCH=i386 oldconfig
                     ;;
-                #arm)
-                #    make ARCH=arm CROSS_COMPILE=arm-linux- oldconfig
-                #    ;;
-                #arm64)
-                #    make ARCH=arm64 oldconfig
-                #    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                    ;;
+                arm64)
+                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+                    ;;
                 *)
                     make oldconfig
                     ;;
@@ -397,12 +418,12 @@ function buildKernel() {
                     make ARCH=i386 -j $(nproc) bzImage
                     [[ $status -gt 0 ]] && exit $status
                     ;;
-                #arm)
-                #    make ARCH=arm CROSS_COMPILE=arm-linux- -j $(nproc) bzImage
-                #    ;;
-                #arm64)
-                #    make ARCH=arm64 -j $(nproc) bzImage
-                #    ;;
+                arm)
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) Image
+                    ;;
+                arm64)
+                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
+                    ;;
                 *)
                     make -j $(nproc) bzImage
                     status=$?
@@ -428,14 +449,14 @@ function buildKernel() {
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
-            #arm)
-            #    make ARCH=arm CROSS_COMPILE=arm-linux- oldconfig
-            #    make ARCH=arm CROSS_COMPILE=arm-linux- -j $(nproc) bzImage
-            #    ;;
-            #arm64)
-            #    make ARCH=arm64 oldconfig
-            #    make ARCH=arm64 -j $(nproc) bzImage
-            #    ;;
+            arm)
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) Image
+                ;;
+            arm64)
+                make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+                make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
+                ;;
             *)
                 make oldconfig
                 make -j $(nproc) bzImage
@@ -446,8 +467,24 @@ function buildKernel() {
     fi
     cd ..
     mkdir -p dist
-    compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
-    [[ $arch == x64 ]] && cp $compiledfile dist/bzImage || cp $compiledfile dist/bzImage32
+    case "$arch" in
+        arm)
+            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
+            cp $compiledfile dist/arm_Image32
+            ;;
+        arm64)
+            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
+            cp $compiledfile dist/arm_Image
+            ;;
+        x64)
+            compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
+            cp $compiledfile dist/bzImage32
+            ;;
+        x86)
+            compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
+            cp $compiledfile dist/bzImage
+            ;;
+    esac
 }
 
 
