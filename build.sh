@@ -196,7 +196,8 @@ function buildFilesystem() {
                     make ARCH=i486 menuconfig
                     ;;
                 arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig
+                    echo Skipping
+                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
@@ -215,7 +216,8 @@ function buildFilesystem() {
                     make ARCH=i486 oldconfig
                     ;;
                 arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                    echo Skipping
+                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -240,7 +242,8 @@ function buildFilesystem() {
                     [[ $status -gt 0 ]] && exit $status
                     ;;
                 arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                    echo Skipping
+                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
@@ -271,8 +274,9 @@ function buildFilesystem() {
                 [[ $status -gt 0 ]] && exit $status
                 ;;
             arm)
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                echo Skipping
+                #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
                 ;;
             arm64)
                 make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -311,8 +315,9 @@ function buildFilesystem() {
             initfile='dist/arm_init.cpio.gz'
             ;;
     esac
-
-    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
+    if [[ $arch != 'arm' ]]; then
+        [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
+    fi
 }
 
 function buildKernel() {
@@ -468,14 +473,6 @@ function buildKernel() {
     cd ..
     mkdir -p dist
     case "$arch" in
-        arm)
-            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
-            cp $compiledfile dist/arm_Image32
-            ;;
-        arm64)
-            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
-            cp $compiledfile dist/arm_Image
-            ;;
         x64)
             compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
             cp $compiledfile dist/bzImage32
@@ -483,6 +480,14 @@ function buildKernel() {
         x86)
             compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
             cp $compiledfile dist/bzImage
+            ;;
+        arm)
+            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
+            cp $compiledfile dist/arm_Image32
+            ;;
+        arm64)
+            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
+            cp $compiledfile dist/arm_Image
             ;;
     esac
 }
