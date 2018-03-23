@@ -191,6 +191,26 @@ if [[ $(curl -Lks ${web}service/locationcheck.php 2>/dev/null) == "##" ]]; then
     done
 fi
 askme=""
+if [[ $(curl -Lks ${web}service/oucheck.php 2>/dev/null) == "##" ]]; then
+    while [[ -z $askme ]]; do
+        echo -n "    Would you like to assign an ou for this host? (y/N) "
+        read askme
+        case $askme in
+            [Nn]|[Nn][Oo]|"")
+                askme="N"
+                ;;
+            [Yy]|[Yy][Ee][Ss])
+                setIDs "ouid" "ou" "" "" 20
+                ou64=$ouid
+                ;;
+            *)
+                askme=""
+                echo " * Invalid input, please try again"
+                ;;
+        esac
+    done
+fi
+askme=""
 while [[ -z $askme ]]; do
     echo -n "    Would you like to associate this host with groups? (y/N) "
     read askme
