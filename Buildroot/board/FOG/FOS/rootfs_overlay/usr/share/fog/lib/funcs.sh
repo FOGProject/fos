@@ -48,9 +48,14 @@ displayBanner() {
 }
 # Gets all system mac addresses except for loopback
 getMACAddresses() {
-    read ifaces <<< $(/sbin/ip -4 -o addr | awk -F'([ /])+' '/global/ {print $2}' | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
-    read mac_addresses <<< $(/sbin/ip -0 -o addr | awk "/$ifaces/ {print \$11}" | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
+    read ifaces <<< $(/usr/sbin/lshw -c network -json | jq -s '.[] | .logicalname' | tr -d '"' | tr '[:space:]' '|' | sed 's/[|]$//g')
+    read mac_addresses <<< $(/usr/sbin/lshw -c network -json | jq -s '.[] | .serial' | tr -d '"' | tr '[:space:]' '|' | sed 's/[|]$//g')
     echo $mac_addresses
+}
+# Gets all macs and types.
+getMACTypes() {
+    read macandtypes <<< $(/usr/sbin/lshw -c network -json | jq -s '.[] | .serial + " " + .handle' | tr -d '"' | tr '\n' '|' | sed 's/[|]$//g')
+    echo $macandtypes
 }
 # Verifies that there is a network interface
 verifyNetworkConnection() {
