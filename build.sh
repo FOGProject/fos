@@ -134,7 +134,7 @@ while getopts "$optspec" o; do
     esac
 done
 brVersion="2017.11.2"
-[[ -z $kernelVersion ]] && kernelVersion="4.15.2"
+[[ -z $kernelVersion ]] && kernelVersion="4.16.6"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"

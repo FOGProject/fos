@@ -5,7 +5,7 @@ RUN dpkg --add-architecture i386 && apt-get update\
     && DEBIAN_FRONTEND=noninteractive\
     apt-get install -y wget subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib cpio bc unzip locales texinfo libelf-dev libelf-dev:i386
 
-RUN apt -y install gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu g++-aarch64-linux-gnu g++-arm-linux-gnueabi libssl-dev libncurses5-dev libc6-armel-cross libc6-dev-armel-cross binutils-arm-linux-gnueabi binutils-aarch64-linux-gnu
+RUN apt-get -y install gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu g++-aarch64-linux-gnu g++-arm-linux-gnueabi libssl-dev libncurses5-dev libc6-armel-cross libc6-dev-armel-cross binutils-arm-linux-gnueabi binutils-aarch64-linux-gnu flex bison
 
 RUN rm -rf /var/lib/apt/lists/* \
 	&& localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
