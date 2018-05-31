@@ -475,11 +475,11 @@ function buildKernel() {
     case "$arch" in
         x64)
             compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
-            cp $compiledfile dist/bzImage32
+            cp $compiledfile dist/bzImage
             ;;
         x86)
             compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
-            cp $compiledfile dist/bzImage
+            cp $compiledfile dist/bzImage32
             ;;
         arm)
             compiledfile="kernelsource$arch/arch/$arch/boot/Image"
