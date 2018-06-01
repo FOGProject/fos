@@ -48,8 +48,8 @@ displayBanner() {
 }
 # Gets all system mac addresses except for loopback
 getMACAddresses() {
-    read ifaces <<< $(/usr/sbin/lshw -c network -json | tr -d '[:space:]' | sed 's/[,]$//g' | jq -s '.[] | .logicalname' | tr -d '"' | tr '[:space:]' '|' | sed 's/[|]$//g')
-    read mac_addresses <<< $(/usr/sbin/lshw -c network -json | tr -d '[:space:]' | sed 's/[,]$//g' | jq -s '.[] | .serial' | tr -d '"' | tr '[:space:]' '|' | sed 's/[|]$//g')
+    read ifaces <<< $(/usr/sbin/lshw -c network -json | jq -s '.[] | .logicalname' | tr -d '"' | tr '[:space:]' '|' | sed 's/[|]$//g')
+    read mac_addresses <<< $(/usr/sbin/lshw -c network -json | jq -s '.[] | .serial' | tr -d '"' | tr '[:space:]' '|' | sed 's/[|]$//g')
     echo $mac_addresses
 }
 # Gets all macs and types.
