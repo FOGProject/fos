@@ -57,6 +57,7 @@ dots "Using disk device"
 getHardDisk
 echo "$hd"
 echo "Starting host registration"
+debugPause
 mac=$(getMACAddresses | base64)
 sysuuid=$(dmidecode -s system-uuid)
 sysuuid=${sysuuid,,}
@@ -77,10 +78,12 @@ while [[ -z $res ]]; do
             ;;
         9)
             echo "Failed"
+            debugPause
             handleError "Cannot register host. ($0)\n   Args Passed: $*"
             ;;
     esac
 done
 echo "$res"
+debugPause
 . /bin/fog.inventory
 count=0
