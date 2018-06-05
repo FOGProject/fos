@@ -331,18 +331,22 @@ function buildKernel() {
         fi
         echo -n "Expanding Kernel Sources........"
         tar -xJf linux-$kernelVersion.tar.xz
+        cd linux-$kernelVersion
+        make mrproper
+        echo "Done"
+        cd ..
+        if [[ -f patch/kernel/linux-$kernelVersion.patch ]]; then
+            echo -n "Applying patch for $kernelVersion kernel..."
+            patch -p0 < patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+            echo "Done"
+        fi
+        echo -n "Moving kernel sources for work..........."
         mv linux-$kernelVersion kernelsource$arch
         echo "Done"
         cd kernelsource$arch
         if [[ ! -d linux-firmware ]]; then
-            echo -n "Cloning Linux-Firmware in directory........"
+            echo -n "Cloning Linux-Firmware in directory......"
             git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
-            echo "Done"
-        fi
-        make mrproper
-        if [[ -f ../patch/kernel/linux-$kernelVersion.patch ]]; then
-            echo -n "Applying patch for $kernelVersion kernel..."
-            patch -p0 < ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
             echo "Done"
         fi
     else
@@ -357,16 +361,21 @@ function buildKernel() {
             echo "Done"
             echo -n "Expanding Kernel Sources........"
             tar -xJF linux-$kernelVersion.tar.xz
-            mv linux-$kernelVersion/* kernelsource$arch/
+            cd linux-$kernelVersion
+            make mrproper
+            echo "Done"
+            cd ..
+            if [[ -f patch/kernel/linux-$kernelVersion.patch ]]; then
+                cd ..
+                echo -n "Applying patch for $kernelVersion kernel..."
+                patch -p0 < patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+                echo "Done"
+            fi
+            echo -n "Moving kernel sources for work..........."
+            mv linux-$kernelVersion kernelsource$arch
             echo "Done"
         fi
         cd kernelsource$arch
-        make mrproper
-        if [[ -f ../patch/kernel/linux-$kernelVersion.patch ]]; then
-            echo -n "Applying patch for $kernelVersion kernel..."
-            patch -p0 < ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
-            echo "Done"
-        fi
         if [[ ! -d linux-firmware ]]; then
             echo -n "Cloning Linux-Firmware in directory......"
             git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
