@@ -340,9 +340,9 @@ function buildKernel() {
             echo "Done"
         fi
         make mrproper
-        if [[ -d ../patch/kernel/linux-$kernelVersion.patch ]]; then
+        if [[ -f ../patch/kernel/linux-$kernelVersion.patch ]]; then
             echo -n "Applying patch for $kernelVersion kernel..."
-            patch -p0 ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+            patch -p0 < ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
             echo "Done"
         fi
     else
@@ -362,9 +362,9 @@ function buildKernel() {
         fi
         cd kernelsource$arch
         make mrproper
-        if [[ -d ../patch/kernel/linux-$kernelVersion.patch ]]; then
+        if [[ -f ../patch/kernel/linux-$kernelVersion.patch ]]; then
             echo -n "Applying patch for $kernelVersion kernel..."
-            patch -p0 ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+            patch -p0 < ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
             echo "Done"
         fi
         if [[ ! -d linux-firmware ]]; then
