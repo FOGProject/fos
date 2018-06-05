@@ -134,7 +134,7 @@ while getopts "$optspec" o; do
     esac
 done
 brVersion="2018.02.2"
-[[ -z $kernelVersion ]] && kernelVersion="4.16.6"
+[[ -z $kernelVersion ]] && kernelVersion="4.17"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
 deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
@@ -340,6 +340,11 @@ function buildKernel() {
             echo "Done"
         fi
         make mrproper
+        if [[ -d ../patch/kernel/linux-$kernelVersion.patch ]]; then
+            echo -n "Applying patch for $kernelVersion kernel..."
+            patch -p0 ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+            echo "Done"
+        fi
     else
         echo "Build directory kernelsource$arch already exists, will attempt to reuse it."
         if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
@@ -356,6 +361,12 @@ function buildKernel() {
             echo "Done"
         fi
         cd kernelsource$arch
+        make mrproper
+        if [[ -d ../patch/kernel/linux-$kernelVersion.patch ]]; then
+            echo -n "Applying patch for $kernelVersion kernel..."
+            patch -p0 ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+            echo "Done"
+        fi
         if [[ ! -d linux-firmware ]]; then
             echo -n "Cloning Linux-Firmware in directory......"
             git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
