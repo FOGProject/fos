@@ -104,7 +104,7 @@ beginUpload() {
                         esac
                         umount /bcdstore >/dev/null 2>&1
                         case $label in
-                            *[Rr][Ee][Cc][Oo][Vv][Ee][Rr][Yy]*|*[Rr][Ee][Ss][Ee][Rr][Vv][Ee][Dd]*)
+                            *[Rr][Ee][Cc][Oo][Vv][Ee][Rr][Yy]*|*[Rr][EeÉé][Ss][Ee][Rr][Vv][EeÉé][Dd]?*)
                                 echo " * New fixed partition for ($part) added."
                                 fixed_size_partitions="$fixed_size_partitions:$part_number"
                                 ;;
