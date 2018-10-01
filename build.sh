@@ -137,52 +137,52 @@ brVersion="2018.02.2"
 [[ -z $kernelVersion ]] && kernelVersion="4.17"
 brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
-deps="subversion git mercurial meld build-essential rsync libncurses-dev gcc-multilib"
+deps="git meld build-essential rsync libncurses5-dev gcc-multilib bison flex"
 [[ -z $arch ]] && arch="x64 x86 arm arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
-#echo -n "Please wait while we check your and or install dependencies........"
-#apt-get install $deps -y > /dev/null
-#echo "Done"
-#echo "# Preparing the build environment please wait #"
+echo "Checking packages needed for building"
+for pkg in $deps
+do
+    dpkg -s $pkg >/dev/null 2>&1
+    if [[ $? != 0 ]]; then
+        echo " * Package $pkg missing!"
+        fail=1
+    fi
+done
+if [[ $fail == 1 ]]; then
+    echo "Package(s) missing, can't build, exiting now."
+    exit 1
+fi
+
 mkdir -p $buildPath && cd $buildPath || exit 1
 
 
 function buildFilesystem() {
     local arch="$1"
-    echo "Building FS for arch $arch"
+    echo "Preparing buildroot $arch build"
     if [[ ! -d fssource$arch ]]; then
         if [[ ! -f buildroot-$brVersion.tar.bz2 ]]; then
-            echo -n "Downloading Build Root Source Package........"
+            dots "Downloading buildroot source package"
             wget -q $brURL
             echo "Done"
         fi
-        echo -n "Expanding Build Root Sources........"
+        dots "Extracting buildroot sources"
         tar xjf buildroot-$brVersion.tar.bz2
         mv buildroot-$brVersion fssource$arch
         echo "Done"
-        echo -n "Adding Custom Packages to Build Root........"
-        if [[ ! -f fssource$arch/.packConfDone ]]; then
-            cat Buildroot/package/newConf.in >> fssource$arch/package/Config.in
-            touch fssource$arch/.packConfDone
-        fi
-        rsync -avPrI Buildroot/ fssource$arch > /dev/null
-        echo "Done"
-    else
-        echo "Build directory fssource$arch already exists, will reuse it."
-        echo -n "Ensuring changes are accounted for....."
-        rsync -avPrI Buildroot/ fssource$arch > /dev/null
-        echo "Done"
     fi
-    if [[ -f fssource$arch/.config ]]; then
-        echo "Configuration fssource$arch/.config already exists, will reuse it."
-    else
-        echo -n "Copying our buildroot configuration to start with........"
+    dots "Preparing code"
+    if [[ ! -f fssource$arch/.packConfDone ]]; then
+        cat Buildroot/package/newConf.in >> fssource$arch/package/Config.in
+        touch fssource$arch/.packConfDone
+    fi
+    rsync -avPrI Buildroot/ fssource$arch > /dev/null
+    if [[ ! -f fssource$arch/.config ]]; then
         cp configs/fs$arch.config fssource$arch/.config
-        echo "Done"
     fi
     cd fssource$arch
-    echo "your working dir is $PWD"
+    echo "Done"
     bash -c "while true; do echo \$(date) - building ...; sleep 30s; done" &
     PING_LOOP_PID=$!
     if [[ $confirm != n ]]; then
@@ -322,74 +322,30 @@ function buildFilesystem() {
 
 function buildKernel() {
     local arch="$1"
-    echo "Building kernel for $arch"
-    if [[ ! -d kernelsource$arch ]]; then
-        if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
-            echo -n "Downloading Kernel Source Package........"
-            wget -q $kernelURL
-            echo "Done"
-        fi
-        echo -n "Expanding Kernel Sources........"
-        tar -xJf linux-$kernelVersion.tar.xz
-        cd linux-$kernelVersion
-        make mrproper
-        echo "Done"
-        cd ..
-        if [[ -f patch/kernel/linux-$kernelVersion.patch ]]; then
-            echo -n "Applying patch for $kernelVersion kernel..."
-            patch -p0 < patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
-            echo "Done"
-        fi
-        echo -n "Moving kernel sources for work..........."
-        mv linux-$kernelVersion kernelsource$arch
-        echo "Done"
-        cd kernelsource$arch
-        if [[ ! -d linux-firmware ]]; then
-            echo -n "Cloning Linux-Firmware in directory......"
-            git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git > /dev/null 2>&1
-            echo "Done"
-        fi
-    else
-        echo "Build directory kernelsource$arch already exists, will attempt to reuse it."
-        if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
-            echo    "Kernel files where not present"
-            echo -n "Removing kernelsource$arch..............."
-            rm -rf kernelsource$arch
-            echo "Done"
-            echo -n "Downloading Kernel Source Package........"
-            wget -q $kernelURL
-            echo "Done"
-            echo -n "Expanding Kernel Sources........"
-            tar -xJF linux-$kernelVersion.tar.xz
-            cd linux-$kernelVersion
-            make mrproper
-            echo "Done"
-            cd ..
-            if [[ -f patch/kernel/linux-$kernelVersion.patch ]]; then
-                cd ..
-                echo -n "Applying patch for $kernelVersion kernel..."
-                patch -p0 < patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
-                echo "Done"
-            fi
-            echo -n "Moving kernel sources for work..........."
-            mv linux-$kernelVersion kernelsource$arch
-            echo "Done"
-        fi
-        cd kernelsource$arch
-        if [[ ! -d linux-firmware ]]; then
-            echo -n "Cloning Linux-Firmware in directory......"
-            git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
-            echo "Done"
-        fi
-    fi
-    if [[ -f .config ]]; then
-        echo "Configuration kernelsource$arch/.config already exists, will reuse it."
-    else
-        echo -n "Copying our buildroot configuration to start with........"
-        cp ../configs/kernel$arch.config .config
+    echo "Preparing kernel $arch build:"
+    [[ -d kernelsource$arch ]] && rm -rf kernelsource$arch
+    if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
+        dots "Downloading kernel source"
+        wget -q $kernelURL
         echo "Done"
     fi
-    echo "your working dir is $PWD"
+    dots "Extracting kernel source"
+    tar xJf linux-$kernelVersion.tar.xz
+    mv linux-$kernelVersion kernelsource$arch
+    echo "Done"
+    dots "Preparing kernel source"
+    cd kernelsource$arch
+    make mrproper
+    cp ../configs/kernel$arch.config .config
+    echo "Done"
+    if [[ -f ../patch/kernel/linux-$kernelVersion.patch ]]; then
+        dots "Applying patch(es)"
+        patch -p1 < ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+        echo "Done"
+    fi
+    dots "Cloning Linux firmware repository"
+    git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
+    echo "Done"
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
@@ -511,6 +467,13 @@ function buildKernel() {
             ;;
     esac
 }
+
+dots() {
+    local pad=$(printf "%0.1s" "."{1..60})
+    printf " * %s%*.*s" "$1" 0 $((60-${#1})) "$pad"
+    return 0
+}
+
 
 
 for buildArch in $arch
