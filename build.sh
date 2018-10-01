@@ -295,7 +295,7 @@ function buildFilesystem() {
     [[ ! -d dist ]] && mkdir dist
     case "${arch}" in
         x*)
-	    compiledfile="fssource$arch/output/images/rootfs.ext4.xz"
+	    compiledfile="fssource$arch/output/images/rootfs.ext2.xz"
             ;;
         arm*)
 	    compiledfile="fssource$arch/output/images/rootfs.cpio.gz"
