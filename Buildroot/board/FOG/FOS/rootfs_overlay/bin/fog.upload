@@ -176,7 +176,7 @@ beginUpload() {
         mpa)
             disk_number=1
             for disk in $disks; do
-                [[ $disk =~ "mmcblk[0-9]+boot[0-9]+" ]] && continue
+                [[ $disk =~ mmcblk[0-9]+boot[0-9]+ ]] && continue
                 parts=""
                 getPartitions "$disk"
                 [[ ${#parts} -lt 1 ]] && continue
