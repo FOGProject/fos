@@ -34,6 +34,7 @@ pipeline {
         )
       }
     }
+/* Disabled for the moment
     stage('Build arm32') {
       steps {
         parallel (
@@ -58,6 +59,7 @@ pipeline {
         )
       }
     }
+*/
     stage('Upload artifacts') {
       steps {
         archiveArtifacts artifacts: 'dist/*', fingerprint: true
