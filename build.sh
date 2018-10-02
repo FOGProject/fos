@@ -173,15 +173,33 @@ function buildFilesystem() {
         echo "Done"
     fi
     dots "Preparing code"
-    if [[ ! -f fssource$arch/.packConfDone ]]; then
-        cat Buildroot/package/newConf.in >> fssource$arch/package/Config.in
-        touch fssource$arch/.packConfDone
-    fi
-    rsync -avPrI Buildroot/ fssource$arch > /dev/null
-    if [[ ! -f fssource$arch/.config ]]; then
-        cp configs/fs$arch.config fssource$arch/.config
-    fi
     cd fssource$arch
+    if [[ ! -f .packConfDone ]]; then
+        cat ../Buildroot/package/newConf.in >> package/Config.in
+        touch .packConfDone
+    fi
+    rsync -avPrI ../Buildroot/ . > /dev/null
+    if [[ ! -f .config ]]; then
+        cp ../configs/fs$arch.config .config
+        case "${arch}" in
+            x64)
+                make oldconfig
+                ;;
+            x86)
+                make ARCH=i486 oldconfig
+                ;;
+            arm)
+                echo Skipping
+                #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                ;;
+            arm64)
+                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+                ;;
+            *)
+                make oldconfig
+                ;;
+        esac
+    fi
     echo "Done"
     bash -c "while true; do echo \$(date) - building ...; sleep 30s; done" &
     PING_LOOP_PID=$!
@@ -227,29 +245,39 @@ function buildFilesystem() {
                     ;;
             esac
         fi
+	if [[ -f buildroot$arch.log.gz.2 ]]; then
+	    mv buildroot$arch.log.gz.2 buildroot$arch.log.gz.3
+	fi
+	if [[ -f buildroot$arch.log.gz.1 ]]; then
+	    mv buildroot$arch.log.gz.1 buildroot$arch.log.gz.2
+	fi
+	if [[ -f buildroot$arch.log ]]; then
+            gzip buildroot$arch.log
+	    mv buildroot$arch.log.gz buildroot$arch.log.gz.1
+	fi
         read -p "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
             case "${arch}" in
                 x64)
-                    make -j $(nproc) >buildroot$arch.log 2>&1
+                    make >buildroot$arch.log 2>&1
                     status=$?
                     [[ $status -gt 0 ]] && exit $status
                     ;;
                 x86)
-                    make ARCH=i486 -j $(nproc) >buildroot$arch.log 2>&1
+                    make ARCH=i486 >buildroot$arch.log 2>&1
                     status=$?
                     [[ $status -gt 0 ]] && exit $status
                     ;;
                 arm)
                     echo Skipping
-                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- >buildroot$arch.log 2>&1
                     ;;
                 arm64)
-                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnueabi- >buildroot$arch.log 2>&1
                     ;;
                 *)
-                    make -j $(nproc) > buildroot$arch.log
+                    make > buildroot$arch.log
                     status=$?
                     [[ $status -gt 0 ]] && exit $status
                     ;;
@@ -262,29 +290,24 @@ function buildFilesystem() {
     else
         case "${arch}" in
             x64)
-                make oldconfig
-                make -j $(nproc) >buildroot$arch.log 2>&1
+                make >buildroot$arch.log 2>&1
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
             x86)
-                make ARCH=i486 oldconfig
-                make ARCH=i486 -j $(nproc) >buildroot$arch.log 2>&1
+                make ARCH=i486 >buildroot$arch.log 2>&1
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
             arm)
                 echo Skipping
-                #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
                 #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
                 ;;
             arm64)
-                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) >buildroot$arch.log 2>&1
+                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
                 ;;
             *)
-                make oldconfig
-                make -j $(nproc) >buildroot$arch.log 2>&1
+                make >buildroot$arch.log 2>&1
                 status=$?
                 [[ $status -gt 0 ]] && exit $status
                 ;;
