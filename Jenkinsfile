@@ -4,6 +4,10 @@ pipeline {
       label 'fos'
     }
   }
+  environment {
+    KERNEL_VERSION = '4.18.11'
+    BUILDROOT_VERSION = '2018.02.2'
+  }
   stages {
     stage('SCM') {
       steps {

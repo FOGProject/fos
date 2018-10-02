@@ -4,7 +4,6 @@ Usage() {
     echo -e "\t\t-a --arch [x86|x64|arm|arm64] (optional) pick the architecture to build. Default is to build for all."
     echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
-    echo -e "\t\t-v --version (optional) Specify a kernel version to build."
     echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
     echo -e "\t\t-n --noconfirm (optional) Build systems without confirmation."
     echo -e "\t\t-h --help -? Display this message."
@@ -39,25 +38,6 @@ while getopts "$optspec" o; do
                     fi
                     hasa=1
                     arch=$val
-                    ;;
-                version)
-                    val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
-                    if [[ -z $val ]]; then
-                        echo "Option --${OPTARG} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    kernelVersion=${val}
-                    ;;
-                version=*)
-                    val=${OPTARG#*=}
-                    opt=${OPTARG%=$val}
-                    if [[ -z $val ]]; then
-                        echo "Option --${opt} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    kernelVersion=${val}
                     ;;
                 path)
                     val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
@@ -104,9 +84,6 @@ while getopts "$optspec" o; do
             hasa=1
             arch=${OPTARG}
             ;;
-        v)
-            kernelVersion=${OPTARG}
-            ;;
         p)
             buildPath=${OPTARG}
             ;;
@@ -133,11 +110,9 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-brVersion="2018.02.2"
-[[ -z $kernelVersion ]] && kernelVersion="4.17"
-brURL="https://buildroot.org/downloads/buildroot-$brVersion.tar.bz2"
-kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$kernelVersion.tar.xz"
-deps="git meld build-essential rsync libncurses5-dev gcc-multilib bison flex"
+brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
+kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$KERNEL_VERSION.tar.xz"
+deps="git meld build-essential rsync libncurses5-dev bison flex gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu"
 [[ -z $arch ]] && arch="x64 x86 arm arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
@@ -160,16 +135,17 @@ mkdir -p $buildPath && cd $buildPath || exit 1
 
 function buildFilesystem() {
     local arch="$1"
+    [[ -z $BUILDROOT_VERSION ]] && echo "No buildroot version, set environment BUILDROOT_VERSION" && exit 1
     echo "Preparing buildroot $arch build"
     if [[ ! -d fssource$arch ]]; then
-        if [[ ! -f buildroot-$brVersion.tar.bz2 ]]; then
+        if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.bz2 ]]; then
             dots "Downloading buildroot source package"
             wget -q $brURL
             echo "Done"
         fi
         dots "Extracting buildroot sources"
-        tar xjf buildroot-$brVersion.tar.bz2
-        mv buildroot-$brVersion fssource$arch
+        tar xjf buildroot-$BUILDROOT_VERSION.tar.bz2
+        mv buildroot-$BUILDROOT_VERSION fssource$arch
         echo "Done"
     fi
     dots "Preparing code"
@@ -345,25 +321,26 @@ function buildFilesystem() {
 
 function buildKernel() {
     local arch="$1"
+    [[ -z $KERNEL_VERSION ]] && echo "No kernel version, set environment KERNEL_VERSION" && exit 1
     echo "Preparing kernel $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf kernelsource$arch
-    if [[ ! -f linux-$kernelVersion.tar.xz ]]; then
+    if [[ ! -f linux-$KERNEL_VERSION.tar.xz ]]; then
         dots "Downloading kernel source"
         wget -q $kernelURL
         echo "Done"
     fi
     dots "Extracting kernel source"
-    tar xJf linux-$kernelVersion.tar.xz
-    mv linux-$kernelVersion kernelsource$arch
+    tar xJf linux-$KERNEL_VERSION.tar.xz
+    mv linux-$KERNEL_VERSION kernelsource$arch
     echo "Done"
     dots "Preparing kernel source"
     cd kernelsource$arch
     make mrproper
     cp ../configs/kernel$arch.config .config
     echo "Done"
-    if [[ -f ../patch/kernel/linux-$kernelVersion.patch ]]; then
+    if [[ -f ../patch/kernel/linux-$KERNEL_VERSION.patch ]]; then
         dots "Applying patch(es)"
-        patch -p1 < ../patch/kernel/linux-$kernelVersion.patch >/dev/null 2>&1
+        patch -p1 < ../patch/kernel/linux-$KERNEL_VERSION.patch >/dev/null 2>&1
         echo "Done"
     fi
     dots "Cloning Linux firmware repository"
