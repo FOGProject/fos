@@ -103,7 +103,7 @@ beginUpload() {
                                 ;;
                         esac
                         umount /bcdstore >/dev/null 2>&1
-                        if [[ $label =~ [Rr][EeÉé][Ss][Ee][Rr][Vv][EeÉé][Dd]? ]]; then
+                        if [[ $label =~ [Rr][EeÉé][Ss][Ee][Rr][Vv][EeÉé][Dd]? || $label =~ [Rr][Ee][Cc][Oo][Vv][Ee][Rr][Yy] ]]; then
                                 echo " * New fixed partition for ($part) added."
                                 fixed_size_partitions="$fixed_size_partitions:$part_number"
                         fi
