@@ -130,11 +130,13 @@ if [[ $fail == 1 ]]; then
     exit 1
 fi
 
-mkdir -p $buildPath && cd $buildPath || exit 1
+cd $buildPath || exit 1
 
 
 function buildFilesystem() {
     local arch="$1"
+    ls -al
+    ls -al fssource$arch
     [[ -z $BUILDROOT_VERSION ]] && echo "No buildroot version, set environment BUILDROOT_VERSION" && exit 1
     echo "Preparing buildroot $arch build"
     if [[ ! -d fssource$arch ]]; then

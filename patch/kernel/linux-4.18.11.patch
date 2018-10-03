@@ -1,0 +1,28 @@
+diff -Nur linux-4.18.11_orig/drivers/net/usb/r8152.c linux-4.18.11/drivers/net/usb/r8152.c
+--- linux-4.18.11_orig/drivers/net/usb/r8152.c	2018-09-29 04:56:03.000000000 -0500
++++ linux-4.18.11/drivers/net/usb/r8152.c	2018-10-02 19:16:28.785186498 -0500
+@@ -5324,6 +5324,7 @@
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_REALTEK, 0x8153)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x07ab)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x07c6)},
++	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x0927)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_SAMSUNG, 0xa101)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x304f)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3062)},
+diff -Nur linux-4.18.11_orig/drivers/scsi/storvsc_drv.c linux-4.18.11/drivers/scsi/storvsc_drv.c
+--- linux-4.18.11_orig/drivers/scsi/storvsc_drv.c	2018-09-29 04:56:03.000000000 -0500
++++ linux-4.18.11/drivers/scsi/storvsc_drv.c	2018-10-02 19:56:49.141225143 -0500
+@@ -1426,7 +1426,12 @@
+ 	blk_queue_rq_timeout(sdevice->request_queue, (storvsc_timeout * HZ));
+ 
+ 	/* Ensure there are no gaps in presented sgls */
+-	blk_queue_virt_boundary(sdevice->request_queue, PAGE_SIZE - 1);
++	if (PAGE_SIZE - 1 < 4096) {
++		blk_queue_virt_boundary(sdevice->request_queue, 4096);
++	}
++	else {
++		blk_queue_virt_boundary(sdevice->request_queue, PAGE_SIZE - 1);
++	}
+ 
+ 	sdevice->no_write_same = 1;
+ 
