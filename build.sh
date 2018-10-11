@@ -135,8 +135,6 @@ cd $buildPath || exit 1
 
 function buildFilesystem() {
     local arch="$1"
-    ls -al
-    ls -al fssource$arch
     [[ -z $BUILDROOT_VERSION ]] && echo "No buildroot version, set environment BUILDROOT_VERSION" && exit 1
     echo "Preparing buildroot $arch build"
     if [[ ! -d fssource$arch ]]; then
@@ -179,8 +177,6 @@ function buildFilesystem() {
         esac
     fi
     echo "Done"
-    bash -c "while true; do echo \$(date) - building ...; sleep 30s; done" &
-    PING_LOOP_PID=$!
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
@@ -223,74 +219,39 @@ function buildFilesystem() {
                     ;;
             esac
         fi
-	if [[ -f buildroot$arch.log.gz.2 ]]; then
-	    mv buildroot$arch.log.gz.2 buildroot$arch.log.gz.3
-	fi
-	if [[ -f buildroot$arch.log.gz.1 ]]; then
-	    mv buildroot$arch.log.gz.1 buildroot$arch.log.gz.2
-	fi
-	if [[ -f buildroot$arch.log ]]; then
-            gzip buildroot$arch.log
-	    mv buildroot$arch.log.gz buildroot$arch.log.gz.1
-	fi
         read -p "We are ready to build are you [y|n]?" ready
-        if [[ $ready == y ]]; then
-            echo "This make take a long time. Get some coffee, you'll be here a while!"
-            case "${arch}" in
-                x64)
-                    make >buildroot$arch.log 2>&1
-                    status=$?
-                    [[ $status -gt 0 ]] && exit $status
-                    ;;
-                x86)
-                    make ARCH=i486 >buildroot$arch.log 2>&1
-                    status=$?
-                    [[ $status -gt 0 ]] && exit $status
-                    ;;
-                arm)
-                    echo Skipping
-                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- >buildroot$arch.log 2>&1
-                    ;;
-                arm64)
-                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnueabi- >buildroot$arch.log 2>&1
-                    ;;
-                *)
-                    make > buildroot$arch.log
-                    status=$?
-                    [[ $status -gt 0 ]] && exit $status
-                    ;;
-            esac
-        else
+        if [[ $ready == n ]]; then
             echo "Nothing to build!? Skipping."
             cd ..
             return
         fi
-    else
-        case "${arch}" in
-            x64)
-                make >buildroot$arch.log 2>&1
-                status=$?
-                [[ $status -gt 0 ]] && exit $status
-                ;;
-            x86)
-                make ARCH=i486 >buildroot$arch.log 2>&1
-                status=$?
-                [[ $status -gt 0 ]] && exit $status
-                ;;
-            arm)
-                echo Skipping
-                #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
-                ;;
-            arm64)
-                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
-                ;;
-            *)
-                make >buildroot$arch.log 2>&1
-                status=$?
-                [[ $status -gt 0 ]] && exit $status
-                ;;
-        esac
     fi
+    bash -c "while true; do echo \$(date) - building ...; sleep 30s; done" &
+    PING_LOOP_PID=$!
+    case "${arch}" in
+        x64)
+            make >buildroot$arch.log 2>&1
+            status=$?
+            [[ $status -gt 0 ]] && exit $status
+            ;;
+        x86)
+            make ARCH=i486 >buildroot$arch.log 2>&1
+            status=$?
+            [[ $status -gt 0 ]] && exit $status
+            ;;
+        arm)
+            echo Skipping
+            #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+            ;;
+        arm64)
+            make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
+            ;;
+        *)
+            make >buildroot$arch.log 2>&1
+            status=$?
+            [[ $status -gt 0 ]] && exit $status
+            ;;
+    esac
     cd ..
     kill $PING_LOOP_PID
     [[ ! -d dist ]] && mkdir dist
