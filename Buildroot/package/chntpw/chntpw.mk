@@ -8,7 +8,7 @@ CHNTPW_SOURCE = chntpw-source-$(CHNTPW_VERSION).zip
 CHNTPW_SITE = http://pogostick.net/~pnh/ntpasswd
 
 define CHNTPW_EXTRACT_CMDS
-	unzip $(DL_DIR)/$(CHNTPW_SOURCE) -d $(BUILD_DIR)
+	unzip $(DL_DIR)/chntpw/$(CHNTPW_SOURCE) -d $(BUILD_DIR)
 endef
 
 define CHNTPW_BUILD_CMDS
