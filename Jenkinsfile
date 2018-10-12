@@ -2,7 +2,11 @@ pipeline {
   agent { 
     node { 
       label 'fos'
+      customWorkspace 'workspace/fos_master-build'
     }
+  }
+  options {
+    skipDefaultCheckout()
   }
   environment {
     KERNEL_VERSION = '4.18.11'
@@ -20,10 +24,10 @@ pipeline {
           kernel: {
             sh './build.sh -kn -a x86'
           },
-          filesytem: {
+/*          filesytem: {
             sh './build.sh -fn -a x86'
           }
-        )
+*/        )
       }
     }
     stage('Build x64') {
@@ -32,10 +36,10 @@ pipeline {
           kernel: {
             sh './build.sh -kn -a x64'
           },
-          filesytem: {
+/*          filesytem: {
             sh './build.sh -fn -a x64'
           }
-        )
+*/        )
       }
     }
 /* Disabled for the moment
