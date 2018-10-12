@@ -24,10 +24,10 @@ pipeline {
           kernel: {
             sh './build.sh -kn -a x86'
           },
-/*          filesytem: {
+          filesytem: {
             sh './build.sh -fn -a x86'
           }
-*/        )
+        )
       }
     }
     stage('Build x64') {
@@ -36,10 +36,10 @@ pipeline {
           kernel: {
             sh './build.sh -kn -a x64'
           },
-/*          filesytem: {
+          filesytem: {
             sh './build.sh -fn -a x64'
           }
-*/        )
+        )
       }
     }
 /* Disabled for the moment
