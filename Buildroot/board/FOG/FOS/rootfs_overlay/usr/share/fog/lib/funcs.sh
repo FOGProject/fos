@@ -54,7 +54,7 @@ displayBanner() {
 #}
 # Gets all system mac addresses except for loopback
 getMACAddresses() {
-    read ifaces <<< $(/sbin/ip -4 addr | awk 'ORS=NR%2?FS:RS' | awk -F'([ /])+' '/global/ {print $2}' | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
+    read ifaces <<< $(/sbin/ip -0 addr show | awk 'ORS=NR%2?FS:RS' | awk -F'[: ]+' 'tolower($0) ~ /link[/]?ether/ && tolower($0) ~ /'$mac'/ {print $2}' | tr '\n' ' ')
     read mac_addresses <<< $(/sbin/ip -0 addr | awk 'ORS=NR%2?FS:RS' | awk "/$ifaces/ {print \$11}" | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
     echo $mac_addresses
 }
