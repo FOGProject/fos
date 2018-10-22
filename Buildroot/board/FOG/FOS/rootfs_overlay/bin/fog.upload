@@ -103,12 +103,10 @@ beginUpload() {
                                 ;;
                         esac
                         umount /bcdstore >/dev/null 2>&1
-                        case $label in
-                            *[Rr][Ee][Cc][Oo][Vv][Ee][Rr][Yy]*|*[Rr][Ee][Ss][Ee][Rr][Vv][Ee][Dd]*)
+                        if [[ $label =~ [Rr][EeÉé][Ss][Ee][Rr][Vv][EeÉé][Dd]? || $label =~ [Rr][Ee][Cc][Oo][Vv][Ee][Rr][Yy] ]]; then
                                 echo " * New fixed partition for ($part) added."
                                 fixed_size_partitions="$fixed_size_partitions:$part_number"
-                                ;;
-                        esac
+                        fi
                     done
                     ;;
             esac
@@ -178,7 +176,7 @@ beginUpload() {
         mpa)
             disk_number=1
             for disk in $disks; do
-                [[ $disk =~ "mmcblk[0-9]+boot[0-9]+" ]] && continue
+                [[ $disk =~ mmcblk[0-9]+boot[0-9]+ ]] && continue
                 parts=""
                 getPartitions "$disk"
                 [[ ${#parts} -lt 1 ]] && continue
