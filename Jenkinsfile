@@ -9,8 +9,8 @@ pipeline {
     skipDefaultCheckout()
   }
   environment {
-    KERNEL_VERSION = '4.18.11'
-    BUILDROOT_VERSION = '2018.08.1'
+    KERNEL_VERSION = '4.19.1'
+    BUILDROOT_VERSION = '2018.08.2'
   }
   stages {
     stage('SCM') {
@@ -42,16 +42,15 @@ pipeline {
         )
       }
     }
-/* Disabled for the moment
     stage('Build arm32') {
       steps {
         parallel (
           kernel: {
             sh './build.sh -kn -a arm'
-          },
+/*          },
           filesytem: {
             sh './build.sh -fn -a arm'
-          }
+*/          }
         )
       }
     }
@@ -67,7 +66,6 @@ pipeline {
         )
       }
     }
-*/
     stage('Upload artifacts') {
       steps {
         archiveArtifacts artifacts: 'dist/*', fingerprint: true
