@@ -525,11 +525,6 @@ processSfdisk() {
     # process with external awk script
     [[ -r $data ]] && /usr/share/fog/lib/procsfdisk.awk $awkArgs $data $orig || /usr/share/fog/lib/procsfdisk.awk $awkArgs $orig
 }
-getPartitionLabel() {
-    local part="$1"
-    [[ -z $part ]] && handleError "No part passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    label=$(blkid -po udev $part | awk -F= /FS_LABEL=/'{print $2}')
-}
 #
 # GPT Functions below
 #
