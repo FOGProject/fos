@@ -78,7 +78,6 @@ beginUpload() {
                     for part in $parts; do
                         getPartitionNumber "$part"
                         fsTypeSetting "$part"
-                        #getPartitionLabel "$part"
                         [[ $fstype != ntfs ]] && continue
                         dots "Mounting partition ($part)"
                         if [[ ! -d /bcdstore ]]; then
