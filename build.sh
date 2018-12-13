@@ -112,14 +112,25 @@ while getopts "$optspec" o; do
 done
 brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$KERNEL_VERSION.tar.xz"
-deps="git meld build-essential rsync libncurses5-dev bison flex gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu"
+debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu"
+rhelDeps="git meld rsync ncurses-devel bison flex gcc-arm-linux-gnu gcc-aarch64-linux-gnu"
 [[ -z $arch ]] && arch="x64 x86 arm arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 echo "Checking packages needed for building"
-for pkg in $deps
+if grep -iqE "Debian" /proc/version ; then
+    os="deb"
+    eabi="eabi"
+    pkgmgr="dpkg -s"
+elif grep -iqE "Red Hat|Redhat" /proc/version ; then
+    os="rhel"
+    eabi=""
+    pkgmgr="rpm -qi"
+fi
+osDeps=${os}Deps
+for pkg in ${!osDeps}
 do
-    dpkg -s $pkg >/dev/null 2>&1
+    $pkgmgr $pkg >/dev/null 2>&1
     if [[ $? != 0 ]]; then
         echo " * Package $pkg missing!"
         fail=1
@@ -166,7 +177,7 @@ function buildFilesystem() {
                 ;;
             arm)
                 echo Skipping
-                #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                 ;;
             arm64)
                 make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -189,7 +200,7 @@ function buildFilesystem() {
                     ;;
                 arm)
                     echo Skipping
-                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig
+                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- menuconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
@@ -209,7 +220,7 @@ function buildFilesystem() {
                     ;;
                 arm)
                     echo Skipping
-                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -241,7 +252,7 @@ function buildFilesystem() {
             ;;
         arm)
             echo Skipping
-            #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+            #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- -j $(nproc) >buildroot$arch.log 2>&1
             ;;
         arm64)
             make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
@@ -257,10 +268,10 @@ function buildFilesystem() {
     [[ ! -d dist ]] && mkdir dist
     case "${arch}" in
         x*)
-	    compiledfile="fssource$arch/output/images/rootfs.ext2.xz"
+           compiledfile="fssource$arch/output/images/rootfs.ext2.xz"
             ;;
         arm*)
-	    compiledfile="fssource$arch/output/images/rootfs.cpio.gz"
+           compiledfile="fssource$arch/output/images/rootfs.cpio.gz"
             ;;
     esac
     case "${arch}" in
@@ -320,7 +331,7 @@ function buildKernel() {
                     make ARCH=i386 menuconfig
                     ;;
                 arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- menuconfig
                     ;;
                 arm64)
                     make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
@@ -339,7 +350,7 @@ function buildKernel() {
                     make ARCH=i386 oldconfig
                     ;;
                 arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                     ;;
                 arm64)
                     make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -363,7 +374,7 @@ function buildKernel() {
                     [[ $status -gt 0 ]] && exit $status
                     ;;
                 arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) Image
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- -j $(nproc) Image
                     ;;
                 arm64)
                     make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
@@ -394,8 +405,8 @@ function buildKernel() {
                 [[ $status -gt 0 ]] && exit $status
                 ;;
             arm)
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) Image
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- -j $(nproc) Image
                 ;;
             arm64)
                 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
