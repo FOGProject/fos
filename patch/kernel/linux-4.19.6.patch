@@ -1,0 +1,71 @@
+diff -Nur linux-4.19.6/drivers/net/ethernet/broadcom/tg3.c kernelsourcex64/drivers/net/ethernet/broadcom/tg3.c
+--- linux-4.19.6/drivers/net/ethernet/broadcom/tg3.c	2018-12-05 12:32:14.000000000 -0600
++++ kernelsourcex64/drivers/net/ethernet/broadcom/tg3.c	2018-12-16 05:50:37.203460130 -0600
+@@ -9028,6 +9028,11 @@
+ 	case ASIC_REV_5720:
+ 		tw32(TG3_CPMU_CLCK_ORIDE, CPMU_CLCK_ORIDE_MAC_ORIDE_EN);
+ 		break;
++	case ASIC_REV_5762:
++		val = tr32(TG3_CPMU_CLCK_ORIDE_ENABLE);
++		tw32(TG3_CPMU_CLCK_ORIDE_ENABLE, val |
++		     TG3_CPMU_MAC_ORIDE_ENABLE);
++		break;
+ 
+ 	default:
+ 		return;
+@@ -9150,13 +9155,6 @@
+ 		     tr32(GRC_VCPU_EXT_CTRL) & ~GRC_VCPU_EXT_CTRL_HALT_CPU);
+ 	}
+ 
+-	/* Set the clock to the highest frequency to avoid timeouts. With link
+-	 * aware mode, the clock speed could be slow and bootcode does not
+-	 * complete within the expected time. Override the clock to allow the
+-	 * bootcode to finish sooner and then restore it.
+-	 */
+-	tg3_override_clk(tp);
+-
+ 	/* Manage gphy power for all CPMU absent PCIe devices. */
+ 	if (tg3_flag(tp, 5705_PLUS) && !tg3_flag(tp, CPMU_PRESENT))
+ 		val |= GRC_MISC_CFG_KEEP_GPHY_POWER;
+@@ -9254,6 +9252,13 @@
+ 	if (err)
+ 		return err;
+ 
++	/* Set the clock to the highest frequency to avoid timeouts. With link
++	 * aware mode, the clock speed could be slow and bootcode does not
++	 * complete within the expected time. Override the clock to allow the
++	 * bootcode to finish sooner and then restore it.
++	 */
++	tg3_override_clk(tp);
++
+ 	tw32(GRC_MODE, tp->grc_mode);
+ 
+ 	if (tg3_chip_rev_id(tp) == CHIPREV_ID_5705_A0) {
+diff -Nur linux-4.19.6/drivers/net/usb/r8152.c kernelsourcex64/drivers/net/usb/r8152.c
+--- linux-4.19.6/drivers/net/usb/r8152.c	2018-12-05 12:32:14.000000000 -0600
++++ kernelsourcex64/drivers/net/usb/r8152.c	2018-12-16 05:44:25.347161835 -0600
+@@ -5330,6 +5330,7 @@
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_REALTEK, 0x8153)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x07ab)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x07c6)},
++	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x0927)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_SAMSUNG, 0xa101)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x304f)},
+ 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3062)},
+diff -Nur linux-4.19.6/drivers/scsi/storvsc_drv.c kernelsourcex64/drivers/scsi/storvsc_drv.c
+--- linux-4.19.6/drivers/scsi/storvsc_drv.c	2018-12-05 12:32:14.000000000 -0600
++++ kernelsourcex64/drivers/scsi/storvsc_drv.c	2018-12-16 05:44:25.347161835 -0600
+@@ -1426,7 +1426,12 @@
+ 	blk_queue_rq_timeout(sdevice->request_queue, (storvsc_timeout * HZ));
+ 
+ 	/* Ensure there are no gaps in presented sgls */
+-	blk_queue_virt_boundary(sdevice->request_queue, PAGE_SIZE - 1);
++	if (PAGE_SIZE - 1 < 4096) {
++		blk_queue_virt_boundary(sdevice->request_queue, 4096);
++	}
++	else {
++		blk_queue_virt_boundary(sdevice->request_queue, PAGE_SIZE - 1);
++	}
+ 
+ 	sdevice->no_write_same = 1;
+ 
