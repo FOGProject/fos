@@ -305,6 +305,12 @@ function buildKernel() {
         dots "Applying patch(es)"
         patch -p1 < ../patch/kernel/linux-$KERNEL_VERSION.patch >/dev/null 2>&1
         echo "Done"
+    else
+        echo " * Did not find a patch file matching the exact kernel version $KERNEL_VERSION."
+	latest=$(ls -1r ../patch/kernel/linux*.patch | head -1)
+	dots "Trying to apply $latest"
+	patch -p1 < $latest
+	echo "Done"
     fi
     dots "Cloning Linux firmware repository"
     git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
