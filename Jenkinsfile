@@ -42,15 +42,15 @@ pipeline {
         )
       }
     }
-    stage('Build arm32') {
+/*    stage('Build arm32') {
       steps {
         parallel (
           kernel: {
             sh './build.sh -kn -a arm'
-/*          },
+          },
           filesytem: {
             sh './build.sh -fn -a arm'
-*/          }
+          }
         )
       }
     }
@@ -66,7 +66,7 @@ pipeline {
         )
       }
     }
-    stage('Upload artifacts') {
+*/    stage('Upload artifacts') {
       steps {
         archiveArtifacts artifacts: 'dist/*', fingerprint: true
       }
