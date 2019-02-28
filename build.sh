@@ -232,28 +232,28 @@ function buildFilesystem() {
         x64)
             make >buildroot$arch.log 2>&1
             status=$?
-            [[ $status -gt 0 ]] && exit $status
             ;;
         x86)
             make ARCH=i486 >buildroot$arch.log 2>&1
             status=$?
-            [[ $status -gt 0 ]] && exit $status
             ;;
         arm)
             echo Skipping
             #make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) >buildroot$arch.log 2>&1
+            #status=$?
             ;;
         arm64)
             make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
+            status=$?
             ;;
         *)
             make >buildroot$arch.log 2>&1
             status=$?
-            [[ $status -gt 0 ]] && exit $status
             ;;
     esac
-    cd ..
     kill $PING_LOOP_PID
+    [[ $status -gt 0 ]] && tail buildroot$arch.log && exit $status
+    cd ..
     [[ ! -d dist ]] && mkdir dist
     case "${arch}" in
         x*)
@@ -362,22 +362,22 @@ function buildKernel() {
                 x64)
                     make -j $(nproc) bzImage
                     status=$?
-                    [[ $status -gt 0 ]] && exit $status
                     ;;
                 x86)
                     make ARCH=i386 -j $(nproc) bzImage
-                    [[ $status -gt 0 ]] && exit $status
+                    status=$?
                     ;;
                 arm)
                     make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) Image
+                    status=$?
                     ;;
                 arm64)
                     make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
+                    status=$?
                     ;;
                 *)
                     make -j $(nproc) bzImage
                     status=$?
-                    [[ $status -gt 0 ]] && exit $status
                     ;;
             esac
         else
@@ -385,36 +385,37 @@ function buildKernel() {
             cd ..
             return
         fi
+        [[ $status -gt 0 ]] && exit $status
     else
         case "${arch}" in
             x64)
                 make oldconfig
                 make -j $(nproc) bzImage
                 status=$?
-                [[ $status -gt 0 ]] && exit $status
                 ;;
             x86)
                 make ARCH=i386 oldconfig
                 make ARCH=i386 -j $(nproc) bzImage
                 status=$?
-                [[ $status -gt 0 ]] && exit $status
                 ;;
             arm)
                 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- oldconfig
                 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j $(nproc) Image
+                status=$?
                 ;;
             arm64)
                 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
                 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
+                status=$?
                 ;;
             *)
                 make oldconfig
                 make -j $(nproc) bzImage
                 status=$?
-                [[ $status -gt 0 ]] && exit $status
                 ;;
         esac
     fi
+    [[ $status -gt 0 ]] && exit $status
     cd ..
     mkdir -p dist
     case "$arch" in
