@@ -191,6 +191,10 @@ beginUpload() {
                 mainuuidfilename=""
                 mainUUIDFileName "$imagePath" $disk_number
                 saveUUIDInformation "$disk" "$mainuuidfilename"
+                echo " * Saving disk size, partition table and boot loader information"
+                debugPause
+                echo -n "${disk_number}:" > ${imagePath}/d${disk_number}.size
+                blockdev --getsize64 $disk >> ${imagePath}/d${disk_number}.size
                 savePartitionTablesAndBootLoaders "$disk" "$disk_number" "$imagePath" "$osid" "$imgPartitionType"
                 runPartprobe "$disk"
                 getPartitions "$disk"

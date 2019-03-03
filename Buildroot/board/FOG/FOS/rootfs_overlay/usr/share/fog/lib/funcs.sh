@@ -2271,12 +2271,20 @@ performRestore() {
     [[ -z $disks ]] && handleError "No disks passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imgPartitionType ]] && handleError "No partition type passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    local disk_number=1
+    local disk_number=0
     local part_number=0
     local restoreparts=""
     local mainuuidfilename=""
+    local size_information=$(cat ${imagePath}/*.size 2>/dev/null)
     [[ $imgType =~ [Nn] ]] && local tmpebrfilename=""
     for disk in $disks; do
+        if [[ -n "${size_information}" ]]; then
+            disk_size=$(blockdev --getsize64 $disk)
+            disk_number=$(echo ${size_information} | grep -o "[0-9][0-9]*:${disk_size}" | head -1 | cut -d':' -f1)
+            size_information=$(echo ${size_information} | sed "s/[[:space:]]*[0-9][0-9]*:${disk_size}[[:space:]]*//")
+        else
+            let disk_number+=1
+        fi
         mainuuidfilename=""
         mainUUIDFileName "$imagePath" "$disk_number"
         getValidRestorePartitions "$disk" "$disk_number" "$imagePath" "$restoreparts"
@@ -2296,7 +2304,6 @@ performRestore() {
         echo " * Resetting swap systems"
         debugPause
         makeAllSwapSystems "$disk" "$disk_number" "$imagePath" "$imgPartitionType"
-        let disk_number+=1
     done
 }
 # Gets the file system identifier.
