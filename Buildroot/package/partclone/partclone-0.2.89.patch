@@ -1,6 +1,6 @@
 diff -rupN partclone-0.2.89_orig/fail-mbr/compile-mbr.sh partclone-0.2.89_new/fail-mbr/compile-mbr.sh
---- partclone-0.2.89_orig/fail-mbr/compile-mbr.sh	2016-06-23 06:14:56.000000000 +0200
-+++ partclone-0.2.89_new/fail-mbr/compile-mbr.sh	2018-12-17 12:31:23.069930338 +0100
+--- partclone-0.2.89_orig/fail-mbr/compile-mbr.sh	2017-08-10 20:20:27.659003090 -0400
++++ partclone-0.2.89_new/fail-mbr/compile-mbr.sh	2017-08-10 21:05:32.559055136 -0400
 @@ -1,13 +1,14 @@
  ############### compiles source file for x86 architectures ##################
 -if dpkg-architecture -e amd64 || dpkg-architecture -e i386; then
