@@ -66,14 +66,11 @@ restoreUUIDInformation() {
     [[ -z $file ]] && handleError "No file to load from passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ ! -r $file ]] && return
     local diskuuid=""
     local partuuid=""
     local is_swap=0
-    local sfdiskoriginalpartitionfilename=""
     local part_number=""
-    sfdiskOriginalPartitionFileName "$imagePath" "$disk_number"
-    diskuuid=$(awk "/^\/dev\/[A-Za-z0-9]+[^0-9+]\ /{print \$2}" $file)
+    diskuuid=$(awk '/^label-id: / {print tolower($2)}' $file)
     dots "Disk UUID being set to"
     echo $diskuuid
     debugPause
@@ -87,8 +84,8 @@ restoreUUIDInformation() {
         getPartitionNumber "$part"
         local escape_part=$(escapeItem $part)
         [[ $is_swap -gt 0 ]] && continue
-        partuuid=$(awk -F[,\ ] "match(\$0, /^${escape_part} : .*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $sfdiskoriginalpartitionfilename)
-        parttype=$(awk -F[,\ ] "match(\$0, /^${escape_part} : .*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $sfdiskoriginalpartitionfilename)
+        partuuid=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
+        parttype=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
         dots "Partition type being set to"
         echo $parttype
         debugPause

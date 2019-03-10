@@ -2300,7 +2300,9 @@ performRestore() {
         restoreparts=""
         echo " * Resetting UUIDs for $disk"
         debugPause
-        restoreUUIDInformation "$disk" "$mainuuidfilename" "$disk_number" "$imagePath"
+        local sfdiskoriginalpartitionfilename=""
+        sfdiskOriginalPartitionFileName "$imagePath" "$disk_number"
+        restoreUUIDInformation "$disk" "$sfdiskoriginalpartitionfilename" "$disk_number" "$imagePath"
         echo " * Resetting swap systems"
         debugPause
         makeAllSwapSystems "$disk" "$disk_number" "$imagePath" "$imgPartitionType"
