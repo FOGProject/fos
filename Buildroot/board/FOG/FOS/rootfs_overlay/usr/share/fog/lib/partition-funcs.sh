@@ -19,41 +19,6 @@ saveSfdiskPartitions() {
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the disk drive
-# $2 is name of file to save to.
-saveUUIDInformation() {
-    local disk="$1"
-    local file="$2"
-    [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to save to passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    local hasgpt=0
-    hasGPT "$disk"
-    [[ $hasgpt -eq 0 ]] && return
-    rm -f $file
-    touch $file
-    local diskuuid=""
-    local partuuid=""
-    local partfsuuid=""
-    local parts=""
-    local part=""
-    local part_number=""
-    local strtoadd=""
-    local is_swap=0
-    getDiskUUID "$disk"
-    echo "$disk $diskuuid" >> $file
-    getPartitions "$disk"
-    for part in $parts; do
-        getPartitionNumber "$part"
-        partitionIsSwap "$part"
-        [[ $is_swap -gt 0 ]] && continue
-        getPartUUID "$part"
-        getPartFSUUID "$part"
-        [[ -n $partfsuuid ]] && strtoadd="$part $part_number:$partfsuuid"
-        [[ -n $partuuid ]] &&  strtoadd="$strtoadd $part_number:$partuuid"
-        echo "$strtoadd" >> $file
-        strtoadd=""
-    done
-}
-# $1 is the name of the disk drive
 # $2 is name of file to restore from
 # $3 is the disk number
 # $4 is the image path

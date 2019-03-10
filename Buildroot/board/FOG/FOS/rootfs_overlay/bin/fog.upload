@@ -125,15 +125,10 @@ beginUpload() {
             saveOriginalPartitions "$hd" "$imagePath" 1
             swapuuidfilename=""
             swapUUIDFileName "$imagePath" 1
-            mainuuidfilename=""
-            mainUUIDFileName "$imagePath" 1
             echo -n "" > "$imagePath/d1.original.fstypes"
             echo -n "" > $swapuuidfilename
             echo "Done"
             debugPause
-            echo " * Saving original disk/parts UUIDs"
-            debugPause
-            saveUUIDInformation "$hd" "$mainuuidfilename"
             echo " * Shrinking Partitions on disk"
             debugPause
             for part in $parts; do
@@ -166,11 +161,7 @@ beginUpload() {
             getPartitions "$hd"
             [[ ${#parts} -lt 1 ]] && handleError "No partitions found ($0)\n   Args Passed: $*"
             echo " * Processing Hard Disk: $hd"
-            echo " * Saving original disk/parts UUIDs"
             debugPause
-            mainuuidfilename=""
-            mainUUIDFileName "$imagePath" 1
-            saveUUIDInformation "$hd" "$mainuuidfilename"
             savePartitionTablesAndBootLoaders "$hd" 1 "$imagePath" "$osid" "$imgPartitionType"
             getPartitions "$hd"
             for part in $parts; do
@@ -186,11 +177,7 @@ beginUpload() {
                 [[ ${#parts} -lt 1 ]] && continue
                 debugPause
                 echo " * Processing Hard Disk: $disk"
-                echo " * Saving original disk/parts UUIDs"
                 debugPause
-                mainuuidfilename=""
-                mainUUIDFileName "$imagePath" $disk_number
-                saveUUIDInformation "$disk" "$mainuuidfilename"
                 echo " * Saving disk size, partition table and boot loader information"
                 debugPause
                 echo -n "${disk_number}:" > ${imagePath}/d${disk_number}.size

@@ -315,14 +315,6 @@ fsTypeSetting() {
             ;;
     esac
 }
-# Gets the disk part table UUID
-#
-# $1 is the disk
-getDiskUUID() {
-    local disk="$1"
-    [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    diskuuid=$(blkid -po udev $disk | awk -F= '/PART_TABLE_UUID=/{print $2}')
-}
 # Gets the partition entry name
 #
 # $1 is the partition
@@ -338,22 +330,6 @@ getPartType() {
     local part="$1"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     parttype=$(blkid -po udev $part | awk -F= '/PART_ENTRY_TYPE=/{print $2}')
-}
-# Gets the partition fs UUID
-#
-# $1 is the partition
-getPartFSUUID() {
-    local part="$1"
-    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    partfsuuid=$(blkid -po udev $part | awk -F= '/FS_UUID=/{print $2}')
-}
-# Gets the partition entry UUID
-#
-# $1 is the partition
-getPartUUID() {
-    local part="$1"
-    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    partuuid=$(blkid -po udev $part | awk -F= '/PART_ENTRY_UUID=/{print $2}')
 }
 # Gets the entry schemed (dos, gpt, etc...)
 #
@@ -1762,13 +1738,6 @@ swapUUIDFileName() {
     [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     swapuuidfilename="$imagePath/d${disk_number}.original.swapuuids"
 }
-mainUUIDFileName() {
-    local imagePath="$1"
-    local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    mainuuidfilename="$imagePath/d${disk_number}.original.uuids"
-}
 sfdiskPartitionFileName() {
     local imagePath="$1"  # e.g. /net/dev/foo
     local disk_number="$2"    # e.g. 1
@@ -2274,7 +2243,7 @@ performRestore() {
     local disk_number=0
     local part_number=0
     local restoreparts=""
-    local mainuuidfilename=""
+    local sfdiskoriginalpartitionfilename=""
     local size_information=$(cat ${imagePath}/*.size 2>/dev/null)
     [[ $imgType =~ [Nn] ]] && local tmpebrfilename=""
     for disk in $disks; do
@@ -2285,8 +2254,8 @@ performRestore() {
         else
             let disk_number+=1
         fi
-        mainuuidfilename=""
-        mainUUIDFileName "$imagePath" "$disk_number"
+        sfdiskoriginalpartitionfilename=""
+        sfdiskOriginalPartitionFileName "$imagePath" "$disk_number"
         getValidRestorePartitions "$disk" "$disk_number" "$imagePath" "$restoreparts"
         [[ -z $restoreparts ]] && handleError "No image file(s) found that would match the partition(s) to be restored (${FUNCNAME[0]})\n   Args Passed: $*"
         for restorepart in $restoreparts; do
@@ -2300,8 +2269,6 @@ performRestore() {
         restoreparts=""
         echo " * Resetting UUIDs for $disk"
         debugPause
-        local sfdiskoriginalpartitionfilename=""
-        sfdiskOriginalPartitionFileName "$imagePath" "$disk_number"
         restoreUUIDInformation "$disk" "$sfdiskoriginalpartitionfilename" "$disk_number" "$imagePath"
         echo " * Resetting swap systems"
         debugPause
