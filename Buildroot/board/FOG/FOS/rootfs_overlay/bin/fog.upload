@@ -105,8 +105,9 @@ beginUpload() {
                                 ;;
                         esac
                         umount /bcdstore >/dev/null 2>&1
-                        if [[ $partscnt -gt 1 ]]; then			
-                                if [[ $(parted -l "$hd" | grep boot | awk '{print $1}') -eq $part_number || $(parted -l "$hd" | grep msftres | awk '{print $1}') -eq $part_number || $(parted -l "$hd" | grep hidden | awk '{print $1}') -eq $part_number ]]; then
+                        if [[ $partscnt -gt 1 ]]; then
+                                parted -l "$hd" | grep "^ *${part_number} " | grep -q "boot\|msftres\|hidden"
+                                if [[ $? -eq 0 ]]; then
                                         echo " * New fixed partition for ($part) added."
                                         fixed_size_partitions="$fixed_size_partitions:$part_number"
                                 fi
