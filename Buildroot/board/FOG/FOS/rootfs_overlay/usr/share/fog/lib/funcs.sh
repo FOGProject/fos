@@ -459,15 +459,9 @@ shrinkPartition() {
     local part_block_size=0
     case $fstype in
         ntfs)
-            if [[ $(parted -l "$hd" | grep msftres | awk '{print $1}') -eq $part_number ]]; then
+            if [[ $is_fixed -eq 1 ]]; then
                 echo "$(cat "$imagePath/d1.fixed_size_partitions" | tr -d \\0):${part_number}" > "$imagePath/d1.fixed_size_partitions"
-                echo " * Not shrinking ($part) recovery partition"
-                debugPause
-                return
-            fi
-            if [[ $(parted -l "$hd" | grep boot | awk '{print $1}') -eq $part_number || $(parted -l "$hd" | grep hidden | awk '{print $1}') -eq $part_number ]]; then
-                echo "$(cat "$imagePath/d1.fixed_size_partitions" | tr -d \\0):${part_number}" > "$imagePath/d1.fixed_size_partitions"
-                echo " * Not shrinking ($part) reserved partitions"
+                echo " * Not shrinking ($part) recovery/reserved partition"
                 debugPause
                 return
             fi
