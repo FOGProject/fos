@@ -1,0 +1,11 @@
+diff -rupN partimage-0.6.9_orig/src/client/misc.cpp partimage-0.6.9_new/src/client/misc.cpp
+--- partimage-0.6.9_orig/src/client/misc.cpp	2010-07-25 10:30:31.000000000 -0500
++++ partimage-0.6.9_new/src/client/misc.cpp	2019-04-27 03:28:24.711728836 -0500
+@@ -46,6 +46,7 @@
+ #include <sys/file.h>
+ #include <sys/resource.h>
+ #include <sys/utsname.h>
++#include <sys/sysmacros.h>
+ 
+ #include "misc.h"
+ #include "partimage.h"

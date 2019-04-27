@@ -101,3 +101,49 @@ diff -rupN partclone-0.2.89_orig/src/progress.c partclone-0.2.89_new/src/progres
      } else {
          mvwprintw(p_win, 0, 0, _("Total Time: %s Remaining: %s "), prog_stat.Eformated, prog_stat.Rformated);
  	if((prog->flag == IO) || (prog->flag == NO_BLOCK_DETAIL))
+diff -rupN partclone-0.2.89_orig/src/xfs/linux.c partclone-0.2.89_new/src/xfs/linux.c
+--- partclone-0.2.89_orig/src/xfs/linux.c	2016-06-22 23:14:56.000000000 -0500
++++ partclone-0.2.89_new/src/xfs/linux.c	2019-04-27 02:40:27.185192440 -0500
+@@ -16,11 +16,8 @@
+  * Inc.,  51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+  */
+ 
+-#define ustat __kernel_ustat
+ #include <mntent.h>
+ #include <sys/stat.h>
+-#undef ustat
+-#include <sys/ustat.h>
+ #include <sys/mount.h>
+ #include <sys/ioctl.h>
+ #include <sys/sysinfo.h>
+@@ -51,9 +48,10 @@ static int max_block_alignment;
+ int
+ platform_check_ismounted(char *name, char *block, struct stat64 *s, int verbose)
+ {
+-	/* Pad ust; pre-2.6.28 linux copies out too much in 32bit compat mode */
+-	struct ustat	ust[2];
++	FILE		*f;
+ 	struct stat64	st;
++	struct mntent	*mnt;
++	char		mounts[MAXPATHLEN];
+ 
+ 	if (!s) {
+ 		if (stat64(block, &st) < 0)
+@@ -63,11 +61,12 @@ platform_check_ismounted(char *name, cha
+ 		s = &st;
+ 	}
+ 
+-	if (ustat(s->st_rdev, ust) >= 0) {
+-		if (verbose)
+-			fprintf(stderr,
+-				_("%s: %s contains a mounted filesystem\n"),
+-				progname, name);
++	strcpy(mounts, (!access(PROC_MOUNTED, R_OK)) ? PROC_MOUNTED : MOUNTED);
++	if ((f = setmntent(mounts, "r")) == NULL) {
++		/* Unexpected failure, warn unconditionally */
++		fprintf(stderr,
++		    _("%s: %s possibly contains a mounted filesystem\n"),
++		    progname, name);
+ 		return 1;
+ 	}
+ 	return 0;
