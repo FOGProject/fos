@@ -47,10 +47,10 @@ pipeline {
         parallel (
           kernel: {
             sh './build.sh -kn -a arm'
-/*          },
+          },
           filesytem: {
             sh './build.sh -fn -a arm'
-*/          }
+          }
         )
       }
     }
@@ -59,10 +59,10 @@ pipeline {
         parallel (
           kernel: {
             sh './build.sh -kn -a arm64'
-/*          },
+          },
           filesytem: {
             sh './build.sh -fn -a arm64'
-*/          }
+          }
         )
       }
     }

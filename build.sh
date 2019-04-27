@@ -176,8 +176,7 @@ function buildFilesystem() {
                 make ARCH=i486 oldconfig
                 ;;
             arm)
-                echo Skipping
-                #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
+                make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                 ;;
             arm64)
                 make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -199,8 +198,7 @@ function buildFilesystem() {
                     make ARCH=i486 menuconfig
                     ;;
                 arm)
-                    echo Skipping
-                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- menuconfig
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- menuconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
@@ -219,8 +217,7 @@ function buildFilesystem() {
                     make ARCH=i486 oldconfig
                     ;;
                 arm)
-                    echo Skipping
-                    #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
+                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -249,9 +246,8 @@ function buildFilesystem() {
             status=$?
             ;;
         arm)
-            echo Skipping
-            #make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- -j $(nproc) >buildroot$arch.log 2>&1
-            #status=$?
+            make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- >buildroot$arch.log 2>&1
+            status=$?
             ;;
         arm64)
             make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
@@ -288,9 +284,7 @@ function buildFilesystem() {
             initfile='dist/arm_init.cpio.gz'
             ;;
     esac
-    if [[ $arch != 'arm' ]]; then
-        [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
-    fi
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
 }
 
 function buildKernel() {
