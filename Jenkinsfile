@@ -9,7 +9,7 @@ pipeline {
     skipDefaultCheckout()
   }
   environment {
-    KERNEL_VERSION = '4.19.6'
+    KERNEL_VERSION = '4.19.36'
     BUILDROOT_VERSION = '2018.08.2'
   }
   stages {
@@ -42,15 +42,15 @@ pipeline {
         )
       }
     }
-/*    stage('Build arm32') {
+    stage('Build arm32') {
       steps {
         parallel (
           kernel: {
             sh './build.sh -kn -a arm'
-          },
+/*          },
           filesytem: {
             sh './build.sh -fn -a arm'
-          }
+*/          }
         )
       }
     }
@@ -59,14 +59,14 @@ pipeline {
         parallel (
           kernel: {
             sh './build.sh -kn -a arm64'
-          },
+/*          },
           filesytem: {
             sh './build.sh -fn -a arm64'
-          }
+*/          }
         )
       }
     }
-*/    stage('Upload artifacts') {
+    stage('Upload artifacts') {
       steps {
         archiveArtifacts artifacts: 'dist/*', fingerprint: true
       }
