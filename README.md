@@ -33,27 +33,43 @@ To build the FOS and/or kernels, once pulled:
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -n
 ```
-##### Build only both inits
+##### Build only all inits
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nf
 ```
-##### Build only both kernels
+##### Build only all kernels
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nk
 ```
-##### Build 64 bit init
+##### Build x64 bit init
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nfa x64
 ```
-##### Build 32 bit init
+##### Build 32 bit (x86) init
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nfa x86
 ```
-##### Build 64 bit kernel
+##### Build x64 bit kernel
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nka x64
 ```
-##### Build 32 bit kernel
+##### Build 32 bit (x86) kernel
 ```
 docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nka x86
+```
+##### Build ARM 64 bit init
+```
+docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nfa arm64
+```
+##### Build ARM 32 bit init
+```
+docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nfa arm
+```
+##### Build ARM 64 bit kernel
+```
+docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nka arm64
+```
+##### Build ARM 32 bit kernel
+```
+docker run -v /path/to/fos/repo:/home/builder/fos:Z -u builder -it fogproject/fos-builder /home/builder/fos/build.sh -nka arm
 ```
