@@ -35,6 +35,9 @@ restoreUUIDInformation() {
     local partuuid=""
     local is_swap=0
     local part_number=""
+    local hasgpt=0
+    hasGPT "$disk"
+    [[ $hasgpt -eq 0 ]] && return
     diskuuid=$(awk '/^label-id: / {print tolower($2)}' $file)
     dots "Disk UUID being set to"
     echo $diskuuid
