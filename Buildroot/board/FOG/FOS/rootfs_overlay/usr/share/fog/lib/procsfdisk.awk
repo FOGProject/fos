@@ -653,7 +653,7 @@ BEGIN {
     # Start setup of partition_names.
     partition_names[part_name] = part_name;
     # Isolate Partition Number.
-    # The regex can handle devices like mmcblk0p3
+    # The regex can handle devices like mmcblk0p3 and nvme0n1p2
     part_number = gensub(/^.*[^0-9]([0-9]+)/, "\\1", 1, part_name);
     # Set the partitions number.
     partitions[part_name, "number"] = part_number;
