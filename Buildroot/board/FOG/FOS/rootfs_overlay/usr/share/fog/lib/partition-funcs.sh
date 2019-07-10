@@ -50,19 +50,26 @@ restoreUUIDInformation() {
     for part in $parts; do
         partitionIsSwap "$part"
         getPartitionNumber "$part"
-        local escape_part=$(escapeItem $part)
         [[ $is_swap -gt 0 ]] && continue
         partuuid=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
         parttype=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
         dots "Partition type being set to"
         echo $parttype
         debugPause
-        [[ -n $parttype ]] && sgdisk -t $parttype $disk >/dev/null 2>&1 || true
+        if [[ -n $parttype ]] then;
+            sgdisk -t $parttype $disk >/dev/null 2>&1 
+        else 
+            true
+        fi
         [[ ! $? -eq 0 ]] && handleWarning " Failed to set partition type (sgdisk -t) (${FUNCNAME[0]})\n   Args Passed: $*"
         dots "Partition uuid being set to"
         echo $partuuid
         debugPause
-        [[ -n $partuuid ]] && sgdisk -u $partuuid $disk >/dev/null 2>&1 || true
+        if [[ -n $partuuid ]] then;
+            sgdisk -u $partuuid $disk >/dev/null 2>&1 
+        else 
+            true
+        fi
         [[ ! $? -eq 0 ]] && handleWarning "Failed to set partition guid (sgdisk -u) (${FUNCNAME[0]})\n   Args Passed: $*"
     done
 }
@@ -91,7 +98,7 @@ restoreSfdiskPartitions() {
 hasExtendedPartition() {
     local disk="$1"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdisk -d $disk 2>/dev/null | egrep '(Id|type)=\ *[5f]' | wc -l
+    sfdisk -d $disk 2>/dev/null | grep -E '(Id|type)=\ *[5f]' | wc -l
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the partition device (e.g. /dev/sda3)
@@ -209,7 +216,7 @@ restoreAllEBRs() {
     getPartitions "$disk"
     for part in $parts; do
         getPartitionNumber "$part"
-        [[ $imgPartitionType != all && $imgPartitionType != $part_number ]] && continue
+        [[ $imgPartitionType != all && $imgPartitionType -ne $part_number ]] && continue
         EBRFileName "$imagePath" "$disk_number" "$part_number"
         restoreEBR "$part" "$ebrfilename"
     done
@@ -488,7 +495,11 @@ processSfdisk() {
     awkArgs="$awkArgs -v diskSize=$disk_size"
     [[ -n $fixed ]] && awkArgs="$awkArgs -v fixedList=$fixed"
     # process with external awk script
-    [[ -r $data ]] && /usr/share/fog/lib/procsfdisk.awk $awkArgs $data $orig || /usr/share/fog/lib/procsfdisk.awk $awkArgs $orig
+    if [[ -r $data ]] then;
+        /usr/share/fog/lib/procsfdisk.awk $awkArgs $data $orig 
+    else 
+        /usr/share/fog/lib/procsfdisk.awk $awkArgs $orig
+    fi
 }
 #
 # GPT Functions below
@@ -576,7 +587,7 @@ hasGPT() {
     status="$?"
     [[ ! $status -eq 0 ]] && runFixparts "$disk"
     local gpt=$(gdisk -l $disk | awk -F'[(: )]' '/GPT:/ {print $5}')
-    [[ $gpt == present ]] &&  hasgpt=1
+    [[ $gpt == present ]] && hasgpt=1
     [[ $gpt == not ]] && hasgpt=0
 }
 #
