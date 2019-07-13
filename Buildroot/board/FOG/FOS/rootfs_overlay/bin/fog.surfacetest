@@ -34,17 +34,8 @@ debugPause
 for disk in $disks; do
     dots " * Disk Surface test for $disk"
     usleep 2000000
-    badblocks -sv $disk >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not perform surface scan on $disk ($0)\n   Args Passed: $*"
-            ;;
-    esac
-    debugPause
+    badblocks -sv $disk
+    echo " * Press [Enter] key to continue"
+    read  -p "$*"
 done
 . /bin/fog.nonimgcomplete
