@@ -166,6 +166,7 @@ function buildFilesystem() {
         touch .packConfDone
     fi
     rsync -avPrI ../Buildroot/ . > /dev/null
+    sed -i "s/^export initversion=[0-9][0-9]*$/export initversion=$(date +%Y%m%d)/" board/FOG/FOS/rootfs_overlay/bin/fog
     if [[ ! -f .config ]]; then
         cp ../configs/fs$arch.config .config
         case "${arch}" in

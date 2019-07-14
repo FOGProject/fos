@@ -45,6 +45,7 @@ displayBanner() {
     echo "   == Released under GPL Version 3 =="
     echo "   =================================="
     echo "   Version: $version"
+    echo "   Init Version: $initversion"
 }
 # Gets all system mac addresses except for loopback
 #getMACAddresses() {
@@ -1469,6 +1470,7 @@ handleError() {
     echo "#                         An error has been detected!                        #"
     echo "#                                                                            #"
     echo "##############################################################################"
+    echo "Init Version: $initversion"
     echo -e "$str\n"
     echo "Kernel variables and settings:"
     cat /proc/cmdline | sed 's/ad.*=.* //g'
