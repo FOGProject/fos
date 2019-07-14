@@ -542,7 +542,7 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         }
         # Ensure we're aligned.
         p_size -= (p_size % int(SECTOR_SIZE));
-        if (label != gpt) {
+        if (label != "gpt") {
             if (p_type == 5 || p_type == "f") {
                 p_size += extended_margin;
             }
