@@ -14,7 +14,13 @@ saveSfdiskPartitions() {
     local disk="$1"
     local file="$2"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to save to (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     sfdisk -d $disk 2>/dev/null > $file
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
@@ -28,7 +34,13 @@ restoreUUIDInformation() {
     local disk_number="$3"
     local imagePath="$4"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to load from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local diskuuid=""
@@ -50,19 +62,26 @@ restoreUUIDInformation() {
     for part in $parts; do
         partitionIsSwap "$part"
         getPartitionNumber "$part"
-        local escape_part=$(escapeItem $part)
         [[ $is_swap -gt 0 ]] && continue
         partuuid=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
         parttype=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
         dots "Partition type being set to"
         echo $parttype
         debugPause
-        [[ -n $parttype ]] && sgdisk -t $parttype $disk >/dev/null 2>&1 || true
+        if [[ -n $parttype ]]; then
+            sgdisk -t $parttype $disk >/dev/null 2>&1 
+        else 
+            true
+        fi
         [[ ! $? -eq 0 ]] && handleWarning " Failed to set partition type (sgdisk -t) (${FUNCNAME[0]})\n   Args Passed: $*"
         dots "Partition uuid being set to"
         echo $partuuid
         debugPause
-        [[ -n $partuuid ]] && sgdisk -u $partuuid $disk >/dev/null 2>&1 || true
+        if [[ -n $partuuid ]]; then
+            sgdisk -u $partuuid $disk >/dev/null 2>&1 
+        else 
+            true
+        fi
         [[ ! $? -eq 0 ]] && handleWarning "Failed to set partition guid (sgdisk -u) (${FUNCNAME[0]})\n   Args Passed: $*"
     done
 }
@@ -72,7 +91,13 @@ applySfdiskPartitions() {
     local disk="$1"
     local file="$2"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     sfdisk $disk < $file >/dev/null 2>&1
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
@@ -82,7 +107,13 @@ restoreSfdiskPartitions() {
     local disk="$1"
     local file="$2"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     applySfdiskPartitions "$disk" "$file"
     fdisk $disk < /usr/share/fog/lib/EOFRESTOREPART >/dev/null 2>&1
     [[ ! $? -eq 0 ]] && majorDebugEcho "fdisk failed in (${FUNCNAME[0]})"
@@ -91,7 +122,7 @@ restoreSfdiskPartitions() {
 hasExtendedPartition() {
     local disk="$1"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdisk -d $disk 2>/dev/null | egrep '(Id|type)=\ *[5f]' | wc -l
+    sfdisk -d $disk 2>/dev/null | grep -E '(Id|type)=\ *[5f]' | wc -l
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the partition device (e.g. /dev/sda3)
@@ -114,7 +145,13 @@ saveEBR() {
     local part="$1"
     local file="$2"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     local disk=""
     getDiskFromPartition "$part"
     local table_type=""
@@ -164,7 +201,13 @@ restoreEBR() {
     local part="$1"
     local file="$2"
     [[ -z $part ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to restore from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     local disk=""
     local table_type=""
     getDiskFromPartition "$part"
@@ -209,7 +252,7 @@ restoreAllEBRs() {
     getPartitions "$disk"
     for part in $parts; do
         getPartitionNumber "$part"
-        [[ $imgPartitionType != all && $imgPartitionType != $part_number ]] && continue
+        [[ $imgPartitionType != all && $imgPartitionType -ne $part_number ]] && continue
         EBRFileName "$imagePath" "$disk_number" "$part_number"
         restoreEBR "$part" "$ebrfilename"
     done
@@ -230,7 +273,13 @@ saveSwapUUID() {
     local file="$1"
     local part="$2"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     local is_swap=0
     partitionIsSwap "$part"
     [[ $is_swap -eq 0 ]] && return
@@ -311,7 +360,13 @@ makeSwapSystem() {
     local file="$1"
     local part="$2"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     local option=""
     local disk=""
     getDiskFromPartition "$part"
@@ -387,7 +442,13 @@ fillSfdiskWithPartitions() {
     local fixed="$4"
     local orig="$5"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $file ]] && handleError "No file to use passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ ! -f $file ]]; then
+        handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        if [[ ! -s $file ]]; then
+            handleError "File received was empty from passed (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+    fi
     rm -rf /tmp/sfdisk{1,2}.*
     local disk_size=$(blockdev --getsz $disk)
     #local tmp_file1="/tmp/sfdisk1.$$"
@@ -488,7 +549,11 @@ processSfdisk() {
     awkArgs="$awkArgs -v diskSize=$disk_size"
     [[ -n $fixed ]] && awkArgs="$awkArgs -v fixedList=$fixed"
     # process with external awk script
-    [[ -r $data ]] && /usr/share/fog/lib/procsfdisk.awk $awkArgs $data $orig || /usr/share/fog/lib/procsfdisk.awk $awkArgs $orig
+    if [[ -r $data ]]; then
+        /usr/share/fog/lib/procsfdisk.awk $awkArgs $data $orig 
+    else 
+        /usr/share/fog/lib/procsfdisk.awk $awkArgs $orig
+    fi
 }
 #
 # GPT Functions below
@@ -576,7 +641,7 @@ hasGPT() {
     status="$?"
     [[ ! $status -eq 0 ]] && runFixparts "$disk"
     local gpt=$(gdisk -l $disk | awk -F'[(: )]' '/GPT:/ {print $5}')
-    [[ $gpt == present ]] &&  hasgpt=1
+    [[ $gpt == present ]] && hasgpt=1
     [[ $gpt == not ]] && hasgpt=0
 }
 #
