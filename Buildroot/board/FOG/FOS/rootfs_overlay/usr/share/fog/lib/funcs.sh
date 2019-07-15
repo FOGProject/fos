@@ -438,8 +438,7 @@ shrinkPartition() {
     getPartitionNumber "$part"
     local is_fixed=$(echo $fixed | awk "/(^$part_number:|:$part_number:|:$part_number$|^$part_number$)/{print 1}")
     if [[ $is_fixed -eq 1 ]]; then
-        echo " * Not shrinking ($part) fixed size"
-        echo "$(cat "$imagePath/d1.fixed_size_partitions" | tr -d \\0):${part_number}" > "$imagePath/d1.fixed_size_partitions"
+        echo " * Not shrinking ($part) as it is detected as fixed size"
         debugPause
         return
     fi

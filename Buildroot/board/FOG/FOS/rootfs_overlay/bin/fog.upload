@@ -117,7 +117,7 @@ beginUpload() {
             esac
             # All:
             #  save the list of fixed size partitions
-            fixed_size_partitions=$(echo $fixed_size_partitions | tr ':' '\n' | uniq | tr '\n' ':' | sed 's/:$//g')
+            fixed_size_partitions=$(echo $fixed_size_partitions | tr ':' '\n' | grep -v "^$" | sort -n | uniq | tr '\n' ':' | sed 's/:$//g')
             echo "$fixed_size_partitions" > "$imagePath/d1.fixed_size_partitions"
             # Windows 2000/XP, Vista, 7, 8, 8.1, Linux:
             #  Save unmodified partition table for download use
