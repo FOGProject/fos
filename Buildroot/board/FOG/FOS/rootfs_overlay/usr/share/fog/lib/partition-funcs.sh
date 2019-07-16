@@ -15,7 +15,7 @@ saveSfdiskPartitions() {
     local file="$2"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $file ]] && handleError "No file to save to (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdisk -d $disk 2>/dev/null > $file
+    flock $disk sfdisk -d $disk 2>/dev/null > $file
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the disk drive
@@ -80,7 +80,7 @@ applySfdiskPartitions() {
     local file="$2"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdisk $disk < $file >/dev/null 2>&1
+    flock $disk sfdisk $disk < $file >/dev/null 2>&1
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the disk drive
@@ -98,7 +98,7 @@ restoreSfdiskPartitions() {
 hasExtendedPartition() {
     local disk="$1"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdisk -d $disk 2>/dev/null | grep -E '(Id|type)=\ *[5f]' | wc -l
+    flock $disk sfdisk -d $disk 2>/dev/null | grep -E '(Id|type)=\ *[5f]' | wc -l
     [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the partition device (e.g. /dev/sda3)
@@ -334,7 +334,7 @@ makeSwapSystem() {
             [[ -n $uuid ]] && parttype=82
             ;;
         0)
-            parttype=$(sfdisk -d $disk 2>/dev/null | awk -F[,=] "/^$escape_part/{print \$6}")
+            parttype=$(flock $disk sfdisk -d $disk 2>/dev/null | awk -F[,=] "/^$escape_part/{print \$6}")
             ;;
     esac
     [[ ! $parttype -eq 82 ]] && return
@@ -791,7 +791,7 @@ majorDebugShowCurrentPartitionTable() {
     echo "Current partition table:"
     case $table_type in
         MBR|GPT)
-            sfdisk -d $disk
+            flock $disk sfdisk -d $disk
             ;;
     esac
 }

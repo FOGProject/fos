@@ -1628,7 +1628,7 @@ saveGRUB() {
     # Determine the number of sectors to copy
     # Hack Note: print $4+0 causes the column to be interpretted as a number
     #            so the comma is tossed
-    local count=$(sfdisk -d $disk 2>/dev/null | awk /start=\ *[1-9]/'{print $4+0}' | sort -n | head -n1)
+    local count=$(flock $disk sfdisk -d $disk 2>/dev/null | awk /start=\ *[1-9]/'{print $4+0}' | sort -n | head -n1)
     local has_grub=$(dd if=$disk bs=512 count=1 2>&1 | grep -i 'grub')
     local hasgrubfilename=""
     if [[ -n $has_grub ]]; then
@@ -1852,7 +1852,7 @@ savePartitionTablesAndBootLoaders() {
     hasGPT "$disk"
     local have_extended_partition=0  # e.g. 0 or 1-n (extended partition count)
     local strdots=""
-    [[ $hasgpt -eq 0 ]] && have_extended_partition=$(sfdisk -l $disk 2>/dev/null | egrep "^${disk}.* (Extended|W95 Ext'd \(LBA\))$" | wc -l)
+    [[ $hasgpt -eq 0 ]] && have_extended_partition=$(flock $disk sfdisk -l $disk 2>/dev/null | egrep "^${disk}.* (Extended|W95 Ext'd \(LBA\))$" | wc -l)
     runPartprobe "$disk"
     case $hasgpt in
         0)
@@ -1864,7 +1864,7 @@ savePartitionTablesAndBootLoaders() {
             esac
             dots "$strdots"
             saveGRUB "$disk" "$disk_number" "$imagePath"
-            sfdisk -d $disk 2>/dev/null > $sfdiskfilename
+            flock $disk sfdisk -d $disk 2>/dev/null > $sfdiskfilename
             echo "Done"
             debugPause
             [[ $have_extended_partition -ge 1 ]] && saveAllEBRs "$disk" "$disk_number" "$imagePath"
@@ -1879,7 +1879,7 @@ savePartitionTablesAndBootLoaders() {
                 debugPause
                 handleError "Error trying to save GPT partition tables (${FUNCNAME[0]})\n   Args Passed: $*"
             fi
-            sfdisk -d $disk 2>/dev/null > $sfdiskfilename
+            flock $disk sfdisk -d $disk 2>/dev/null > $sfdiskfilename
             echo "Done"
             ;;
     esac
@@ -1978,7 +1978,7 @@ restorePartitionTablesAndBootLoaders() {
         sfdiskLegacyOriginalPartitionFileName "$imagePath" "$disk_number"
         if [[ -r $sfdiskoriginalpartitionfilename ]]; then
             dots "Inserting Extended partitions (Original)"
-            sfdisk $disk < $sfdiskoriginalpartitionfilename >/dev/null 2>&1
+            flock $disk sfdisk $disk < $sfdiskoriginalpartitionfilename >/dev/null 2>&1
             case $? in
                 0)
                     echo "Done"
@@ -1989,7 +1989,7 @@ restorePartitionTablesAndBootLoaders() {
             esac
         elif [[ -e $sfdisklegacyoriginalpartitionfilename ]]; then
             dots "Inserting Extended partitions (Legacy)"
-            sfdisk $disk < $sfdisklegacyoriginalpartitionfilename >/dev/null 2>&1
+            flock $disk sfdisk $disk < $sfdisklegacyoriginalpartitionfilename >/dev/null 2>&1
             case $? in
                 0)
                     echo "Done"
@@ -2272,7 +2272,7 @@ getFSID() {
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local disk
     getDiskFromPartition "$part"
-    fsid="$(sfdisk -d "$disk" |  grep "$part" | sed -n 's/.*Id=\([0-9]\+\).*\(,\|\).*/\1/p')"
+    fsid="$(flock $disk sfdisk -d "$disk" |  grep "$part" | sed -n 's/.*Id=\([0-9]\+\).*\(,\|\).*/\1/p')"
 }
 # Gets any lvm layouts.
 # $1 is the partition to search within.
