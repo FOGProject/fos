@@ -1572,11 +1572,11 @@ uploadFormat() {
     case $imgFormat in
         6)
             # ZSTD Split files compressed.
-            zstdmt --ultra $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. &
+            zstdmt --rsyncable -B128 --ultra $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. &
             ;;
         5)
             # ZSTD compressed.
-            zstdmt --ultra $PIGZ_COMP < $fifo > ${file}.000 &
+            zstdmt --rsyncable -B128 --ultra $PIGZ_COMP < $fifo > ${file}.000 &
             ;;
         4)
             # Split files uncompressed.
@@ -2050,7 +2050,7 @@ savePartition() {
                     debugPause
                     imgpart="$imagePath/d${disk_number}p${part_number}.img"
                     uploadFormat "$fifoname" "$imgpart"
-                    partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1 -aX0
+                    partclone.$fstype -aX0 -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1
                     exitcode=$?
                     case $exitcode in
                         0)
