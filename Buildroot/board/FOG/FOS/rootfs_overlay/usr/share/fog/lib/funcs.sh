@@ -290,6 +290,9 @@ fsTypeSetting() {
     isBitlockedPartition $part
     local blk_fs=$(blkid -po udev $part | awk -F= /FS_TYPE=/'{print $2}')
     case $blk_fs in
+        apfs)
+            fstype="apfs"
+            ;;
         btrfs)
             fstype="btrfs"
             ;;
