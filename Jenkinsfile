@@ -10,7 +10,7 @@ pipeline {
   }
   environment {
     KERNEL_VERSION = '4.19.64'
-    BUILDROOT_VERSION = '2019.02.1'
+    BUILDROOT_VERSION = '2019.02.4'
   }
   stages {
     stage('SCM') {
