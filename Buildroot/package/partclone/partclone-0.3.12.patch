@@ -21,7 +21,7 @@
 +    FILE *fog_log;
 +    fog_log = fopen("/tmp/status.fog","w");
 +    if (fog_log == NULL) {
-+        fprintf(stderr,"Error opening file %s","/tmo/status.fog");
++        fprintf(stderr,"Error opening file %s","/tmp/status.fog");
 +        exit(0);
 +    }
 +    double totalsize=prog->block_size * prog->total;
