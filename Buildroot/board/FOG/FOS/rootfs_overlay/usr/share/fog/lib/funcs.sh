@@ -290,6 +290,9 @@ fsTypeSetting() {
     isBitlockedPartition $part
     local blk_fs=$(blkid -po udev $part | awk -F= /FS_TYPE=/'{print $2}')
     case $blk_fs in
+        apfs)
+            fstype="apfs"
+            ;;
         btrfs)
             fstype="btrfs"
             ;;
@@ -681,14 +684,14 @@ writeImage()  {
         5|6)
             # ZSTD Compressed image.
             echo " * Imaging using Partclone (zstd)"
-            zstdmt -dc </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" --ignore_crc -O ${target} -Nf 1
+            zstdmt -dc </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" -O ${target} -Nf 1
             ;;
         3|4)
             # Uncompressed partclone
             echo " * Imaging using Partclone (uncompressed)"
-            cat </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" --ignore_crc -O ${target} -Nf 1
+            cat </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" -O ${target} -Nf 1
             # If this fails, try from compressed form.
-            #[[ ! $? -eq 0 ]] && zstdmt -dc </tmp/pigz1 | partclone.restore --ignore_crc -O ${target} -N -f 1 || true
+            #[[ ! $? -eq 0 ]] && zstdmt -dc </tmp/pigz1 | partclone.restore -O ${target} -N -f 1 || true
             ;;
         1)
             # Partimage
@@ -699,10 +702,10 @@ writeImage()  {
         0|2)
             # GZIP Compressed partclone
             echo " * Imaging using Partclone (gzip)"
-            #zstdmt -dc </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" --ignore_crc -O ${target} -N -f 1
-            pigz -dc </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" --ignore_crc -O ${target} -N -f 1
+            #zstdmt -dc </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" -O ${target} -N -f 1
+            pigz -dc </tmp/pigz1 | partclone.restore -n "Storage Location $storage, Image name $img" -O ${target} -N -f 1
             # If this fails, try uncompressed form.
-            #[[ ! $? -eq 0 ]] && cat </tmp/pigz1 | partclone.restore --ignore_crc -O ${target} -N -f 1 || true
+            #[[ ! $? -eq 0 ]] && cat </tmp/pigz1 | partclone.restore -O ${target} -N -f 1 || true
             ;;
     esac
     exitcode=$?
@@ -1572,11 +1575,11 @@ uploadFormat() {
     case $imgFormat in
         6)
             # ZSTD Split files compressed.
-            zstdmt --ultra $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. &
+            zstdmt --rsyncable --ultra $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. &
             ;;
         5)
             # ZSTD compressed.
-            zstdmt --ultra $PIGZ_COMP < $fifo > ${file}.000 &
+            zstdmt --rsyncable --ultra $PIGZ_COMP < $fifo > ${file}.000 &
             ;;
         4)
             # Split files uncompressed.
@@ -2050,7 +2053,7 @@ savePartition() {
                     debugPause
                     imgpart="$imagePath/d${disk_number}p${part_number}.img"
                     uploadFormat "$fifoname" "$imgpart"
-                    partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1
+                    partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1 -a0
                     exitcode=$?
                     case $exitcode in
                         0)
