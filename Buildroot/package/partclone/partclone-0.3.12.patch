@@ -1,5 +1,5 @@
---- partclone-0.3.12_orig/src/progress.c  2019-08-29 16:06:15.894705648 -0500
-+++ partclone-0.3.12_new/src/progress.c   2019-08-29 16:05:41.012554556 -0500
+--- partclone-0.3.12_orig/src/progress.c	2019-09-04 01:27:28.905433546 -0500
++++ partclone-0.3.12_new/src/progress.c		2019-09-04 23:27:34.969168150 -0500
 @@ -182,6 +182,47 @@
      strncpy(prog_stat->Rformated, Rformated, sizeof(prog_stat->Rformated));
  }
@@ -49,18 +49,18 @@
  extern void progress_update(struct progress_bar *prog, unsigned long long copied, unsigned long long current, int done)
  {
 @@ -203,6 +244,7 @@
-            fprintf(stderr, _(", %6.2f%s/min,"), prog_stat.speed, prog_stat.speed_unit);
-        if(prog->flag == IO)
-            fprintf(stderr, "\n\r%80c\rcurrent block: %10Lu, total block: %10Lu, Complete: %6.2f%%%s\r", clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
-+        fogLogStatusFile(prog, &prog_stat, current);
+ 	    fprintf(stderr, _(", %6.2f%s/min,"), prog_stat.speed, prog_stat.speed_unit);
+ 	if(prog->flag == IO)
+ 	    fprintf(stderr, "\n\r%80c\rcurrent block: %10Lu, total block: %10Lu, Complete: %6.2f%%%s\r", clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
++	fogLogStatusFile(prog, &prog_stat, current);
      } else {
-        setlocale(LC_ALL, "");
-        bindtextdomain(PACKAGE, LOCALEDIR);
+ 	setlocale(LC_ALL, "");
+ 	bindtextdomain(PACKAGE, LOCALEDIR);
 @@ -278,6 +320,7 @@
-        wrefresh(p_win);
+ 	wrefresh(p_win);
          wrefresh(bar_win);
          wrefresh(tbar_win);
 +        fogLogStatusFile(prog, &prog_stat, current);
      } else {
          mvwprintw(p_win, 0, 0, _("Total Time: %s Remaining: %s "), prog_stat.Eformated, prog_stat.Rformated);
-        if((prog->flag == IO) || (prog->flag == NO_BLOCK_DETAIL))
+ 	if((prog->flag == IO) || (prog->flag == NO_BLOCK_DETAIL))
