@@ -42,18 +42,6 @@ pipeline {
         )
       }
     }
-    stage('Build arm32') {
-      steps {
-        parallel (
-          kernel: {
-            sh './build.sh -kn -a arm'
-          },
-          filesytem: {
-            sh './build.sh -fn -a arm'
-          }
-        )
-      }
-    }
     stage('Build arm64') {
       steps {
         parallel (

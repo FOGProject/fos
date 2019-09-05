@@ -1,7 +1,7 @@
 #!/bin/bash
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
-    echo -e "\t\t-a --arch [x86|x64|arm|arm64] (optional) pick the architecture to build. Default is to build for all."
+    echo -e "\t\t-a --arch [x86|x64|arm64] (optional) pick the architecture to build. Default is to build for all."
     echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
     echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
@@ -112,9 +112,9 @@ while getopts "$optspec" o; do
 done
 brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
 kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$KERNEL_VERSION.tar.xz"
-debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu"
-rhelDeps="git meld rsync ncurses-devel bison flex gcc-arm-linux-gnu gcc-aarch64-linux-gnu"
-[[ -z $arch ]] && arch="x64 x86 arm arm64"
+debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu"
+rhelDeps="git meld rsync ncurses-devel bison flex gcc-aarch64-linux-gnu"
+[[ -z $arch ]] && arch="x64 x86 arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 echo "Checking packages needed for building"
@@ -176,9 +176,6 @@ function buildFilesystem() {
             x86)
                 make ARCH=i486 oldconfig
                 ;;
-            arm)
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
-                ;;
             arm64)
                 make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
                 ;;
@@ -198,9 +195,6 @@ function buildFilesystem() {
                 x86)
                     make ARCH=i486 menuconfig
                     ;;
-                arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- menuconfig
-                    ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
                     ;;
@@ -216,9 +210,6 @@ function buildFilesystem() {
                     ;;
                 x86)
                     make ARCH=i486 oldconfig
-                    ;;
-                arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                     ;;
                 arm64)
                     make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -244,10 +235,6 @@ function buildFilesystem() {
             ;;
         x86)
             make ARCH=i486 >buildroot$arch.log 2>&1
-            status=$?
-            ;;
-        arm)
-            make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- >buildroot$arch.log 2>&1
             status=$?
             ;;
         arm64)
@@ -277,9 +264,6 @@ function buildFilesystem() {
             ;;
         x86)
             initfile='dist/init_32.xz'
-            ;;
-        arm)
-            initfile='dist/arm_init_32.cpio.gz'
             ;;
         arm64)
             initfile='dist/arm_init.cpio.gz'
@@ -339,9 +323,6 @@ function buildKernel() {
                 x86)
                     make ARCH=i386 menuconfig
                     ;;
-                arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- menuconfig
-                    ;;
                 arm64)
                     make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
                     ;;
@@ -357,9 +338,6 @@ function buildKernel() {
                     ;;
                 x86)
                     make ARCH=i386 oldconfig
-                    ;;
-                arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
                     ;;
                 arm64)
                     make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -379,10 +357,6 @@ function buildKernel() {
                     ;;
                 x86)
                     make ARCH=i386 -j $(nproc) bzImage
-                    status=$?
-                    ;;
-                arm)
-                    make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- -j $(nproc) Image
                     status=$?
                     ;;
                 arm64)
@@ -412,11 +386,6 @@ function buildKernel() {
                 make ARCH=i386 -j $(nproc) bzImage
                 status=$?
                 ;;
-            arm)
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- oldconfig
-                make ARCH=arm CROSS_COMPILE=arm-linux-gnu${eabi}- -j $(nproc) Image
-                status=$?
-                ;;
             arm64)
                 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
                 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
@@ -440,10 +409,6 @@ function buildKernel() {
         x86)
             compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
             cp $compiledfile dist/bzImage32
-            ;;
-        arm)
-            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
-            cp $compiledfile dist/arm_Image32
             ;;
         arm64)
             compiledfile="kernelsource$arch/arch/$arch/boot/Image"
