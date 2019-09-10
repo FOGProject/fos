@@ -239,12 +239,14 @@ saveSwapUUID() {
     [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local is_swap=0
+    local part_number=""
     partitionIsSwap "$part"
     [[ $is_swap -eq 0 ]] && return
     local uuid=$(blkid -s UUID $2 | cut -d\" -f2)
     [[ -z $uuid ]] && return
+    getPartitionNumber "$part"
     echo " * Saving UUID ($uuid) for ($part)"
-    echo "$part $uuid" >> $file
+    echo "${part_number} $uuid" >> $file
 }
 # Linux swap partition strategy:
 #
@@ -324,9 +326,8 @@ makeSwapSystem() {
     getDiskFromPartition "$part"
     local parttype=0
     local part_number=""
-    local escape_part=$(escapeItem $part)
     getPartitionNumber "$part"
-    local uuid=$(awk "/^${escape_part} /{print \$2}" $file)
+    local uuid=$(awk "/([a-z]${part_number}|^${part_number}) /{print \$2}" $file)
     local hasgpt=0
     hasGPT "$disk"
     case $hasgpt in
@@ -334,7 +335,7 @@ makeSwapSystem() {
             [[ -n $uuid ]] && parttype=82
             ;;
         0)
-            parttype=$(flock $disk sfdisk -d $disk 2>/dev/null | awk -F[,=] "/^$escape_part/{print \$6}")
+            parttype=$(flock $disk sfdisk -d $disk 2>/dev/null | awk -F[,=] "/[a-z]${part_number} : /{print \$6}")
             ;;
     esac
     [[ ! $parttype -eq 82 ]] && return
