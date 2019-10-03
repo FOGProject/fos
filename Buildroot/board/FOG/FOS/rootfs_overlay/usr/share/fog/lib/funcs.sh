@@ -732,16 +732,20 @@ getValidRestorePartitions() {
     local part=""
     local imgpart=""
     local part_number=0
+    local split=''
+    if [[ $imgFormat -eq 6 || $imgFormat -eq 4 || $imgFormat -eq 2 ]]; then
+        split='*'
+    fi
     getPartitions "$disk"
     for part in $parts; do
         getPartitionNumber "$part"
         [[ $imgPartitionType != all && $imgPartitionType != $part_number ]] && continue
         case $osid in
             [1-2])
-                [[ ! -f $imagePath ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img*" || imgpart="$imagePath"
+                [[ ! -f $imagePath ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}" || imgpart="$imagePath"
                 ;;
             4|[5-7]|9)
-                [[ ! -f $imagePath/sys.img.000 ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img*"
+                [[ ! -f $imagePath/sys.img.000 ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                 if [[ -z $imgpart ]]; then
                     case $win7partcnt in
                         1)
@@ -760,7 +764,7 @@ getValidRestorePartitions() {
                 fi
                 ;;
             *)
-                imgpart="$imagePath/d${disk_number}p${part_number}.img*"
+                imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                 ;;
         esac
         ls $imgpart >/dev/null 2>&1
@@ -1597,7 +1601,7 @@ uploadFormat() {
             # GZip/piGZ Compressed.
             pigz $PIGZ_COMP < $fifo > ${file}.000 &
         ;;
-esac
+    esac
 }
 # Thank you, fractal13 Code Base
 #
