@@ -2080,6 +2080,10 @@ restorePartition() {
     local disk_number="$2"
     local imagePath="$3"
     local mc="$4"
+    local split=''
+    if [[ $imgFormat -eq 6 || $imgFormat -eq 4 || $imgFormat -eq 2 ]]; then
+        split='*'
+    fi
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
@@ -2103,13 +2107,13 @@ restorePartition() {
         n|mps|mpa)
             case $osid in
                 [1-2])
-                    [[ -f $imagePath ]] && imgpart="$imagePath" || imgpart="$imagePath/d${disk_number}p${part_number}.img*"
+                    [[ -f $imagePath ]] && imgpart="$imagePath" || imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                     ;;
                 4|8|50|51|99)
-                    imgpart="$imagePath/d${disk_number}p${part_number}.img*"
+                    imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                     ;;
                 [5-7]|9)
-                    [[ ! -f $imagePath/sys.img.000 ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img*"
+                    [[ ! -f $imagePath/sys.img.000 ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                     if [[ -z $imgpart ]] ;then
                         [[ -r $imagePath/sys.img.000 ]] && win7partcnt=1
                         [[ -r $imagePath/rec.img.000 ]] && win7partcnt=2
