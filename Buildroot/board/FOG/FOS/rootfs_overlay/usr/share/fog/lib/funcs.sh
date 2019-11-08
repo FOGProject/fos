@@ -1248,7 +1248,9 @@ sec2string() {
 getDiskFromPartition() {
     local part="$1"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    disk=$(echo $part | sed 's/p\?[0-9]\+$//g')
+    disk=$(readlink /sys/class/block/$part)
+    disk=${disk%/*}
+    disk=/dev/${disk##*/}
 }
 # Returns the number of the partition passed
 #
