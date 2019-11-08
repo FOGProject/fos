@@ -1247,7 +1247,12 @@ sec2string() {
 # $1 is the partition to grab the disk from
 getDiskFromPartition() {
     local part="$1"
+    local israw="$2"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ $israw -eq 1 ]]; then
+        disk=$part
+	return
+    fi
     disk=$(readlink /sys/class/block/$part)
     disk=${disk%/*}
     disk=/dev/${disk##*/}
@@ -2098,7 +2103,11 @@ restorePartition() {
     local ebrfilename=""
     local disk=""
     local part_number=0
-    getDiskFromPartition "$part"
+    local israw=0
+    if [[ $imgType == "dd" ]]; then
+        israw=1
+    fi
+    getDiskFromPartition "$part" "$israw"
     getPartitionNumber "$part"
     echo " * Processing Partition: $part ($part_number)"
     debugPause
