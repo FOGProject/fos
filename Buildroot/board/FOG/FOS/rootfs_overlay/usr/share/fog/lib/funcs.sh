@@ -1251,8 +1251,9 @@ getDiskFromPartition() {
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     if [[ $israw -eq 1 ]]; then
         disk=$part
-	return
+        return
     fi
+    part=${part#/dev/}
     disk=$(readlink /sys/class/block/$part)
     disk=${disk%/*}
     disk=/dev/${disk##*/}
