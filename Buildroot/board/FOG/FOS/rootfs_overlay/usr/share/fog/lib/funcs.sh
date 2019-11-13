@@ -1961,13 +1961,16 @@ restorePartitionTablesAndBootLoaders() {
         dots "Restoring Partition Tables (GPT)"
         restoreGRUB "$disk" "$disk_number" "$imagePath" "true"
         sgdisk -z $disk >/dev/null 2>&1
-        sgdisk -gl $tmpMBR $disk >/dev/null 2>&1
+        sgdisk -gl $tmpMBR $disk >/tmp/sgdisk-gl.err 2>&1
         sgdiskexit="$?"
         if [[ ! $sgdiskexit -eq 0 ]]; then
             echo "Failed"
             debugPause
+            [[ -r /tmp/sgdisk-gl.err ]] && cat /tmp/sgdisk-gl.err
+            echo "Find the detailed error message above this line. Use Shift-PageUp to scroll upwards."
             handleError "Error trying to restore GPT partition tables (${FUNCNAME[0]})\n   Args Passed: $*\n    CMD Tried: sgdisk -gl $tmpMBR $disk\n    Exit returned code: $sgdiskexit"
         fi
+        rm -f /tmp/sgdisk-gl.err
         global_gptcheck="yes"
         echo "Done"
     else
