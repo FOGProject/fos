@@ -216,20 +216,34 @@ preparePartitions() {
         mpa)
             [[ ! -d $imagePath ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
             getHardDisk "true"
-            disk_number=0
+            disk_count=$(echo "$disks" | wc -w)
+            disk_array=()
             size_information=$(cat ${imagePath}/*.size 2>/dev/null)
-            for disk in $disks; do
+            for disk_number in $(seq 1 $disk_count); do
+                disk=$(echo $disks | cut -d' ' -f $disk_number)
                 if [[ -n "${size_information}" ]]; then
                     disk_size=$(blockdev --getsize64 $disk)
-                    disk_number=$(echo ${size_information} | grep -o "[0-9][0-9]*:${disk_size}" | head -1 | cut -d':' -f1)
+                    image_matching_size=$(echo ${size_information} | grep -o "[0-9][0-9]*:${disk_size}" | head -1 | cut -d':' -f1)
+                    if [[ -n $image_matching_size && $image_matching_size -gt 0 && $image_matching_size -le 32 ]]; then
+                        disk_number=$image_matching_size
+                    else
+                        closest_sized_image=$(echo -e "${size_information}\nx:${disk_size}" | sort -t':' -k2 -n | grep -B1 "${disk_size}" | head -1 | cut -d':' -f1 )
+                        if [[ -n $closest_sized_image && $closest_sized_image -gt 0 && $closest_sized_image -le 32 ]]; then
+                            disk_number=$closest_sized_image
+                        fi
+                    fi
                     size_information=$(echo ${size_information} | sed "s/[[:space:]]*[0-9][0-9]*:${disk_size}[[:space:]]*//")
-                else
-                    let disk_number+=1
+                fi
+                echo "${disk_array[@]}" | grep -q "$disk"
+                if [[ $? -eq 0 ]]; then
+                    handleError "Fatal Error: Disk size information would lead to overwrite the already cloned disk $disk. ($0)"
                 fi
                 restorePartitionTablesAndBootLoaders "$disk" "$disk_number" "$imagePath" "$osid" "$imgPartitionType"
                 runPartprobe "$disk"
                 gptcheck="$global_gptcheck"
+                disk_array[$disk_number]=$disk
             done
+            disks=${disk_array[@]}
             ;;
     esac
 }

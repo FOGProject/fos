@@ -2260,16 +2260,9 @@ performRestore() {
     local part_number=0
     local restoreparts=""
     local sfdiskoriginalpartitionfilename=""
-    local size_information=$(cat ${imagePath}/*.size 2>/dev/null)
     [[ $imgType =~ [Nn] ]] && local tmpebrfilename=""
     for disk in $disks; do
-        if [[ -n "${size_information}" ]]; then
-            disk_size=$(blockdev --getsize64 $disk)
-            disk_number=$(echo ${size_information} | grep -o "[0-9][0-9]*:${disk_size}" | head -1 | cut -d':' -f1)
-            size_information=$(echo ${size_information} | sed "s/[[:space:]]*[0-9][0-9]*:${disk_size}[[:space:]]*//")
-        else
-            let disk_number+=1
-        fi
+        let disk_number+=1
         sfdiskoriginalpartitionfilename=""
         sfdiskOriginalPartitionFileName "$imagePath" "$disk_number"
         getValidRestorePartitions "$disk" "$disk_number" "$imagePath" "$restoreparts"
