@@ -8,7 +8,7 @@ REG_LOCAL_MACHINE_7="/ntfs/Windows/System32/config/SYSTEM"
 for var in $(cat /proc/cmdline); do
 	var=$(echo "${var}" | awk -F= '{name=$1; gsub(/[+][_][+]/," ",$2); gsub(/"/,"\\\"", $2); value=$2; if (length($2) == 0 || $0 !~ /=/) {print "";} else {printf("%s=%s", name, value)}}')
     [[ -z $var ]] && continue;
-    eval "export ${var}"
+    eval "export ${var}" 2>/dev/null
 done
 ### If USB Boot device we need a way to get the kernel args properly
 [[ $boottype == usb && -f /tmp/hinfo.txt ]] && . /tmp/hinfo.txt
