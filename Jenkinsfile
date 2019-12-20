@@ -9,7 +9,7 @@ pipeline {
     skipDefaultCheckout()
   }
   environment {
-    KERNEL_VERSION = '4.19.64'
+    KERNEL_VERSION = '4.19.90'
     BUILDROOT_VERSION = '2019.02.4'
   }
   stages {
