@@ -4,6 +4,5 @@ menu "Packages for FOG"
     source "package/partclone/Config.in"
     source "package/testdisk/Config.in"
     source "package/cabextract/Config.in"
-    source "package/libmspack/Config.in"
     source "package/partimage/Config.in"
 endmenu
