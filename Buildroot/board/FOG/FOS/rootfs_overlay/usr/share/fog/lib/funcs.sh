@@ -2049,6 +2049,7 @@ savePartition() {
     getPartType "$part"
     local ebrfilename=""
     local swapuuidfilename=""
+    usleep 5000000
     case $fstype in
         swap)
             echo " * Saving swap partition UUID"
