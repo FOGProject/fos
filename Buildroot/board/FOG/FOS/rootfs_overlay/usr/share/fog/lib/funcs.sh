@@ -2078,13 +2078,15 @@ savePartition() {
                             debugPause
                             ;;
                         *)
-                            handleError "Failed to complete capture (${FUNCNAME[0]})\n   Args Passed: $*\n    Exit code: $exitcode\n    Maybe check the fog server\n      to ensure disk space is good to go?"
+                            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /image | awk '{print $4}')"
                             ;;
                     esac
                     ;;
             esac
             ;;
     esac
+    # Ensure we have enought time to close the fifo and then reopen it.
+    usleep 5000000
     rm -rf $fifoname >/dev/null 2>&1
 }
 restorePartition() {
