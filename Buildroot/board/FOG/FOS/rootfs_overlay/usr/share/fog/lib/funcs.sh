@@ -2069,7 +2069,7 @@ savePartition() {
                     debugPause
                     ;;
                 *)
-                    handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /images | awk '{print $4}')"
+                    handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -s -O $fifoname -Nf 1\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /images | awk '{print $4}')"
                     ;;
             esac
             ;;
