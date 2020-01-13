@@ -2049,12 +2049,29 @@ savePartition() {
     getPartType "$part"
     local ebrfilename=""
     local swapuuidfilename=""
-    usleep 5000000
     case $fstype in
         swap)
             echo " * Saving swap partition UUID"
             swapUUIDFileName "$imagePath" "$disk_number"
             saveSwapUUID "$swapuuidfilename" "$part"
+            ;;
+        imager)
+            echo " * Using partclone.$fstype"
+            debugPause
+            imgpart="$imagePath/d${disk_number}p${part_number}.img"
+            uploadFormat "$fifoname" "$imgpart"
+            partclone.$fstype -n "Storage Location $storage, Image name $img" -s $part -O $fifoname -Nf 1
+            exitcode=$?
+            case $exitcode in
+                0)
+                    mv ${imgpart}.000 $imgpart >/dev/null 2>&1
+                    echo " * Image Captured"
+                    debugPause
+                    ;;
+                *)
+                    handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /images | awk '{print $4}')"
+                    ;;
+            esac
             ;;
         *)
             case $parttype in
@@ -2078,15 +2095,13 @@ savePartition() {
                             debugPause
                             ;;
                         *)
-                            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /image | awk '{print $4}')"
+                            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /images | awk '{print $4}')"
                             ;;
                     esac
                     ;;
             esac
             ;;
     esac
-    # Ensure we have enought time to close the fifo and then reopen it.
-    usleep 5000000
     rm -rf $fifoname >/dev/null 2>&1
 }
 restorePartition() {
