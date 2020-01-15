@@ -680,7 +680,7 @@ BEGIN {
     if (label == "dos") {
         split($0, typeList, "type=");
         # Sets the partition flags.
-        part_flags = gensub(/^[^\,$]*/, "",1,typeList[2]);
+        part_flags = gensub(/^[^,$]*/, "",1,typeList[2]);
         # Ensure object has the flags defined.
         partitions[part_name, "flags"] = part_flags;
     } else if (label == "gpt") {
@@ -701,7 +701,7 @@ BEGIN {
     } else {
         split($0, typeList, "Id=");
         # Gets the partition flags.
-        part_flags = gensub(/^[^\,$]*/, "",1,typeList[2]);
+        part_flags = gensub(/^[^,$]*/, "",1,typeList[2]);
         # Sets the flags to the object.
         partitions[part_name, "flags"] = part_flags;
     }
