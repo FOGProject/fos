@@ -1,4 +1,5 @@
 #!/bin/bash
+# test
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
     echo -e "\t\t-a --arch [x86|x64|arm64] (optional) pick the architecture to build. Default is to build for all."
