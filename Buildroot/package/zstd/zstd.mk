@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-ZSTD_VERSION = v1.4.2
+ZSTD_VERSION = v1.4.4
 ZSTD_SITE = $(call github,facebook,zstd,$(ZSTD_VERSION))
 ZSTD_INSTALL_STAGING = YES
 ZSTD_LICENSE = BSD-3-Clause or GPL-2.0
