@@ -288,7 +288,7 @@ fsTypeSetting() {
     local part="$1"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     isBitlockedPartition $part
-    local blk_fs=$(blkid -po udev $part | awk -F= /FS_TYPE=/'{print $2}')
+    local blk_fs=$(blkid -po udev $part | awk -F= '/FS_TYPE=/{print $2}')
     case $blk_fs in
         apfs)
             fstype="apfs"
@@ -559,7 +559,7 @@ shrinkPartition() {
             esac
             debugPause
             extminsize=$(resize2fs -P $part 2>/dev/null | awk -F': ' '{print $2}')
-            block_size=$(dumpe2fs -h $part 2>/dev/null | awk '/^Block[ ]size:/ {print $3}')
+            block_size=$(dumpe2fs -h $part 2>/dev/null | awk '/^Block[ ]size:/{print $3}')
             size=$(calculate "${extminsize}*${block_size}")
             local sizeadd=$(calculate "${percent}/100*${size}")
             sizeextresize=$(calculate "${size}+${sizeadd}")
@@ -1643,7 +1643,7 @@ saveGRUB() {
     # Determine the number of sectors to copy
     # Hack Note: print $4+0 causes the column to be interpretted as a number
     #            so the comma is tossed
-    local count=$(flock $disk sfdisk -d $disk 2>/dev/null | awk '/start=[ ]*[1-9]/ {print $4+0}' | sort -n | head -n1)
+    local count=$(flock $disk sfdisk -d $disk 2>/dev/null | awk '/start=[ ]*[1-9]/{print $4+0}' | sort -n | head -n1)
     local has_grub=$(dd if=$disk bs=512 count=1 2>&1 | grep -i 'grub')
     local hasgrubfilename=""
     if [[ -n $has_grub ]]; then
