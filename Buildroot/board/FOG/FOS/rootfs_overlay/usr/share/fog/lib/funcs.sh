@@ -1643,7 +1643,7 @@ saveGRUB() {
     # Determine the number of sectors to copy
     # Hack Note: print $4+0 causes the column to be interpretted as a number
     #            so the comma is tossed
-    local count=$(flock $disk sfdisk -d $disk 2>/dev/null | awk /start=[ ]*[1-9]/'{print $4+0}' | sort -n | head -n1)
+    local count=$(flock $disk sfdisk -d $disk 2>/dev/null | awk '/start=[ ]*[1-9]/ {print $4+0}' | sort -n | head -n1)
     local has_grub=$(dd if=$disk bs=512 count=1 2>&1 | grep -i 'grub')
     local hasgrubfilename=""
     if [[ -n $has_grub ]]; then
