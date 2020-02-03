@@ -559,7 +559,7 @@ shrinkPartition() {
             esac
             debugPause
             extminsize=$(resize2fs -P $part 2>/dev/null | awk -F': ' '{print $2}')
-            block_size=$(dumpe2fs -h $part 2>/dev/null | awk /^Block[ ]size:/'{print $3}')
+            block_size=$(dumpe2fs -h $part 2>/dev/null | awk '/^Block[ ]size:/ {print $3}')
             size=$(calculate "${extminsize}*${block_size}")
             local sizeadd=$(calculate "${percent}/100*${size}")
             sizeextresize=$(calculate "${size}+${sizeadd}")
