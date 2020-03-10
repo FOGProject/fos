@@ -20,7 +20,7 @@ case $wipemode in
         ;;
     normal)
         echo " Writing zeros to $hd"
-        dd if=/dev/zero of="$hd" >/dev/null 2>&1
+        dd if=/dev/zero of="$hd" bs=512k >/dev/null 2>&1
         echo -e "\n Wiping complete.\n"
         ;;
     fast|fastwipe)
