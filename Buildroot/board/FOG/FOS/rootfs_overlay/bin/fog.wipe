@@ -13,18 +13,19 @@ echo -e " You have $seconds seconds to turn off this computer to cancel!\n"
 usleep $((seconds * 1000000))
 case $wipemode in
     full)
-        echo -e " Starting disk wipe using shred...\n"
+        echo -e " Starting full disk wipe of $hd using shred...\n"
         usleep 10000000
         shred -f -v -z -n 3 "$hd"
         echo -e "\n Wiping complete.\n"
         ;;
     normal)
-        echo " Writing zeros to $hd"
-        dd if=/dev/zero of="$hd" >/dev/null 2>&1
+        echo -e " Starting normal disk wipe of $hd using shred...\n"
+        usleep 10000000
+        shred -f -v -n 1 "$hd"
         echo -e "\n Wiping complete.\n"
         ;;
     fast|fastwipe)
-        echo " Writing zeros to $hd"
+        echo " Writing zeros to start of $hd"
         dd if=/dev/zero of="$hd" bs=512 count=100000
         echo -e "\n Wiping complete.\n"
         ;;
