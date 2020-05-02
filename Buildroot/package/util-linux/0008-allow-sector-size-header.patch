@@ -1,0 +1,11 @@
+--- a/libfdisk/src/script.c	2020-05-02 19:55:50.563879948 +0200
++++ b/libfdisk/src/script.c	2020-05-02 19:56:06.911879869 +0200
+@@ -837,6 +837,7 @@
+ 		   || strcmp(name, "grain") == 0
+ 		   || strcmp(name, "first-lba") == 0
+ 		   || strcmp(name, "last-lba") == 0
++		   || strcmp(name, "sector-size") == 0
+ 		   || strcmp(name, "table-length") == 0) {
+ 		;					/* whatever is possible */
+ 	} else
+
