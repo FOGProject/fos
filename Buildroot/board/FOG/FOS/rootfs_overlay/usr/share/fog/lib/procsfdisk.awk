@@ -688,10 +688,19 @@ BEGIN {
         gsub(/.*uuid= */, "", fields[4]);
         # Set the uuid in the object
         partitions[part_name, "uuid"] = fields[4];
-        # Get name value
-        gsub(/.*name= */, "", fields[5]);
-        # Set the name in the object
-        partitions[part_name, "name"] = fields[5];
+
+        testfield1 = fields[5];
+        testfield2 = fields[5];
+        namefield = gsub(/.*name= */, "", testfield1);
+        attrsfield = gsub(/.*attrs=*/, "", testfield2);
+        if (namefield > 0) {
+            gsub(/.*name= */, "", fields[5]);
+            partitions[part_name, "name"] = fields[5];
+        }
+        if (attrsfield > 0) {
+            gsub(/.*attrs=*/, "", fields[5]);
+            partitions[part_name, "attrs"] = fields[5];
+        }
         # Get attrs value
         if (fields[6]) {
             gsub(/.*attrs= */, "", fields[6]);
