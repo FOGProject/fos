@@ -212,6 +212,9 @@ function display_output(partition_names, partitions, pName, p_device, p_start, p
     if (lastlba) {
         printf("last-lba: %d\n", lastlba);
     }
+    if (sectorsize) {
+        printf("sector-size: %d\n", sectorsize);
+    }
     printf("\n");
     # Iterate our partition names.
     for (pName in partition_names) {
@@ -644,6 +647,8 @@ BEGIN {
 /^first-lba:/{firstlba = $2}
 # Get the last lba sector.
 /^last-lba:/{lastlba = $2}
+# Get the sector size
+/^sector-size:/{sectorsize = $2}
 # Get the start positions
 /start=/{
     # Get Partition Name
