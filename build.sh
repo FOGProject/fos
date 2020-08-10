@@ -302,7 +302,7 @@ function buildKernel() {
 	fi
     else
         echo " * Did not find a patch file matching the exact kernel version $KERNEL_VERSION."
-	latest=$(ls -1r ../patch/kernel/linux*.patch | head -1)
+	latest=$(ls -1 ../patch/kernel/linux*.patch | sort -Vr | head -1)
 	dots "Trying to apply $latest"
 	echo
 	patch -p1 < $latest
