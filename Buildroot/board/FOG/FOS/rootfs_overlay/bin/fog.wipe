@@ -10,7 +10,7 @@ getHardDisk
 
 # If this is an SSD, Secure Erase will be used if supported
 secure_erase=false
-hdparm -I "$hd" | grep "enhanced erase" && hdparm -I "$hd" | grep "not\s*frozen"
+hdparm -I "$hd" | grep -q "enhanced erase" && hdparm -I "$hd" | grep -q "not\s*frozen"
 if [ $? -eq 0 ]; then
     secure_erase=true
     echo " WARNING! You are about to flash the contents of the following SSD using secure erase:"
