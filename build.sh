@@ -111,8 +111,6 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
-kernelURL="https://www.kernel.org/pub/linux/kernel/v4.x/linux-$KERNEL_VERSION.tar.xz"
 debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu"
 rhelDeps="git meld rsync ncurses-devel bison flex gcc-aarch64-linux-gnu"
 [[ -z $arch ]] && arch="x64 x86 arm64"
@@ -148,12 +146,16 @@ cd $buildPath || exit 1
 function buildFilesystem() {
     local arch="$1"
     [[ -z $BUILDROOT_VERSION ]] && echo "No buildroot version, set environment BUILDROOT_VERSION" && exit 1
+    brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
     echo "Preparing buildroot $arch build"
     if [[ ! -d fssource$arch ]]; then
         if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.bz2 ]]; then
             dots "Downloading buildroot source package"
-            wget -q $brURL
-            echo "Done"
+            wget -q $brURL && echo "Done"
+            if [[ $? -ne 0 ]]; then
+                echo "Failed"
+                exit 1
+            fi
         fi
         dots "Extracting buildroot sources"
         tar xjf buildroot-$BUILDROOT_VERSION.tar.bz2
@@ -276,12 +278,16 @@ function buildFilesystem() {
 function buildKernel() {
     local arch="$1"
     [[ -z $KERNEL_VERSION ]] && echo "No kernel version, set environment KERNEL_VERSION" && exit 1
+    kernelURL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
     echo "Preparing kernel $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf kernelsource$arch
     if [[ ! -f linux-$KERNEL_VERSION.tar.xz ]]; then
         dots "Downloading kernel source"
-        wget -q $kernelURL
-        echo "Done"
+        wget -q $kernelURL && echo "Done"
+        if [[ $? -ne 0 ]]; then
+            echo "Failed"
+            exit 1
+        fi
     fi
     dots "Extracting kernel source"
     tar xJf linux-$KERNEL_VERSION.tar.xz
