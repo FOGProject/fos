@@ -82,6 +82,7 @@ for disk in $disks; do
     debugPause
     getPartitions "$disk"
     for part in $parts; do
+        isBitlockedPartition "$part"
         fsTypeSetting "$part"
         case $fstype in
             [Nn][Tt][Ff][Ss])

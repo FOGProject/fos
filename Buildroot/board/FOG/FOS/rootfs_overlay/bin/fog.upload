@@ -41,6 +41,7 @@ beginUpload() {
             dots "Checking for fixed partitions"
             part_number=0
             for part in $parts; do
+                isBitlockedPartition "$part"
                 fsTypeSetting "$part"
                 getPartitionNumber "$part"
                 case $fstype in
@@ -166,6 +167,7 @@ beginUpload() {
             savePartitionTablesAndBootLoaders "$hd" 1 "$imagePath" "$osid" "$imgPartitionType"
             getPartitions "$hd"
             for part in $parts; do
+                isBitlockedPartition "$part"
                 savePartition "$part" 1 "$imagePath" "$imgPartitionType"
             done
             ;;
@@ -187,6 +189,7 @@ beginUpload() {
                 runPartprobe "$disk"
                 getPartitions "$disk"
                 for part in $parts; do
+                    isBitlockedPartition "$part"
                     savePartition "$part" "$disk_number" "$imagePath" "$imgPartitionType"
                 done
                 echo " * Disk $disk complete"
