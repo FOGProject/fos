@@ -253,26 +253,23 @@ function buildFilesystem() {
     [[ $status -gt 0 ]] && tail buildroot$arch.log && exit $status
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    case "${arch}" in
-        x*)
-            compiledfile="fssource$arch/output/images/rootfs.ext2.xz"
-            ;;
-        arm*)
-            compiledfile="fssource$arch/output/images/rootfs.cpio.gz"
-            ;;
-    esac
+    cd dist
     case "${arch}" in
         x64)
-            initfile='dist/init.xz'
+            compiledfile="../fssource$arch/output/images/rootfs.ext2.xz"
+            initfile='init.xz'
             ;;
         x86)
-            initfile='dist/init_32.xz'
+            compiledfile="../fssource$arch/output/images/rootfs.ext2.xz"
+            initfile='init_32.xz'
             ;;
         arm64)
-            initfile='dist/arm_init.cpio.gz'
+            compiledfile="../fssource$arch/output/images/rootfs.cpio.gz"
+            initfile='arm_init.cpio.gz'
             ;;
     esac
-    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile && sha256sum $initfile > ${initfile}.sha256
+    cd ..
 }
 
 function buildKernel() {
@@ -408,20 +405,23 @@ function buildKernel() {
     [[ $status -gt 0 ]] && exit $status
     cd ..
     mkdir -p dist
+    cd dist
     case "$arch" in
         x64)
-            compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
-            cp $compiledfile dist/bzImage
+            compiledfile="../kernelsource$arch/arch/x86/boot/bzImage"
+            kernelfile='bzImage'
             ;;
         x86)
-            compiledfile="kernelsource$arch/arch/x86/boot/bzImage"
-            cp $compiledfile dist/bzImage32
+            compiledfile="../kernelsource$arch/arch/x86/boot/bzImage"
+            kernelfile='bzImage32'
             ;;
         arm64)
-            compiledfile="kernelsource$arch/arch/$arch/boot/Image"
-            cp $compiledfile dist/arm_Image
+            compiledfile="../kernelsource$arch/arch/$arch/boot/Image"
+            kernelfile='arm_Image'
             ;;
     esac
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $kernelfile && sha256sum $kernelfile > ${kernelfile}.sha256
+    cd ..
 }
 
 dots() {
