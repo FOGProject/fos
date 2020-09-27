@@ -1,6 +1,5 @@
-diff -Nur partclone-0.3.12_orig/src/ddclone.c partclone-0.3.12_fix/src/ddclone.c
---- partclone-0.3.12_orig/src/ddclone.c	2018-10-28 14:54:37.000000000 +0100
-+++ partclone-0.3.12_fix/src/ddclone.c	2020-01-20 19:05:47.568022854 +0100
+--- partclone-0.3.13_orig/src/ddclone.c	2018-10-28 14:54:37.000000000 +0100
++++ partclone-0.3.13_fix/src/ddclone.c	2020-01-20 19:05:47.568022854 +0100
 @@ -30,7 +30,9 @@
  	}
  	strncpy(fs_info->fs, raw_MAGIC, FS_MAGIC_SIZE);
