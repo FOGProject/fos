@@ -54,7 +54,7 @@ done
 if [[ -z "$(echo $ifaces | tr -d ' ')" ]]; then  # because ifaces is constructed with a space, we must strip it
     echo "No network interfaces found, your kernel is most probably missing the correct driver!"
 else
-    echo "Failed to get an IP via DHCP! Tried on interfaces(s): $ifaces"
+    echo "Failed to get an IP via DHCP! Tried on interface(s): $ifaces"
 fi
 echo "Please check your network setup and try again!"
 [[ -z $isdebug ]] && sleep 60 && reboot
