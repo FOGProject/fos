@@ -1,6 +1,8 @@
 # FOG Operating System (FOS)
 This is the operating system environment used for imaging with FOG. This is a linux based operating system with all the scripts and programs required for perform imaging tasks.
 
+Latest build status: [![Build status](https://badge.buildkite.com/5af7ed69568b5cf1f7092156156a4ca41ba46f6de0fab809ae.svg)](https://buildkite.com/fogproject/fos)
+
 # What does this docker image do?
 Builds FOG Operating System (FOS) inits as well as kernels used by fog.
 
