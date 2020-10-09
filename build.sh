@@ -1,5 +1,8 @@
 #!/bin/bash
-# test
+
+[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='4.19.145'
+[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2020.02.6'
+
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
     echo -e "\t\t-a --arch [x86|x64|arm64] (optional) pick the architecture to build. Default is to build for all."
@@ -145,7 +148,6 @@ cd $buildPath || exit 1
 
 function buildFilesystem() {
     local arch="$1"
-    [[ -z $BUILDROOT_VERSION ]] && echo "No buildroot version, set environment BUILDROOT_VERSION" && exit 1
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
     echo "Preparing buildroot $arch build"
     if [[ ! -d fssource$arch ]]; then
@@ -274,7 +276,6 @@ function buildFilesystem() {
 
 function buildKernel() {
     local arch="$1"
-    [[ -z $KERNEL_VERSION ]] && echo "No kernel version, set environment KERNEL_VERSION" && exit 1
     kernelURL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
     echo "Preparing kernel $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf kernelsource$arch
