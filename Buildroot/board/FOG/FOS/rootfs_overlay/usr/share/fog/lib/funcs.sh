@@ -1,4 +1,5 @@
 #!/bin/bash
+export initversion=19800101
 . /usr/share/fog/lib/partition-funcs.sh
 REG_LOCAL_MACHINE_XP="/ntfs/WINDOWS/system32/config/system"
 REG_LOCAL_MACHINE_7="/ntfs/Windows/System32/config/SYSTEM"
