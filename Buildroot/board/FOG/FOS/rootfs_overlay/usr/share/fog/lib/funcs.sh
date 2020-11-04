@@ -1276,9 +1276,19 @@ getPartitions() {
 # Gets the hard drive on the host
 # Note: This function makes a best guess
 getHardDisk() {
-    [[ -n $fdrive ]] && hd=$(echo $fdrive)
-    [[ -n $hd ]] && return
     local devs=$(lsblk -dpno KNAME -I 3,8,9,179,202,253,259 | uniq | sort -V)
+    if [[ ! -z "${fdrive##*[!0-9]*}" ]]; then
+        for dev in $devs; do
+            if [[ $fdrive -eq $(blockdev --getsize64 $dev) ]]; then
+                hd=$(echo $dev)
+                break
+            fi
+        done
+        [[ -z $hd ]] && handleError "No disk found matching the sector count ${fdrive} (${FUNCNAME[0]})\n   Args Passed: $*"
+    else
+        hd=$(echo $fdrive)
+    fi
+    [[ -n $hd ]] && return
     disks=$(echo $devs)
     [[ -z $disks ]] && handleError "Cannot find disk on system (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ $1 == true ]] && return
