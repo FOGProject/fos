@@ -296,24 +296,16 @@ function buildKernel() {
     make mrproper
     cp ../configs/kernel$arch.config .config
     echo "Done"
-    if [[ -f ../patch/kernel/linux-$KERNEL_VERSION.patch ]]; then
-        dots "Applying patch(es)"
+    if [[ -f ../patch/kernel/linux.patch ]]; then
+        dots " * Applying patch"
 	echo
-        patch -p1 < ../patch/kernel/linux-$KERNEL_VERSION.patch
+        patch -p1 < ../patch/kernel/linux.patch
         if [[ $? -ne 0 ]]; then
             echo "Failed"
             exit 1
 	fi
     else
-        echo " * Did not find a patch file matching the exact kernel version $KERNEL_VERSION."
-	latest=$(ls -1 ../patch/kernel/linux*.patch | sort -Vr | head -1)
-	dots "Trying to apply $latest"
-	echo
-	patch -p1 < $latest
-        if [[ $? -ne 0 ]]; then
-            echo "Failed"
-            exit 1
-	fi
+        echo " * WARNING: Did not find a patch file building vanilla kernel without patches!"
     fi
     dots "Cloning Linux firmware repository"
     git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
