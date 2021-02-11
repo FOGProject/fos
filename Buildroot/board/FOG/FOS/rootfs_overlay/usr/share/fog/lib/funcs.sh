@@ -258,6 +258,36 @@ expandPartition() {
                     ;;
             esac
             ;;
+        btrfs)
+            # Based on info from @mstabrin on forums.fogproject.org
+            if [[ ! -d /tmp/btrfs ]]; then
+                mkdir /tmp/btrfs >>/tmp/btfrslog.txt 2>&1
+                if [[ $? -gt 0 ]]; then
+                    echo "Failed"
+                    debugPause
+                    handleError "Could not create /tmp/btrfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
+                fi
+            fi
+            mount $part /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            if [[ $? -gt 0 ]]; then
+                echo "Failed"
+                debugPause
+                handleError "Could not mount $part to /tmp/btrfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
+            fi
+            btrfs filesystem resize max /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            if [[ $? -gt 0 ]]; then
+                echo "Failed"
+                debugPause
+                handleError "Could not resize btrfs partition (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
+            fi
+            umount /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            if [[ $? -gt 0 ]]; then
+                echo "Failed"
+                debugPause
+                handleError "Could not unmount $part from /tmp/btrfs (${FUNCNAME[0]}\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*)"
+            fi
+            echo "Done"
+            ;;
         *)
             echo " * Not expanding ($part -- $fstype)"
             debugPause
@@ -596,6 +626,39 @@ shrinkPartition() {
                     echo "Done"
                     ;;
             esac
+            ;;
+        btrfs)
+            # Based on info from @mstabrin on forums.fogproject.org
+            # https://forums.fogproject.org/topic/15159/btrfs-postdownloadscript/3
+            if [[ ! -d /tmp/btrfs ]]; then
+                mkdir /tmp/btrfs >>/tmp/btfrslog.txt 2>&1
+                if [[ $? -gt 0 ]]; then
+                    echo "Failed"
+                    debugPause
+                    handleError "Could not create /tmp/btrfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
+                fi
+            fi
+            mount $part /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            if [[ $? -gt 0 ]]; then
+                echo "Failed"
+                debugPause
+                handleError "Could not mount $part to /tmp/btrfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
+            fi
+            local free_size_original=$(btrfs filesystem usage -b /tmp/btrfs | grep unallocated | grep -Eo '[0-9]+')
+            local fsize_pct=$(calculate_float "${percent}/100")
+            local mult_val=$(calculate_float "1-${fsize_pct}")
+            local free_size=$(calculate "${mult_val}*${free_size_original}")
+            while ! btrfs filesystem resize -${free_size} /tmp/btrfs >>/tmp/btrfslog.txt; do
+                [[ $(echo "${mult_val} <= 0" | bc -l) -gt 0 ]] && break || mult_val=$(calculate_float "${mult_val} - 0.05")
+                free_size=$(calculate "${mult_val}*${free_size_original}")
+            done
+            umount /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            if [[ $? -gt 0 ]]; then
+                echo "Failed"
+                debugPause
+                handleError "Could not unmount $part from /tmp/btrfs (${FUNCNAME[0]}\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*)"
+            fi
+            echo "Done"
             ;;
         *)
             echo " * Not shrinking ($part $fstype)"
@@ -2382,4 +2445,8 @@ trim() {
 # Calculates information
 calculate() {
     echo $(awk 'BEGIN{printf "%.0f\n", '$*'}')
+}
+# Calculates information and returns full float
+calculate_float() {
+    echo $(awk 'BEGIN{printf "%f\n"}, '$*'}');
 }

@@ -45,7 +45,7 @@ beginUpload() {
                 fsTypeSetting "$part"
                 getPartitionNumber "$part"
                 case $fstype in
-                    ntfs|extfs)
+                    ntfs|extfs|btrfs)
                         continue
                         ;;
                     *)
@@ -58,8 +58,9 @@ beginUpload() {
             dots "Getting Windows/Linux Partition Count"
             countPartTypes "$hd" "ntfs" "ntfscnt"
             countPartTypes "$hd" "extfs" "extfscnt"
+            countPartTypes "$hd" "btrfs" "btrfscnt"
             countPartTypes "$hd" "*" "partscnt"
-            if [[ $ntfscnt -eq 0 && $extfscnt -eq 0 ]]; then
+            if [[ $ntfscnt -eq 0 && $extfscnt -eq 0 && $btrfscnt -eq 0 ]]; then
                 echo "Failed"
                 debugPause
                 handleError "No resizable partitions found ($0)\n   Args Passed: $*"
@@ -69,6 +70,8 @@ beginUpload() {
             echo " * NTFS Partition count of: $ntfscnt"
             debugPause
             echo " * EXTFS Partition count of: $extfscnt"
+            debugPause
+            echo " * BTRFS Partition count of: $btrfscnt"
             debugPause
             echo " * Total Partition count of: $partscnt"
             debugPause
