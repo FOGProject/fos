@@ -149,7 +149,7 @@ cd $buildPath || exit 1
 function buildFilesystem() {
     local arch="$1"
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
-    echo "Preparing buildroot $arch build"
+    echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
     if [[ ! -d fssource$arch ]]; then
         if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.bz2 ]]; then
             dots "Downloading buildroot source package"
@@ -277,7 +277,7 @@ function buildFilesystem() {
 function buildKernel() {
     local arch="$1"
     kernelURL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
-    echo "Preparing kernel $arch build:"
+    echo "Preparing kernel $KERNEL_VERSION on $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf kernelsource$arch
     if [[ ! -f linux-$KERNEL_VERSION.tar.xz ]]; then
         dots "Downloading kernel source"
