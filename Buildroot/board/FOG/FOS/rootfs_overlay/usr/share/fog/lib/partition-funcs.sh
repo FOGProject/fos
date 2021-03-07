@@ -378,9 +378,6 @@ resizeSfdiskPartition() {
         majorDebugPause
     fi
     applySfdiskPartitions "$disk" "$tmp_file2"
-    local sfdiskminimumpartitionfilename=""
-    sfdiskMinimumPartitionFileName "$imagePath" 1
-    saveSfdiskPartitions "$disk" "$imagePath"
 }
 # $1 is the disk device (e.g. /dev/sda)
 # $2 is the name of the original sfdisk -d output file used as a template
