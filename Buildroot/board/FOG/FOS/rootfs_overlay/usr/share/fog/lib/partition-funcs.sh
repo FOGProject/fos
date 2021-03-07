@@ -91,7 +91,7 @@ restoreSfdiskPartitions() {
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
     applySfdiskPartitions "$disk" "$file"
-    fdisk $disk < /usr/share/fog/lib/EOFRESTOREPART >/dev/null 2>&1
+    flock $disk fdisk $disk < /usr/share/fog/lib/EOFRESTOREPART >/dev/null 2>&1
     [[ ! $? -eq 0 ]] && majorDebugEcho "fdisk failed in (${FUNCNAME[0]})"
 }
 # $1 is the name of the disk drive
