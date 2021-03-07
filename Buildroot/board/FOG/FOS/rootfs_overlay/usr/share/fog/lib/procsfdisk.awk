@@ -348,7 +348,7 @@ function move_partition(partition_names, partitions, args, pName, new_start, new
             continue;
         }
         # Ensure start postition is aligned properly.
-        new_start = int(sizePos) / int(SECTOR_SIZE);
+        new_start = int(sizePos) + int(SECTOR_SIZE);
         new_start -= (new_start % int(SECTOR_SIZE));
         # If the new_start is less than the MIN_START
         # ensure the new_start is equal to the min start point.

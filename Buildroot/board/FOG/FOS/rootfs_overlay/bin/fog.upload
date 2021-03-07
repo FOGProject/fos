@@ -141,11 +141,28 @@ beginUpload() {
                 removePageFile "$part"
                 shrinkPartition "$part" "$imagePath/d1.original.fstypes" "$fixed_size_partitions"
             done
+            local hasgpt=0
+            hasGPT "$hd"
+            if [[ $hasgpt -eq 1 ]]; then
+                echo " * Moving Partitions on disk $hd"
+                debugPause
+                saveSfdiskPartitions "$hd" "$imagePath/d1.shrunken.partitions"
+                prevPart=""
+                for part in $parts; do
+                    movePartition "$part" "$prevPart"
+                    prevPart="$part"
+                done
+            fi
             echo " * Saving shrunken partition table"
             debugPause
             sfdiskminimumpartitionfilename=""
             sfdiskMinimumPartitionFileName "$imagePath" 1
             savePartitionTablesAndBootLoaders "$hd" 1 "$imagePath" "$osid" "$imgPartitionType" "$sfdiskminimumpartitionfilename"
+            if [[ $hasgpt -eq 1 ]]; then
+                echo " * Moving Partitions back on disk $hd"
+                debugPause
+                applySfdiskPartitions "$hd" "$imagePath/d1.shrunken.partitions"
+            fi
             echo " * Processing Hard Disk: $hd"
             for part in $parts; do
                 savePartition "$part" 1 "$imagePath" "$imgPartitionType"

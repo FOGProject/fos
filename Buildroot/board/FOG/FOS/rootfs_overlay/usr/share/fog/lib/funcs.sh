@@ -454,6 +454,41 @@ prepareUploadLocation() {
     esac
     debugPause
 }
+# Moves partitions if possible for upload (resizable images only)
+#
+# $1 is the partition
+# $2 is the previous partition
+movePartition() {
+    local part="$1"
+    local prevPart="$2"
+    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    # Skip if we don't know about the previous partition, e.g. call on the very first partition
+    [[ -z $prevPart ]] && return
+    local disk=""
+    getDiskFromPartition "$part"
+    local tmp_file1="/tmp/move1.$$"
+    local tmp_file2="/tmp/move2.$$"
+    rm -f /tmp/move{1,2}.*
+    saveSfdiskPartitions "$disk" "$tmp_file1"
+    prevPartStart=$(grep "$prevPart" $tmp_file1 | cut -d',' -f1 | awk -F'=' '{print $2}' | tr -d ' ')
+    prevPartSize=$(grep "$prevPart" $tmp_file1 | cut -d',' -f2 | awk -F'=' '{print $2}' | tr -d ' ')
+    newStart=$(calculate "${prevPartStart}+${prevPartSize}")
+    currPartStart=$(grep "$part" $tmp_file1 | cut -d',' -f1 | awk -F'=' '{print $2}' | tr -d ' ')
+    if [[ $currPartStart -gt $newStart ]]; then
+        echo " * Moving $part forward to close gap between end of $prevPart and start of $part."
+        debugPause
+        processSfdisk "$tmp_file1" move "$part" "$newStart" > "$tmp_file2"
+        if [[ $ismajordebug -gt 0 ]]; then
+            majorDebugEcho "Partition table *before* moving $part:"
+            cat $tmp_file1
+            majorDebugPause
+            majorDebugEcho "Partition table *after* before moving $part - will be applied when you hit ENTER:"
+            cat $tmp_file2
+            majorDebugPause
+            applySfdiskPartitions "$disk" "$tmp_file2"
+        fi
+    fi
+}
 # Shrinks partitions for upload (resizable images only)
 #
 # $1 is the partition
