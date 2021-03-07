@@ -1837,7 +1837,7 @@ debugEcho() {
     esac
 }
 majorDebugEcho() {
-    [[ $ismajordebug -gt 1 ]] && echo "$*"
+    [[ $ismajordebug -ge 1 ]] && echo "$*"
 }
 majorDebugPause() {
     [[ ! $ismajordebug -gt 0 ]] && return
