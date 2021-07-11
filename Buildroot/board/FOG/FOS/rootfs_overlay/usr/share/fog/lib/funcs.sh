@@ -482,11 +482,11 @@ movePartition() {
             majorDebugEcho "Partition table *before* moving $part:"
             cat $tmp_file1
             majorDebugPause
-            majorDebugEcho "Partition table *after* before moving $part - will be applied when you hit ENTER:"
+            majorDebugEcho "Partition table *after* moving $part - will be applied when you hit ENTER:"
             cat $tmp_file2
             majorDebugPause
-            applySfdiskPartitions "$disk" "$tmp_file2"
         fi
+        applySfdiskPartitions "$disk" "$tmp_file2"
     fi
 }
 # Shrinks partitions for upload (resizable images only)
