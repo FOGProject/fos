@@ -1383,7 +1383,7 @@ getHardDisk() {
             fi
         done
         [[ -z $hd ]] && handleError "No disk found matching the sector count ${fdrive} (${FUNCNAME[0]})\n   Args Passed: $*"
-    else
+    elif [[ -n $fdrive ]]; then
         hd=$(echo $fdrive)
     fi
     [[ -n $hd ]] && return
