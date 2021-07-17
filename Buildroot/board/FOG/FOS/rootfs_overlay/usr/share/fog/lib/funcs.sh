@@ -1417,14 +1417,18 @@ findHDDInfo() {
                     ;;
                 up)
                     dots "Reading Partition Tables"
-                    runPartprobe "$hd"
-                    getPartitions "$hd"
-                    if [[ -z $parts ]]; then
-                        echo "Failed"
-                        debugPause
-                        handleError "Could not find partitions ($0)\n    Args Passed: $*"
+                    if [[ $imgType == "dd" ]]; then
+                        echo "Skipped"
+                    else
+                        runPartprobe "$hd"
+                        getPartitions "$hd"
+                        if [[ -z $parts ]]; then
+                            echo "Failed"
+                            debugPause
+                            handleError "Could not find partitions ($0)\n    Args Passed: $*"
+                        fi
+                        echo "Done"
                     fi
-                    echo "Done"
                     debugPause
                     ;;
             esac
