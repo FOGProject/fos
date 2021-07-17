@@ -1,7 +1,7 @@
 #!/bin/bash
 
 [[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='5.10.50'
-[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2020.02.11'
+[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2020.02.12'
 
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
