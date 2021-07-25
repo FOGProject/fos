@@ -25,6 +25,6 @@ do
     echo "Uploading ${i}..."
     curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
     UPLOAD_STATUS=$(cat ${i}.uploaded | jq -r .state)
-    [[ ${UPLOAD_STATUS} != "uploaded" }} && echo "Failed to upload file ${i}." && exit 1
+    [[ ${UPLOAD_STATUS} != "uploaded" }} && echo "Failed to upload file ${i}." && cat ${i}.uploaded && exit 1
     sleep 1
 done
