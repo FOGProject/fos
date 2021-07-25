@@ -15,7 +15,7 @@ curl -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.githu
 
 GITHUB_RELEASE_ID=$(cat create_release_response.json | jq -r .id)
 
-[[ -z ${GITHUB_RELEASE_ID} ]] && echo "ID not found in response, something went wrong when trying to create a release on Github." && cat create_release_response.json
+[[ -z ${GITHUB_RELEASE_ID} || ${GITHUB_RELEASE_ID} == "null" ]] && echo "ID not found in response, something went wrong when trying to create a release on Github." && cat create_release_response.json && exit 1
 
 buildkite-agent artifact download dist/* .
 cd dist/
