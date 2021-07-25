@@ -1,7 +1,7 @@
 #!/bin/bash
 
 . /var/lib/buildkite-agent/github-upload.sh
-[[ -z ${GITHUB_USER} -o -z ${GITHUB_TOKEN} ]] && echo "Missing Github information, can't proceed" && exit 1
+[[ -z ${GITHUB_USER} || -z ${GITHUB_TOKEN} ]] && echo "Missing Github information, can't proceed" && exit 1
 
 command -v jqa
 [[ $? -eq 0 ]] || echo "Package jq not installed, can't proceed" && exit 1
