@@ -4,9 +4,9 @@
 [[ -z ${GITHUB_USER} || -z ${GITHUB_TOKEN} ]] && echo "Missing Github information, can't proceed." && exit 1
 
 command -v curl
-[[ $? -eq 0 ]] || echo "Package curl not installed, can't proceed." && exit 1
+[[ $? -ne 0 ]] && echo "Package curl not installed, can't proceed." && exit 1
 command -v jq
-[[ $? -eq 0 ]] || echo "Package jq not installed, can't proceed." && exit 1
+[[ $? -ne 0 ]] && echo "Package jq not installed, can't proceed." && exit 1
 
 GITHUB_TAG=$(date +%Y%m%d)
 GITHUB_NAME="Latest from $(date +%d.%m.%Y)"
