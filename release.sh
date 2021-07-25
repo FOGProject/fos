@@ -24,6 +24,11 @@ cd dist/
 
 for i in `ls -1`
 do
+    if [[ ${i} =~ "sha256" ]]
+    then
+        sha256sum -c ${i}
+        [[ $? -ne 0 ]] && echo "Checkum check failed on ${i}." && exit 1
+    fi
     echo "Uploading ${i}..."
     curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
     UPLOAD_STATUS=$(cat ${i}.uploaded | jq -r .state)
