@@ -11,7 +11,10 @@ command -v jq
 GITHUB_TAG=$(date +%Y%m%d)
 GITHUB_NAME="Latest from $(date +%d.%m.%Y)"
 
-curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\" }" > create_release_response.json
+KERNEL_VERSION=$(grep KERNEL_VERSION= build.sh | cut -d"'" -f2)
+BUILDROOT_VERSION=$(grep BUILDROOT_VERSION= build.sh | cut -d"'" -f2)
+
+curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > create_release_response.json
 
 GITHUB_RELEASE_ID=$(cat create_release_response.json | jq -r .id)
 
