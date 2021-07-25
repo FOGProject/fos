@@ -11,7 +11,7 @@ command -v jq
 GITHUB_TAG=$(date +%Y%m%d)
 GITHUB_NAME="Latest from $(date +%d.%m.%Y)"
 
-curl -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\" }" > create_release_response.json
+curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\" }" > create_release_response.json
 
 GITHUB_RELEASE_ID=$(cat create_release_response.json | jq -r .id)
 
@@ -22,10 +22,9 @@ cd dist/
 
 for i in `ls -1`
 do
-    echo "Trying to upload ${i}..."
-    curl -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
-    cat ${i}.uploaded
+    echo "Uploading ${i}..."
+    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
+    UPLOAD_STATUS=$(cat ${i}.uploaded | jq -r .state)
+    [[ ${UPLOAD_STATUS} != "uploaded" }} && echo "Failed to upload file ${i}." && exit 1
     sleep 1
-    echo ""
-    echo ""
 done
