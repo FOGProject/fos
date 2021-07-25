@@ -17,6 +17,8 @@ GITHUB_RELEASE_ID=$(cat create_release_response.json | jq -r .id)
 
 [[ -z ${GITHUB_RELEASE_ID} || ${GITHUB_RELEASE_ID} == "null" ]] && echo "ID not found in response, something went wrong when trying to create a release on Github." && cat create_release_response.json && exit 1
 
+echo "New release created on Github, tagged ${GITHUB_TAG}, id ${GITHUB_RELEASE_ID}."
+
 buildkite-agent artifact download dist/* .
 cd dist/
 
