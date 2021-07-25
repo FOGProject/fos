@@ -15,9 +15,17 @@ curl -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.githu
 
 GITHUB_RELEASE_ID=$(cat create_release_response.json | jq -r .id)
 
-[[ -z ${GITHUB_RELEASE_ID} ]] && echo "ID not found in response, something went wrong when trying to create a release on Github." && cat create_release_response.json && exit 1
+[[ -z ${GITHUB_RELEASE_ID} ]] && echo "ID not found in response, something went wrong when trying to create a release on Github." && cat create_release_response.json
 
 buildkite-agent artifact download dist/* .
 cd dist/
 
-ls -alR
+for i in `ls -1`
+do
+    echo "Trying to upload ${i}..."
+    curl -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
+    cat ${i}.uploaded
+    sleep 1
+    echo ""
+    echo ""
+done
