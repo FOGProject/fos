@@ -22,7 +22,7 @@ GITHUB_RELEASE_ID=$(cat create_release_response.json | jq -r .id)
 
 echo "New release created on Github, tagged ${GITHUB_TAG}, id ${GITHUB_RELEASE_ID}."
 
-buildkite-agent artifact download dist/* .
+buildkite-agent artifact download 'dist/*' .
 cd dist/
 
 for i in `ls -1`
