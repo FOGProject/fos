@@ -215,7 +215,6 @@ preparePartitions() {
             ;;
         mpa)
             [[ ! -d $imagePath ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
-            getHardDisk "true"
             disk_count=$(echo "$disks" | wc -w)
             disk_array=()
             size_information=$(cat ${imagePath}/*.size 2>/dev/null)
