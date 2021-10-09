@@ -697,20 +697,31 @@ BEGIN {
         testfield1 = fields[5];
         testfield2 = fields[5];
         namefield = gsub(/.*name= */, "", testfield1);
-        attrsfield = gsub(/.*attrs=*/, "", testfield2);
+        attrsfield = gsub(/.*attrs= */, "", testfield2);
         if (namefield > 0) {
+            # Checking for corrupted name field, e.g. name="attrs=\x22RequiredPartition GUID:63"
+            testnameattrs = fields[5];
+            nameattrsfield = gsub(/.*attrs= */, "", testnameattrs);
             gsub(/.*name= */, "", fields[5]);
-            partitions[part_name, "name"] = fields[5];
-        }
-        if (attrsfield > 0) {
-            gsub(/.*attrs=*/, "", fields[5]);
+            if (nameattrsfield > 0) {
+                attrs_special_char = gsub(/.*\\x22 */, "\"", testnameattrs);
+                partitions[part_name, "attrs"] = testnameattrs;
+            }
+            else {
+                partitions[part_name, "name"] = fields[5];
+            }
+        } else if (attrsfield > 0) {
+            gsub(/.*attrs= */, "", fields[5]);
             partitions[part_name, "attrs"] = fields[5];
         }
         # Get attrs value
         if (fields[6]) {
             gsub(/.*attrs= */, "", fields[6]);
-            # Sets the attrs int the object.
-            partitions[part_name, "attrs"] = fields[6];
+            # Only set attrs when it's not being set by fields[5] before or if it's different to that
+            if (partitions[part_name, "attrs"] == "" || partitions[part_name, "attrs"] != fields[6]) {
+                # Sets the attrs in the object.
+                partitions[part_name, "attrs"] = fields[6];
+            }
         }
     } else {
         split($0, typeList, "Id=");
