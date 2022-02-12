@@ -18,7 +18,7 @@ if [[ -n "$1" ]]; then
 echo "rel_id: $TESTING_RELEASE_ID"
     HEAD_SHA=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/heads/${1} | jq -r .object.sha)
 echo "sha: $HEAD_SHA"
-    curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/${GITHUB_TAG} -d "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
+    curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/tags/${GITHUB_TAG} -d "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
     curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${TESTING_RELEASE_ID} -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
 else
     GITHUB_TAG=$(date +%Y%m%d)
@@ -44,7 +44,7 @@ do
         [[ $? -ne 0 ]] && echo "Checkum check failed on ${i}." && exit 1
     fi
     echo "Uploading ${i}..."
-    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
+    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded || true
     UPLOAD_STATUS=$(cat ${i}.uploaded | jq -r .state)
     [[ ${UPLOAD_STATUS} != "uploaded" ]] && echo "Failed to upload file ${i}." && cat ${i}.uploaded && exit 1
     sleep 1
