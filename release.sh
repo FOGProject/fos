@@ -15,9 +15,7 @@ if [[ -n "$1" ]]; then
     GITHUB_TAG="testing"
     GITHUB_NAME="Testing from $(date +%d.%m.%Y)"
     TESTING_RELEASE_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/tags/${GITHUB_TAG} | jq -r .id)
-echo "rel_id: $TESTING_RELEASE_ID"
     HEAD_SHA=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/heads/${1} | jq -r .object.sha)
-echo "sha: $HEAD_SHA"
     curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/tags/${GITHUB_TAG} -d "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
     curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${TESTING_RELEASE_ID} -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
 else
@@ -44,7 +42,13 @@ do
         [[ $? -ne 0 ]] && echo "Checkum check failed on ${i}." && exit 1
     fi
     echo "Uploading ${i}..."
-    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded || true
+    if [[ -n "$1" ]]; then
+        ASSET_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets | jq -r '.[] | "\(.id),\(.name)"') | grep ",${i}\$"| cut -f1 -d,)
+        if [[ -n "${ASSET_ID}" ]]; then
+            curl -s -X DELETE -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/assets/${ASSET_ID}
+        fi
+    fi
+    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
     UPLOAD_STATUS=$(cat ${i}.uploaded | jq -r .state)
     [[ ${UPLOAD_STATUS} != "uploaded" ]] && echo "Failed to upload file ${i}." && cat ${i}.uploaded && exit 1
     sleep 1
