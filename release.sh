@@ -43,7 +43,7 @@ do
     fi
     echo "Uploading ${i}..."
     if [[ -n "$1" ]]; then
-        ASSET_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets | jq -r '.[] | "\(.id),\(.name)"') | grep ",${i}\$"| cut -f1 -d,)
+        ASSET_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets | jq -r '.[] | "\(.id),\(.name)"' | grep ",${i}\$"| cut -f1 -d,)
         if [[ -n "${ASSET_ID}" ]]; then
             curl -s -X DELETE -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/assets/${ASSET_ID}
         fi
