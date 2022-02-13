@@ -1378,16 +1378,12 @@ getHardDisk() {
     disks=""
     local devs=$(lsblk -dpno KNAME -I 3,8,9,179,202,253,259 | uniq | sort -V)
     if [[ -n $fdrive ]]; then
-        echo " * Trying to sort enumerated disks according to Host Primary Disk setting"
         for spec in $(echo $fdrive | tr "," "\n"); do
-            echo " --> Host Primary Disk specifier: ${spec}"
             for dev in $devs; do
-                echo -n "   * Device: $dev - "
                 if [[ "x$spec" = "x$dev" ||
                       "x$spec" = "x$(trim $(blockdev --getsize64 $dev))" ||
                       "x$spec" = "x$(trim $(lsblk -pdno SERIAL $dev))" ||
                       "x$spec" = "x$(trim $(lsblk -pdno WWN $dev))" ]]; then
-                    echo "FOUND"
                     disks=$(echo "$disks $dev")
                     escaped_dev=$(echo $dev | sed -e 's/[]"\/$&*.^|[]/\\&/g')
                     devs=$(echo ${devs} | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
@@ -1396,7 +1392,6 @@ getHardDisk() {
                     p1="$(trim $(blockdev --getsize64 $dev))"
                     p2="$(trim $(lsblk -pdno SERIAL $dev))"
                     p3="$(trim $(lsblk -pdno WWN $dev))"
-                    echo "NO MATCH (${p1}|${p2}|${p3})"
                 fi
             done
         done
@@ -1404,10 +1399,8 @@ getHardDisk() {
     elif [[ -r ${imagePath}/d1.size && -r ${imagePath}/d2.size ]]; then
         disks=$(echo ${devs})
         disk_count=$(echo "$disks" | wc -w)
-echo "disk_count=$disk_count"
         disk_array=()
         size_information=$(cat ${imagePath}/*.size 2>/dev/null)
-echo "size_information=$size_information"
         for disk_number in $(seq 1 $disk_count); do
             disk=$(echo $disks | cut -d' ' -f $disk_number)
             if [[ -n "${size_information}" ]]; then
