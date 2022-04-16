@@ -1374,39 +1374,77 @@ getPartitions() {
 # Gets the hard drive on the host
 # Note: This function makes a best guess
 getHardDisk() {
+    hd=""
+    disks=""
     local devs=$(lsblk -dpno KNAME -I 3,8,9,179,202,253,259 | uniq | sort -V)
-    if [[ ! -z "${fdrive##*[!0-9]*}" ]]; then
-        for dev in $devs; do
-            if [[ $fdrive -eq $(blockdev --getsize64 $dev) ]]; then
-                hd=$(echo $dev)
-                break
-            fi
+    if [[ -n $fdrive ]]; then
+        for spec in $(echo $fdrive | tr "," "\n"); do
+            for dev in $devs; do
+                if [[ "x$spec" = "x$dev" ||
+                      "x$spec" = "x$(trim $(blockdev --getsize64 $dev))" ||
+                      "x$spec" = "x$(trim $(lsblk -pdno SERIAL $dev))" ||
+                      "x$spec" = "x$(trim $(lsblk -pdno WWN $dev))" ]]; then
+                    disks=$(echo "$disks $dev")
+                    escaped_dev=$(echo $dev | sed -e 's/[]"\/$&*.^|[]/\\&/g')
+                    devs=$(echo ${devs} | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
+                    break
+                else
+                    p1="$(trim $(blockdev --getsize64 $dev))"
+                    p2="$(trim $(lsblk -pdno SERIAL $dev))"
+                    p3="$(trim $(lsblk -pdno WWN $dev))"
+                fi
+            done
         done
-        [[ -z $hd ]] && handleError "No disk found matching the sector count ${fdrive} (${FUNCNAME[0]})\n   Args Passed: $*"
-    elif [[ -n $fdrive ]]; then
-        hd=$(echo $fdrive)
+        disks=$( echo "${disks} ${devs}" | xargs)
+    elif [[ -r ${imagePath}/d1.size && -r ${imagePath}/d2.size ]]; then
+        disks=$(echo ${devs})
+        disk_count=$(echo "$disks" | wc -w)
+        disk_array=()
+        size_information=$(cat ${imagePath}/*.size 2>/dev/null)
+        for disk_number in $(seq 1 $disk_count); do
+            disk=$(echo $disks | cut -d' ' -f $disk_number)
+            if [[ -n "${size_information}" ]]; then
+                disk_size=$(blockdev --getsize64 $disk)
+                image_matching_size=$(echo ${size_information} | grep -o "[0-9][0-9]*:${disk_size}" | head -1 | cut -d':' -f1)
+                if [[ -n $image_matching_size && $image_matching_size -gt 0 && $image_matching_size -le 32 ]]; then
+                    disk_number=$image_matching_size
+                else
+                    closest_sized_image=$(echo -e "${size_information}\nx:${disk_size}" | sort -t':' -k2 -n | grep -B1 "${disk_size}" | head -1 | cut -d':' -f1 )
+                    if [[ -n $closest_sized_image && $closest_sized_image -gt 0 && $closest_sized_image -le 32 ]]; then
+                        disk_number=$closest_sized_image
+                    fi
+                fi
+                size_information=$(echo ${size_information} | sed "s/[[:space:]]*[0-9][0-9]*:${disk_size}[[:space:]]*//")
+            fi
+            echo "${disk_array[@]}" | grep -q "$disk"
+            if [[ $? -eq 0 ]]; then
+                handleError "Fatal Error: Disk size information would lead to overwrite the already cloned disk $disk. ($0)"
+            fi
+            disk_array[$disk_number]=$disk
+        done
+        disks=${disk_array[@]}
+    else
+        disks=$(echo ${devs})
     fi
-    [[ -n $hd ]] && return
-    disks=$(echo $devs)
-    [[ -z $disks ]] && handleError "Cannot find disk on system (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ $1 == true ]] && return
+
     for hd in $disks; do
         break
     done
+    [[ -z $hd || -z $disks ]] && handleError "Cannot find hard disk(s) (${FUNCNAME[0]})\n   Args Passed: $*"
 }
 # Finds the hard drive info and set's up the type
 findHDDInfo() {
+    dots "Looking for Hard Disk(s)"
+    getHardDisk
+    if [[ -z $hd || -z $disks ]]; then
+        echo "Failed"
+        debugPause
+        handleError "Could not find hard disk ($0)\n   Args Passed: $*"
+    fi
+    echo "Done"
+    debugPause
     case $imgType in
         [Nn]|mps|dd)
-            dots "Looking for Hard Disk"
-            getHardDisk
-            if [[ -z $hd ]]; then
-                echo "Failed"
-                debugPause
-                handleError "Could not find hard disk ($0)\n   Args Passed: $*"
-            fi
-            echo "Done"
-            debugPause
             case $type in
                 down)
                     diskSize=$(lsblk --bytes -dplno SIZE -I 3,8,9,179,259 $hd)
@@ -1435,15 +1473,6 @@ findHDDInfo() {
             echo " * Using Hard Disk: $hd"
             ;;
         mpa)
-            dots "Looking for Hard Disks"
-            getHardDisk "true"
-            if [[ -z $disks ]]; then
-                echo "Failed"
-                debugPause
-                handleError "Could not find any disks ($0)\n   Args Passed: $*"
-            fi
-            echo "Done"
-            debugPause
             case $type in
                 up)
                     for disk in $disks; do
@@ -1461,7 +1490,7 @@ findHDDInfo() {
                     done
                     ;;
             esac
-            echo " * Using Disks: $disks"
+            echo " * Using Hard Disks: $disks"
             ;;
     esac
 }
@@ -2386,13 +2415,12 @@ performRestore() {
     [[ -z $disks ]] && handleError "No disks passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imgPartitionType ]] && handleError "No partition type passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    local disk_number=0
+    local disk_number=1
     local part_number=0
     local restoreparts=""
     local sfdiskoriginalpartitionfilename=""
     [[ $imgType =~ [Nn] ]] && local tmpebrfilename=""
     for disk in $disks; do
-        let disk_number+=1
         sfdiskoriginalpartitionfilename=""
         sfdiskOriginalPartitionFileName "$imagePath" "$disk_number"
         getValidRestorePartitions "$disk" "$disk_number" "$imagePath" "$restoreparts"
@@ -2412,6 +2440,7 @@ performRestore() {
         echo " * Resetting swap systems"
         debugPause
         makeAllSwapSystems "$disk" "$disk_number" "$imagePath" "$imgPartitionType"
+        let disk_number+=1
     done
 }
 # Gets the file system identifier.
