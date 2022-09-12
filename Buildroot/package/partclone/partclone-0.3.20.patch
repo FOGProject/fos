@@ -1,7 +1,8 @@
---- partclone-0.3.13_orig/src/progress.c	2019-09-04 01:27:28.905433546 -0500
-+++ partclone-0.3.13_new/src/progress.c		2019-09-04 23:27:34.969168150 -0500
-@@ -182,6 +182,47 @@
-     strncpy(prog_stat->Rformated, Rformated, sizeof(prog_stat->Rformated));
+diff -Nur partclone-0.3.20_original/src/progress.c partclone-0.3.20_patched/src/progress.c
+--- partclone-0.3.20_original/src/progress.c	2022-04-27 01:56:42.000000000 -0500
++++ partclone-0.3.20_patched/src/progress.c	2022-09-12 16:15:01.807055634 -0500
+@@ -193,6 +193,47 @@
+     strncpy(prog_stat->Rformated, Rformated, sizeof(Rformated)+1);
  }
  
 +/// convert the size
@@ -48,7 +49,7 @@
  /// update information at progress bar
  extern void progress_update(struct progress_bar *prog, unsigned long long copied, unsigned long long current, int done)
  {
-@@ -203,6 +244,7 @@
+@@ -214,6 +255,7 @@
  	    fprintf(stderr, _(", %6.2f%s/min,"), prog_stat.speed, prog_stat.speed_unit);
  	if(prog->flag == IO)
  	    fprintf(stderr, "\n\r%80c\rcurrent block: %10Lu, total block: %10Lu, Complete: %6.2f%%%s\r", clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
@@ -56,7 +57,7 @@
      } else {
  	setlocale(LC_ALL, "");
  	bindtextdomain(PACKAGE, LOCALEDIR);
-@@ -278,6 +320,7 @@
+@@ -289,6 +331,7 @@
  	wrefresh(p_win);
          wrefresh(bar_win);
          wrefresh(tbar_win);
