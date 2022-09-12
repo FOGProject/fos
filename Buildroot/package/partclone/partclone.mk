@@ -4,9 +4,9 @@
 #
 ################################################################################
 
-PARTCLONE_VERSION = 0.3.13
+PARTCLONE_VERSION = 0.3.20
 PARTCLONE_SOURCE = partclone-$(PARTCLONE_VERSION).tar.gz
-PARTCLONE_SITE = http://partclone.nchc.org.tw/download/testing
+PARTCLONE_SITE = $(call github,Thomas-Tsai,partclone,$(PARTCLONE_VERSION))
 PARTCLONE_INSTALL_STAGING = YES
 PARTCLONE_AUTORECONF = YES
 PARTCLONE_DEPENDENCIES += attr e2fsprogs libgcrypt lzo xz zlib xfsprogs ncurses host-pkgconf
