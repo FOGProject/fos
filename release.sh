@@ -17,7 +17,7 @@ if [[ -n "$1" ]]; then
     TESTING_RELEASE_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/tags/${GITHUB_TAG} | jq -r .id)
     HEAD_SHA=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/heads/${1} | jq -r .object.sha)
     curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/tags/${GITHUB_TAG} -d "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
-    curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${TESTING_RELEASE_ID} -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
+    curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${TESTING_RELEASE_ID} -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\nGithub-Branch ${1}\" }" > response.json
 else
     GITHUB_TAG=$(date +%Y%m%d)
     GITHUB_NAME="Latest from $(date +%d.%m.%Y)"
