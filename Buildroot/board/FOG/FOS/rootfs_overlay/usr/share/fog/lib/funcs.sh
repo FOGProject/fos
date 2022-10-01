@@ -268,7 +268,7 @@ expandPartition() {
                     handleError "Could not create /tmp/btrfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
                 fi
             fi
-            mount $part /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            mount -t btrfs $part /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
             if [[ $? -gt 0 ]]; then
                 echo "Failed"
                 debugPause
@@ -673,7 +673,7 @@ shrinkPartition() {
                     handleError "Could not create /tmp/btrfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*"
                 fi
             fi
-            mount $part /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
+            mount -t btrfs $part /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
             if [[ $? -gt 0 ]]; then
                 echo "Failed"
                 debugPause
