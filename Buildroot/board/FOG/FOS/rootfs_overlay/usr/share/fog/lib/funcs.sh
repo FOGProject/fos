@@ -611,7 +611,7 @@ shrinkPartition() {
             resetFlag "$part"
             ;;
         extfs)
-            dots "Checking $fstype volume ($part) before shrinking"
+            dots "Checking $fstype volume ($part)"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
             case $? in
                 0)
@@ -647,7 +647,7 @@ shrinkPartition() {
             resizePartition "$part" "$sizeextresize" "$imagePath"
             echo "Done"
             debugPause
-            dots "Checking $fstype volume ($part) after shrinking"
+            dots "Checking $fstype volume ($part)"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
             case $? in
                 0)
