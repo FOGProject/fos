@@ -260,6 +260,7 @@ expandPartition() {
             ;;
         btrfs)
             # Based on info from @mstabrin on forums.fogproject.org
+            dots "Resizing $fstype volume ($part)"
             if [[ ! -d /tmp/btrfs ]]; then
                 mkdir /tmp/btrfs >>/tmp/btfrslog.txt 2>&1
                 if [[ $? -gt 0 ]]; then
@@ -646,6 +647,7 @@ shrinkPartition() {
             resizePartition "$part" "$sizeextresize" "$imagePath"
             echo "Done"
             debugPause
+            dots "Checking $fstype volume ($part)"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
             case $? in
                 0)
@@ -665,6 +667,7 @@ shrinkPartition() {
         btrfs)
             # Based on info from @mstabrin on forums.fogproject.org
             # https://forums.fogproject.org/topic/15159/btrfs-postdownloadscript/3
+            dots "Shrinking $part partition"
             if [[ ! -d /tmp/btrfs ]]; then
                 mkdir /tmp/btrfs >>/tmp/btfrslog.txt 2>&1
                 if [[ $? -gt 0 ]]; then
@@ -2516,5 +2519,5 @@ calculate() {
 }
 # Calculates information and returns full float
 calculate_float() {
-    echo $(awk 'BEGIN{printf "%f\n"}, '$*'}');
+    echo $(awk 'BEGIN{printf "%f\n", '$*'}');
 }
