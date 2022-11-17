@@ -1,7 +1,7 @@
 #!/bin/bash
 
 [[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='5.15.68'
-[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2021.02.8'
+[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2022.02.6'
 
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
@@ -151,20 +151,20 @@ function buildFilesystem() {
 
     if [[ -f patch/filesystem/fs.patch ]]; then
         dots " * Applying filesystem patch"
-	echo
+        echo
         patch -p1 < patch/filesystem/fs.patch
         if [[ $? -ne 0 ]]; then
             echo "Failed"
             exit 1
-	fi
+    fi
     else
         echo " * WARNING: Did not find a patch file building filesystem without patches!"
     fi
 
-    brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.bz2"
+    brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.xz"
     echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
     if [[ ! -d fssource$arch ]]; then
-        if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.bz2 ]]; then
+        if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.xz ]]; then
             dots "Downloading buildroot source package"
             wget -q $brURL && echo "Done"
             if [[ $? -ne 0 ]]; then
@@ -173,7 +173,7 @@ function buildFilesystem() {
             fi
         fi
         dots "Extracting buildroot sources"
-        tar xjf buildroot-$BUILDROOT_VERSION.tar.bz2
+        tar xJf buildroot-$BUILDROOT_VERSION.tar.xz
         mv buildroot-$BUILDROOT_VERSION fssource$arch
         echo "Done"
     fi
