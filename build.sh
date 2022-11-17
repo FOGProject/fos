@@ -148,6 +148,19 @@ cd $buildPath || exit 1
 
 function buildFilesystem() {
     local arch="$1"
+
+    if [[ -f patch/filesystem/fs.patch ]]; then
+        dots " * Applying filesystem patch"
+        echo
+        patch -p1 < patch/filesystem/fs.patch
+        if [[ $? -ne 0 ]]; then
+            echo "Failed"
+            exit 1
+    fi
+    else
+        echo " * WARNING: Did not find a patch file building filesystem without patches!"
+    fi
+
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.xz"
     echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
     if [[ ! -d fssource$arch ]]; then
