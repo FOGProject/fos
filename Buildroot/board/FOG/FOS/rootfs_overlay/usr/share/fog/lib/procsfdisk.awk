@@ -433,9 +433,7 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
                     full_size = p_start + p_size;
                 }
                 original_fixed += int(MIN_START);
-                if (match(fixedList, regex)) {
-                    continue;
-                }
+                continue;
             }
             if (p_number > 4) {
                 original_fixed += int(MIN_START);
