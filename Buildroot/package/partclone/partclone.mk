@@ -10,7 +10,7 @@ PARTCLONE_SITE = $(call github,Thomas-Tsai,partclone,$(PARTCLONE_VERSION))
 PARTCLONE_INSTALL_STAGING = YES
 PARTCLONE_AUTORECONF = YES
 PARTCLONE_DEPENDENCIES += attr e2fsprogs libgcrypt lzo xz zlib xfsprogs ncurses host-pkgconf
-PARTCLONE_CONF_OPTS = --enable-static --enable-xfs --enable-btrfs --enable-ntfs --enable-extfs --enable-fat --enable-hfsp --enable-apfs --enable-ncursesw
+PARTCLONE_CONF_OPTS = --enable-static --enable-xfs --enable-btrfs --enable-ntfs --enable-extfs --enable-fat --enable-hfsp --enable-apfs --enable-ncursesw --enable-f2fs
 PARTCLONE_EXTRA_LIBS = -ldl
 PARTCLONE_CONF_ENV += LIBS="$(PARTCLONE_EXTRA_LIBS)"
 
