@@ -114,8 +114,8 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu"
-rhelDeps="git meld rsync ncurses-devel bison flex gcc-aarch64-linux-gnu"
+debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev"
+rhelDeps="git meld rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel"
 [[ -z $arch ]] && arch="x64 x86 arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
