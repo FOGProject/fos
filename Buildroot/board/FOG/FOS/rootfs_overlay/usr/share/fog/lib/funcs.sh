@@ -289,6 +289,18 @@ expandPartition() {
             fi
             echo "Done"
             ;;
+        f2fs)
+            if [[ $type == "down" ]]; then
+                dots "Resizing $fstype volume ($part)"
+                resize.f2fs $part >>/tmp/resize.f2fs.txt 2>&1
+                if [[ $? -gt 0 ]]; then
+                    echo "Failed"
+                    debugPause
+                    handleError "Could not expand f2fs partition (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize.f2fs.txt)\n  Args Passed: $*"
+                fi
+                echo "Done"
+            fi
+            ;;
         *)
             echo " * Not expanding ($part -- $fstype)"
             debugPause
@@ -329,6 +341,9 @@ fsTypeSetting() {
             ;;
         ext[2-4])
             fstype="extfs"
+            ;;
+        f2fs)
+            fstype="f2fs"
             ;;
         hfsplus)
             fstype="hfsp"
@@ -697,6 +712,9 @@ shrinkPartition() {
                 handleError "Could not unmount $part from /tmp/btrfs (${FUNCNAME[0]}\n   Info: $(cat /tmp/btrfslog.txt)\n   Args Passed: $*)"
             fi
             echo "Done"
+            ;;
+        f2fs)
+            echo " * Cannot shrink F2FS partitions"
             ;;
         *)
             echo " * Not shrinking ($part $fstype)"
