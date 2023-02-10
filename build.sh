@@ -123,16 +123,16 @@ echo "Checking packages needed for building"
 if grep -iqE "Debian" /proc/version ; then
     os="deb"
     eabi="eabi"
-    pkgmgr="dpkg -s"
+    pkgmgr="dpkg -l"
 elif grep -iqE "Red Hat|Redhat" /proc/version ; then
     os="rhel"
     eabi=""
-    pkgmgr="rpm -qi"
+    pkgmgr="rpm -qa"
 fi
 osDeps=${os}Deps
 for pkg in ${!osDeps}
 do
-    $pkgmgr $pkg >/dev/null 2>&1
+    $pkgmgr | grep -q "$pkg" >/dev/null 2>&1
     if [[ $? != 0 ]]; then
         echo " * Package $pkg missing!"
         fail=1
