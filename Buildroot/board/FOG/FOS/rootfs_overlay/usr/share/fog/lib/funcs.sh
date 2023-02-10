@@ -1994,7 +1994,7 @@ tmpEBRFileName() {
     [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $part_number ]] && handleError "No partition number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local ebrfilename=""
-    EBRFileName "/tmp" "$disk_number" "$disk_number"
+    EBRFileName "/tmp" "$disk_number" "$part_number"
     tmpebrfilename="$ebrfilename"
 }
 #
