@@ -120,7 +120,7 @@ rhelDeps="git meld rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 echo "Checking packages needed for building"
-if grep -iqE "Debian" /proc/version ; then
+if grep -iqE "Debian|Ubuntu" /proc/version ; then
     os="deb"
     eabi="eabi"
     pkgmgr="dpkg -l"
