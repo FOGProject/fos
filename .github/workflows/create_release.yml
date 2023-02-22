@@ -1,0 +1,259 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_name:
+        type: string
+        description: "Release Name"
+        required: true
+      tag_name:
+        type: string
+        description: "Tag Name"
+        required: true
+      is_prerelease:
+        type: boolean
+        default: false
+        description: "Pre-release?"
+        required: true
+      linux_kernel_version:
+        type: string
+        description: "Linux kernel version"
+        required: true
+      buildroot_version:
+        type: string
+        description: "Buildroot version"
+        required: true
+      extra_description:
+        type: string
+        description: "Description"
+        required: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build_kernel_arm64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build arm64 kernel
+        run: ./build.sh -nka arm64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v3
+        with:
+          name: distribution-files
+          path: dist
+          retention-days: 1
+
+  build_kernel_x86:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x86 kernel
+        run: ./build.sh -nka x86
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v3
+        with:
+          name: distribution-files
+          path: dist
+          retention-days: 1
+
+  build_kernel_x64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x64 kernel
+        run: ./build.sh -nka x64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v3
+        with:
+          name: distribution-files
+          path: dist
+          retention-days: 1
+
+  build_initrd_arm64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build arm64 initrd
+        run: ./build.sh -nfa arm64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v3
+        with:
+          name: distribution-files
+          path: dist
+          retention-days: 2
+
+      - name: Save log file
+        uses: actions/upload-artifact@v3
+        with:
+          name: Buildroot-logs
+          path: fssourcearm64/buildrootarm64.log
+          retention-days: 30
+
+  build_initrd_x86:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x86 initrd
+        run: ./build.sh -nfa x86
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v3
+        with:
+          name: distribution-files
+          path: dist
+          retention-days: 2
+
+      - name: Save log file
+        uses: actions/upload-artifact@v3
+        with:
+          name: Buildroot-logs
+          path: fssourcex86/buildrootx86.log
+          retention-days: 30
+
+  build_initrd_x64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x64 initrd
+        run: ./build.sh -nfa x64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v3
+        with:
+          name: distribution-files
+          path: dist
+          retention-days: 2
+
+      - name: Save log file
+        uses: actions/upload-artifact@v3
+        with:
+          name: Buildroot-logs
+          path: fssourcex64/buildrootx64.log
+          retention-days: 30
+
+  release:
+    needs:
+      [
+        build_kernel_arm64,
+        build_kernel_x86,
+        build_kernel_x64,
+        build_initrd_arm64,
+        build_initrd_x86,
+        build_initrd_x64,
+      ]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download distribution files
+        uses: actions/download-artifact@v3
+
+      - name: Run sha256 checksum on all files
+        run: |
+          cd distribution-files
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ github.event.inputs.release_name }}
+          prerelease: ${{ github.event.inputs.is_prerelease }}
+          body: |
+            Linux kernel ${{ github.event.inputs.linux_kernel_version }}
+            Buildroot ${{ github.event.inputs.buildroot_version }}
+            ${{ github.event.inputs.extra_description }}
+          tag_name: ${{ github.event.inputs.tag_name }}
+          files: |
+            distribution-files/arm_Image
+            distribution-files/arm_Image.sha256
+            distribution-files/arm_init.cpio.gz
+            distribution-files/arm_init.cpio.gz.sha256
+            distribution-files/bzImage
+            distribution-files/bzImage.sha256
+            distribution-files/bzImage32
+            distribution-files/bzImage32.sha256
+            distribution-files/init.xz
+            distribution-files/init.xz.sha256
+            distribution-files/init_32.xz
+            distribution-files/init_32.xz.sha256
