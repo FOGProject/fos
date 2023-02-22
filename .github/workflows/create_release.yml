@@ -136,7 +136,7 @@ jobs:
         with:
           name: distribution-files
           path: dist
-          retention-days: 2
+          retention-days: 1
 
       - name: Save log file
         uses: actions/upload-artifact@v3
@@ -169,7 +169,7 @@ jobs:
         with:
           name: distribution-files
           path: dist
-          retention-days: 2
+          retention-days: 1
 
       - name: Save log file
         uses: actions/upload-artifact@v3
@@ -202,7 +202,7 @@ jobs:
         with:
           name: distribution-files
           path: dist
-          retention-days: 2
+          retention-days: 1
 
       - name: Save log file
         uses: actions/upload-artifact@v3
