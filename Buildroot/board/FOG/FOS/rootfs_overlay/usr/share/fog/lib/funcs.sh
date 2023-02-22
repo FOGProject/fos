@@ -422,6 +422,13 @@ getPartBlockSize() {
     [[ -z $varVar ]] && handleError "No variable to set passed (${FUNCNAME[0]})\n   Args Passed: $*"
     printf -v "$varVar" $(blockdev --getpbsz $part)
 }
+# Retrieve available space from NFS share
+# Should only be used when the share is mounted to `/images`
+getSpaceLeftInShare() {
+    space=$(df -h | grep "/images" | sed -n '/dev/{s/  */ /gp}' | cut -d ' ' -f4)
+    [[ $space -eq '0' ]] && space='0M'
+    echo $space
+}
 # Prepares location info for uploads
 #
 # $1 is the image path
@@ -437,7 +444,8 @@ prepareUploadLocation() {
             *)
                 echo "Failed"
                 debugPause
-                handleError "Failed to create image capture path (${FUNCNAME[0]})\n   Args Passed: $*"
+                spaceLeftShare=$(getSpaceLeftInShare)
+                handleError "Failed to create image capture path (${FUNCNAME[0]})\nSpace left on mounted share: $spaceLeftShare\n   Args Passed: $*"
                 ;;
         esac
     fi

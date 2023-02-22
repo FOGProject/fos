@@ -3,6 +3,7 @@
 . /bin/fog.checkin
 . /bin/fog.mount
 . /bin/fog.checkmount
+. /bin/fog.checkmountdrivesize
 . /bin/fog.checkimgvar
 imagePath="/images/$macWinSafe"
 parts=""

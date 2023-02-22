@@ -1,0 +1,23 @@
+#!/bin/bash
+dots "Checking Space in Mounted File System"
+getMountedDiskSpaceUsage=$(df -h | grep "/images" | sed -n '/dev/{s/  */ /gp}')
+echo "Done"
+
+dots "Mounted Disk Size Total"
+mountedDiskSize=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f2)
+echo "$mountedDiskSize"
+
+dots "Mounted Disk Size Used"
+mountedDiskUsed=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f3)
+echo "$mountedDiskUsed"
+
+dots "Mounted Disk Size Used Percentage"
+mountedDiskUsedPercent=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f5)
+echo "$mountedDiskUsedPercent"
+
+dots "Mounted Disk Size Available"
+mountedDiskAvailable=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f4)
+[[ $mountedDiskAvailable -eq "0" ]] && mountedDiskAvailable="0M"
+echo "$mountedDiskAvailable"
+
+debugPause
