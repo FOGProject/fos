@@ -422,6 +422,13 @@ getPartBlockSize() {
     [[ -z $varVar ]] && handleError "No variable to set passed (${FUNCNAME[0]})\n   Args Passed: $*"
     printf -v "$varVar" $(blockdev --getpbsz $part)
 }
+# Retrieve available space from NFS share
+# Should only be used when the share is mounted to `/images`
+getServerDiskSpaceSvailable() {
+    local space=$(df -h | grep "/images" | sed -n '/dev/{s/  */ /gp}' | cut -d ' ' -f4)
+    [[ $space == "0" ]] && local space="0M"
+    echo $space
+}
 # Prepares location info for uploads
 #
 # $1 is the image path
@@ -437,7 +444,8 @@ prepareUploadLocation() {
             *)
                 echo "Failed"
                 debugPause
-                handleError "Failed to create image capture path (${FUNCNAME[0]})\n   Args Passed: $*"
+                local spaceAvailable=$(getServerDiskSpaceSvailable)
+                handleError "Failed to create image capture path (${FUNCNAME[0]})\nServer Disk Space Available: $spaceAvailable\n   Args Passed: $*"
                 ;;
         esac
     fi
@@ -2231,7 +2239,8 @@ savePartition() {
                     debugPause
                     ;;
                 *)
-                    handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -s -O $fifoname -Nf 1\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /images | awk '{print $4}')"
+                    local spaceAvailable=$(getServerDiskSpaceSvailable)
+                    handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -s -O $fifoname -Nf 1\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
                     ;;
             esac
             ;;
@@ -2257,7 +2266,8 @@ savePartition() {
                             debugPause
                             ;;
                         *)
-                            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $(df -h /images | awk '{print $4}')"
+                            local spaceAvailable=$(getServerDiskSpaceSvailable)
+                            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
                             ;;
                     esac
                     ;;
