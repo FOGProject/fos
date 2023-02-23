@@ -1,23 +1,23 @@
 #!/bin/bash
-dots "Checking Space in Mounted File System"
-getMountedDiskSpaceUsage=$(df -h | grep "/images" | sed -n '/dev/{s/  */ /gp}')
+dots "Checking Server Disk Space"
+getServerDiskSpaceUsage=$(df -h | grep "/images" | sed -n '/dev/{s/  */ /gp}')
 echo "Done"
 
-dots "Mounted Disk Size Total"
-mountedDiskSize=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f2)
-echo "$mountedDiskSize"
+dots "Server Disk Size Total"
+serverDiskSizeTotal=$(echo "$getServerDiskSpaceUsage" | cut -d ' ' -f2)
+echo "$serverDiskSizeTotal"
 
-dots "Mounted Disk Size Used"
-mountedDiskUsed=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f3)
-echo "$mountedDiskUsed"
+dots "Server Disk Size Used"
+serverDiskSizeUsed=$(echo "$getServerDiskSpaceUsage" | cut -d ' ' -f3)
+echo "$serverDiskSizeUsed"
 
-dots "Mounted Disk Size Used Percentage"
-mountedDiskUsedPercent=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f5)
-echo "$mountedDiskUsedPercent"
+dots "Server Disk Size Used Percentage"
+serverDiskSizeUsedPercent=$(echo "$getServerDiskSpaceUsage" | cut -d ' ' -f5)
+echo "$serverDiskSizeUsedPercent"
 
-dots "Mounted Disk Size Available"
-mountedDiskAvailable=$(echo "$getMountedDiskSpaceUsage" | cut -d ' ' -f4)
-[[ $mountedDiskAvailable -eq "0" ]] && mountedDiskAvailable="0M"
-echo "$mountedDiskAvailable"
+dots "Server Disk Size Available"
+serverDiskSizeAvailable=$(echo "$getServerDiskSpaceUsage" | cut -d ' ' -f4)
+[[ $serverDiskSizeAvailable == "0" ]] && serverDiskSizeAvailable="0M"
+echo "$serverDiskSizeAvailable"
 
 debugPause
