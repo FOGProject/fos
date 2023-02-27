@@ -5,28 +5,50 @@ displayBanner
 disks=""
 disk=""
 hd=""
+isNvme=0
 [[ -z $seconds ]] && seconds=60
 getHardDisk
 echo " WARNING!  You are about to destroy the contents of the following hard disk:"
 echo -e "      $hd\n"
 echo -e " You have $seconds seconds to turn off this computer to cancel!\n"
 usleep $((seconds * 1000000))
+
+if [[ $hd == *[Nn][Vv][Mm][Ee]* ]]; then
+    isNvme=1
+    echo -e " Starting disk wipe of $hd using nvme format...\n"
+fi
+
 case $wipemode in
     full)
-        echo -e " Starting full disk wipe of $hd using shred...\n"
-        usleep 10000000
-        shred -f -v -z -n 3 "$hd"
+        if [[ $isNvme -eq 1 ]]; then
+            usleep 10000000
+            nvme format $hd --force
+        else
+            echo -e " Starting full disk wipe of $hd using shred...\n"
+            usleep 10000000
+            shred -f -v -z -n 3 "$hd"
+        fi
         echo -e "\n Wiping complete.\n"
         ;;
     normal)
-        echo -e " Starting normal disk wipe of $hd using shred...\n"
-        usleep 10000000
-        shred -f -v -n 1 "$hd"
+        if [[ $isNvme -eq 1 ]]; then
+            usleep 10000000
+            nvme format $hd --force
+        else
+            echo -e " Starting normal disk wipe of $hd using shred...\n"
+            usleep 10000000
+            shred -f -v -n 1 "$hd"
+        fi
         echo -e "\n Wiping complete.\n"
         ;;
     fast|fastwipe)
-        echo " Writing zeros to start of $hd"
-        dd if=/dev/zero of="$hd" bs=512 count=100000
+        if [[ $isNvme -eq 1 ]]; then
+            usleep 10000000
+            nvme format $hd --force
+        else
+            echo " Writing zeros to start of $hd"
+            dd if=/dev/zero of="$hd" bs=512 count=100000
+        fi
         echo -e "\n Wiping complete.\n"
         ;;
 esac
