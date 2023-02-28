@@ -16,40 +16,27 @@ usleep $((seconds * 1000000))
 if [[ $hd == *[Nn][Vv][Mm][Ee]* ]]; then
     isNvme=1
     echo -e " Starting disk wipe of $hd using nvme format...\n"
+    usleep 10000000
+    nvme format $hd --force
 fi
 
-case $wipemode in
-    full)
-        if [[ $isNvme -eq 1 ]]; then
-            usleep 10000000
-            nvme format $hd --force
-        else
+if [[ $isNvme -eq 0 ]]; then
+    case $wipemode in
+        full)
             echo -e " Starting full disk wipe of $hd using shred...\n"
             usleep 10000000
             shred -f -v -z -n 3 "$hd"
-        fi
-        echo -e "\n Wiping complete.\n"
-        ;;
-    normal)
-        if [[ $isNvme -eq 1 ]]; then
-            usleep 10000000
-            nvme format $hd --force
-        else
+            ;;
+        normal)
             echo -e " Starting normal disk wipe of $hd using shred...\n"
             usleep 10000000
             shred -f -v -n 1 "$hd"
-        fi
-        echo -e "\n Wiping complete.\n"
-        ;;
-    fast|fastwipe)
-        if [[ $isNvme -eq 1 ]]; then
-            usleep 10000000
-            nvme format $hd --force
-        else
+            ;;
+        fast|fastwipe)
             echo " Writing zeros to start of $hd"
             dd if=/dev/zero of="$hd" bs=512 count=100000
-        fi
-        echo -e "\n Wiping complete.\n"
-        ;;
-esac
+            ;;
+    esac
+fi
+echo -e "\n Wiping complete.\n"
 . /bin/fog.nonimgcomplete
