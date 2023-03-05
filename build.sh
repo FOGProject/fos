@@ -114,8 +114,8 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-debDeps="git meld build-essential rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev"
-rhelDeps="git meld rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel"
+debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev"
+rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel"
 [[ -z $arch ]] && arch="x64 x86 arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
@@ -123,23 +123,28 @@ echo "Checking packages needed for building"
 if grep -iqE "Debian|Ubuntu" /proc/version ; then
     os="deb"
     eabi="eabi"
-    pkgmgr="dpkg -l"
+    pkgmgr() {
+        dpkg -l
+    }
 elif grep -iqE "Red Hat|Redhat" /proc/version ; then
     os="rhel"
     eabi=""
-    pkgmgr="rpm -qa"
+    pkgmgr() {
+        rpm -qa --qf "ii %{NAME}\n"
+    }
 fi
 osDeps=${os}Deps
+missing=""
 for pkg in ${!osDeps}
 do
-    $pkgmgr | grep -q "$pkg" >/dev/null 2>&1
+    pkgmgr | awk '{print $2}' | cut -d':' -f1 | grep -qe "^${pkg}$"
     if [[ $? != 0 ]]; then
-        echo " * Package $pkg missing!"
+        missing="${missing} ${pkg}"
         fail=1
     fi
 done
 if [[ $fail == 1 ]]; then
-    echo "Package(s) missing, can't build, exiting now."
+    echo "Package(s) missing, exiting now, please install packages:${missing}"
     exit 1
 fi
 
