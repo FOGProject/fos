@@ -11,7 +11,13 @@ command -v jq
 KERNEL_VERSION=$(grep KERNEL_VERSION= build.sh | cut -d"'" -f2)
 BUILDROOT_VERSION=$(grep BUILDROOT_VERSION= build.sh | cut -d"'" -f2)
 
-if [[ -n "$1" ]]; then
+if [[ -n "$1" && "$1" =~ ^[0-9]\.[0-9][0-9]*\.[0-9][0-9]*$ ]]; then
+    # official release build
+    GITHUB_TAG=$1
+    GITHUB_NAME="FOG $1 kernels and inits"
+    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
+elif [[ -n "$1" ]]; then
+    # beta testing builds
     GITHUB_TAG="testing"
     GITHUB_NAME="Testing from $(date +%d.%m.%Y)"
     TESTING_RELEASE_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/tags/${GITHUB_TAG} | jq -r .id)
@@ -19,6 +25,7 @@ if [[ -n "$1" ]]; then
     curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/tags/${GITHUB_TAG} -d "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
     curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${TESTING_RELEASE_ID} -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\nGithub-Branch ${1}\" }" > response.json
 else
+    # semi-official development builds
     GITHUB_TAG=$(date +%Y%m%d)
     GITHUB_NAME="Latest from $(date +%d.%m.%Y)"
     curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
