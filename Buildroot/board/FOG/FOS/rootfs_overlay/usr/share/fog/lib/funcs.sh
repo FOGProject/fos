@@ -306,10 +306,10 @@ expandPartition() {
                 dots "Attempting to resize $fstype volume ($part)"
 
                 # XFS partitions can only be expanded when there is free space after that partition.
-                # Retrieving the partition number of a XFS partition that hass free space after it.
+                # Retrieving the partition number of a XFS partition that has free space after it.
                 local xfsPartitionNumberThatCanBeExpanded=$(parted -s -a opt $disk "print free" | grep -i "free space" -B 1 | grep -i "xfs" | cut -d ' ' -f2)
-                local currentPartitionNumber=$(cat /proc/partitions | grep "${part//\/dev\/}" | sed -n '{s/  */ /gp}' | cut -d ' ' -f3)
-                if [[ $xfsPartitionNumberThatCanBeExpanded == $currentPartitionNumber ]]; then
+                local currentPartitionNumber=$(echo $part | grep -o '[0-9]*$')
+                if [[ "$xfsPartitionNumberThatCanBeExpanded" == "$currentPartitionNumber"a ]]; then
                     parted -s -a opt $disk "resizepart $xfsPartitionNumberThatCanBeExpanded 100%" >>/tmp/xfslog.txt 2>&1
                     if [[ $? -gt 0 ]]; then
                         echo "Failed"
