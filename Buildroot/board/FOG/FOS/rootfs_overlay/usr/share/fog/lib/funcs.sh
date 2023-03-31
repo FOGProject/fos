@@ -301,6 +301,53 @@ expandPartition() {
                 echo "Done"
             fi
             ;;
+        xfs)
+            if [[ $type == "down" ]]; then
+                dots "Attempting to resize $fstype volume ($part)"
+
+                # XFS partitions can only be expanded when there is free space after that partition.
+                # Retrieving the partition number of a XFS partition that has free space after it.
+                local xfsPartitionNumberThatCanBeExpanded=$(parted -s -a opt $disk "print free" | grep -i "free space" -B 1 | grep -i "xfs" | cut -d ' ' -f2)
+                local currentPartitionNumber=$(echo $part | grep -o '[0-9]*$')
+                if [[ "$xfsPartitionNumberThatCanBeExpanded" == "$currentPartitionNumber"a ]]; then
+                    parted -s -a opt $disk "resizepart $xfsPartitionNumberThatCanBeExpanded 100%" >>/tmp/xfslog.txt 2>&1
+                    if [[ $? -gt 0 ]]; then
+                        echo "Failed"
+                        debugPause
+                        handleError "Could not resize partition $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/xfslog.txt)\n   Args Passed: $*"
+                    fi
+                    if [[ ! -d /tmp/xfs ]]; then
+                        mkdir /tmp/xfs >>/tmp/xfslog.txt 2>&1
+                        if [[ $? -gt 0 ]]; then
+                            echo "Failed"
+                            debugPause
+                            handleError "Could not create /tmp/xfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/xfslog.txt)\n   Args Passed: $*"
+                        fi
+                    fi
+                    mount -t xfs $part /tmp/xfs >>/tmp/xfslog.txt 2>&1
+                    if [[ $? -gt 0 ]]; then
+                        echo "Failed"
+                        debugPause
+                        handleError "Could not mount $part to /tmp/xfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/xfslog.txt)\n   Args Passed: $*"
+                    fi
+                    xfs_growfs $part >>/tmp/xfslog.txt 2>&1
+                    if [[ $? -gt 0 ]]; then
+                        echo "Failed"
+                        debugPause
+                        handleError "Could not grow XFS partition $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/xfslog.txt)\n   Args Passed: $*"
+                    fi
+                    umount /tmp/xfs >>/tmp/xfslog.txt 2>&1
+                    if [[ $? -gt 0 ]]; then
+                        echo Failed
+                        debugPause
+                        handleError "Could not unmount $part from /tmp/xfs (${FUNCNAME[0]})\n   Info: $(cat /tmp/xfslog.txt)\n   Args Passed: $*"
+                    fi
+                    echo "Done"
+                else
+                    echo "Failed, XFS partition cannot be expanded"
+                fi
+            fi
+            ;;
         *)
             echo " * Not expanding ($part -- $fstype)"
             debugPause
@@ -723,6 +770,9 @@ shrinkPartition() {
             ;;
         f2fs)
             echo " * Cannot shrink F2FS partitions"
+            ;;
+        xfs)
+            echo " * Cannot shrink XFS partitions"
             ;;
         *)
             echo " * Not shrinking ($part $fstype)"
