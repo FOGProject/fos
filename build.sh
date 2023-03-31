@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='5.15.98'
+[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.1.22'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2022.02.9'
 
 Usage() {
