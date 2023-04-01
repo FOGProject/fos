@@ -18,7 +18,22 @@ defaults:
     shell: bash
 
 jobs:
+  input_checks:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Make sure the official FOG version input box was entered if the is official checkbox was selected
+        run: |
+          is_official="${{ inputs.is_official_release }}"
+          fog_version="${{ inputs.official_fog_version }}"
+          if [[ $is_official == "true" && $fog_version == "" ]]; then
+            echo "Official FOG Version was not entered!"
+            exit 1
+          fi
+
   build_kernel_arm64:
+    needs: input_checks
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -45,6 +60,8 @@ jobs:
           retention-days: 1
 
   build_kernel_x86:
+    needs: input_checks
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -71,6 +88,8 @@ jobs:
           retention-days: 1
 
   build_kernel_x64:
+    needs: input_checks
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -97,6 +116,8 @@ jobs:
           retention-days: 1
 
   build_initrd_arm64:
+    needs: input_checks
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -130,6 +151,8 @@ jobs:
           retention-days: 30
 
   build_initrd_x86:
+    needs: input_checks
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -163,6 +186,8 @@ jobs:
           retention-days: 30
 
   build_initrd_x64:
+    needs: input_checks
+
     runs-on: ubuntu-22.04
 
     steps:
@@ -217,7 +242,7 @@ jobs:
 
       - name: Set release name variable
         run: |
-          echo "RELEASE_NAME=\"Latest from $(date '+%Y-%d-%m')\"" >> $GITHUB_ENV
+          echo "RELEASE_NAME=\"Latest from $(date '+%Y-%m-%d')\"" >> $GITHUB_ENV
           
       - name: Set tag name variable
         run: |
@@ -231,7 +256,7 @@ jobs:
         run: |
           echo "BUILDROOT_VER=$(cat build.sh | sed -n -e 's/^.*BUILDROOT_VERSION=//p' | cut -d\' -f 2)" >> $GITHUB_ENV
 
-      - name: Official FOG release
+      - name: Set release name and tag name variable if it is an Official FOG release
         run: |
           is_official="${{ inputs.is_official_release }}"
           fog_version="${{ inputs.official_fog_version }}"
