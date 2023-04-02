@@ -242,7 +242,7 @@ jobs:
 
       - name: Set release name variable
         run: |
-          echo "RELEASE_NAME=\"Latest from $(date '+%Y-%m-%d')\"" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Latest from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
           
       - name: Set tag name variable
         run: |
@@ -261,7 +261,7 @@ jobs:
           is_official="${{ inputs.is_official_release }}"
           fog_version="${{ inputs.official_fog_version }}"
           if [[ ${{ inputs.is_official_release }} == "true" ]]; then
-            echo "RELEASE_NAME=\"FOG $fog_version kernels and inits\"" >> $GITHUB_ENV
+            echo "RELEASE_NAME=FOG $fog_version kernels and inits" >> $GITHUB_ENV
             echo "TAG_NAME=$fog_version" >> $GITHUB_ENV
           fi
 
