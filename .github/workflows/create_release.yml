@@ -22,12 +22,16 @@ jobs:
     runs-on: ubuntu-22.04
     
     steps:
-      - name: Make sure the official FOG version input box was entered if the is official checkbox was selected
+      - name: Make sure that the input text field is filled in if the input checkbox is selected and vice versa
         run: |
           is_official="${{ inputs.is_official_release }}"
           fog_version="${{ inputs.official_fog_version }}"
-          if [[ $is_official == "true" && $fog_version == "" ]]; then
-            echo "Official FOG Version was not entered!"
+          if [[ "$is_official" == "true" && "$fog_version" == "" ]]; then
+            echo "Official FOG Version was not entered, but Official Release checkbox was selected!"
+            exit 1
+          fi
+          if [[ "$is_official" == "false" && "$fog_version" != "" ]]; then
+            echo "Official Release checkbox was not selected, but Official Release FOG Version was entered!"
             exit 1
           fi
 
