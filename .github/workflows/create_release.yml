@@ -3,30 +3,14 @@ name: Create Release
 on:
   workflow_dispatch:
     inputs:
-      release_name:
-        type: string
-        description: "Release Name"
-        required: true
-      tag_name:
-        type: string
-        description: "Tag Name"
-        required: true
-      is_prerelease:
+      is_official_release:
         type: boolean
         default: false
-        description: "Pre-release?"
-        required: true
-      linux_kernel_version:
+        description: "Official Release?"
+        required: false
+      official_fog_version:
         type: string
-        description: "Linux kernel version"
-        required: true
-      buildroot_version:
-        type: string
-        description: "Buildroot version"
-        required: true
-      extra_description:
-        type: string
-        description: "Description"
+        description: "Official Release FOG Version"
         required: false
 
 defaults:
@@ -34,8 +18,27 @@ defaults:
     shell: bash
 
 jobs:
+  input_checks:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Make sure that the input text field is filled in if the input checkbox is selected and vice versa
+        run: |
+          is_official="${{ inputs.is_official_release }}"
+          fog_version="${{ inputs.official_fog_version }}"
+          if [[ "$is_official" == "true" && "$fog_version" == "" ]]; then
+            echo "Official FOG Version was not entered, but Official Release checkbox was selected!"
+            exit 1
+          fi
+          if [[ "$is_official" == "false" && "$fog_version" != "" ]]; then
+            echo "Official Release checkbox was not selected, but Official Release FOG Version was entered!"
+            exit 1
+          fi
+
   build_kernel_arm64:
-    runs-on: ubuntu-latest
+    needs: input_checks
+
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -61,7 +64,9 @@ jobs:
           retention-days: 1
 
   build_kernel_x86:
-    runs-on: ubuntu-latest
+    needs: input_checks
+
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -87,7 +92,9 @@ jobs:
           retention-days: 1
 
   build_kernel_x64:
-    runs-on: ubuntu-latest
+    needs: input_checks
+
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -113,7 +120,9 @@ jobs:
           retention-days: 1
 
   build_initrd_arm64:
-    runs-on: ubuntu-latest
+    needs: input_checks
+
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -146,7 +155,9 @@ jobs:
           retention-days: 30
 
   build_initrd_x86:
-    runs-on: ubuntu-latest
+    needs: input_checks
+
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -179,7 +190,9 @@ jobs:
           retention-days: 30
 
   build_initrd_x64:
-    runs-on: ubuntu-latest
+    needs: input_checks
+
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -222,11 +235,39 @@ jobs:
         build_initrd_x64,
       ]
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Download distribution files
         uses: actions/download-artifact@v3
+
+      - name: Set release name variable
+        run: |
+          echo "RELEASE_NAME=Latest from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
+          
+      - name: Set tag name variable
+        run: |
+          echo "TAG_NAME=$(date '+%Y%m%d')" >> $GITHUB_ENV
+
+      - name: Get Linux Kernel version from build.sh
+        run: |
+          echo "LINUX_KERNEL_VER=$(cat build.sh | sed -n -e 's/^.*KERNEL_VERSION=//p' | cut -d\' -f 2)" >> $GITHUB_ENV
+
+      - name: Get Buildroot version from build.sh
+        run: |
+          echo "BUILDROOT_VER=$(cat build.sh | sed -n -e 's/^.*BUILDROOT_VERSION=//p' | cut -d\' -f 2)" >> $GITHUB_ENV
+
+      - name: Set release name and tag name variable if it is an Official FOG release
+        run: |
+          is_official="${{ inputs.is_official_release }}"
+          fog_version="${{ inputs.official_fog_version }}"
+          if [[ ${{ inputs.is_official_release }} == "true" ]]; then
+            echo "RELEASE_NAME=FOG $fog_version kernels and inits" >> $GITHUB_ENV
+            echo "TAG_NAME=$fog_version" >> $GITHUB_ENV
+          fi
 
       - name: Run sha256 checksum on all files
         run: |
@@ -237,13 +278,11 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ github.event.inputs.release_name }}
-          prerelease: ${{ github.event.inputs.is_prerelease }}
+          name: ${{ env.RELEASE_NAME }}
           body: |
-            Linux kernel ${{ github.event.inputs.linux_kernel_version }}
-            Buildroot ${{ github.event.inputs.buildroot_version }}
-            ${{ github.event.inputs.extra_description }}
-          tag_name: ${{ github.event.inputs.tag_name }}
+            Linux kernel ${{ env.LINUX_KERNEL_VER }}
+            Buildroot ${{ env.BUILDROOT_VER }}
+          tag_name: ${{ env.TAG_NAME }}
           files: |
             distribution-files/arm_Image
             distribution-files/arm_Image.sha256
