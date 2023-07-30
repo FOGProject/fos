@@ -56,7 +56,13 @@ if [[ -z "$(echo $ifaces | tr -d ' ')" ]]; then  # because ifaces is constructed
 else
     echo "Failed to get an IP via DHCP! Tried on interface(s): $ifaces"
 fi
+initversion=$(cat /usr/share/fog/lib/funcs.sh | awk -F "=" '/export initversion=/{gsub(/"/,""); iv=$NF; print iv}')
 echo "Please check your network setup and try again!"
+echo "Debug information:"
+echo "   Kernel Version: $(uname -r)"
+echo "   Init Version: $initversion" 
+echo "   Network Adapter:"
+echo $(lshw -c network -businfo)
 [[ -z $isdebug ]] && sleep 60 && reboot
 echo "Press enter to continue"
 read -t 60
