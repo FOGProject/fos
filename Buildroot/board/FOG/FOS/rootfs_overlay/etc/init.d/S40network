@@ -62,7 +62,7 @@ echo "Debug information:"
 echo "   Kernel Version: $(uname -r)"
 echo "   Init Version: $initversion" 
 echo "   Network Adapter:"
-echo $(lshw -c network -businfo)
+echo $(lshw -c network -businfo) | 's/^/      /'
 [[ -z $isdebug ]] && sleep 60 && reboot
 echo "Press enter to continue"
 read -t 60
