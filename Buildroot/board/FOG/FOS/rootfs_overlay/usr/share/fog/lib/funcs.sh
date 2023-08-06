@@ -103,7 +103,7 @@ doInventory() {
     cpucurrent=$(dmidecode -t 4 | grep 'Current Speed:' | head -n1)
     cpumax=$(dmidecode -t 4 | grep 'Max Speed:' | head -n1)
     mem=$(cat /proc/meminfo | grep MemTotal | tr -d \\0)
-    hdinfo=$(hdparm -i $hd 2>/dev/null | grep Model=)
+    hdinfo=$(hdparm -i $hd 2>/dev/null | grep Model= || smartctl -i $hd | grep -A2 "Model Number" | awk -F ":" '/Model Number:/{gsub(/ /,""); modelno=$NF};/Serial Number:/{gsub(/ /,""); serialno=$NF};/Firmware Version:/{gsub(/ /,""); fwrev=$NF; print "model="modelno", fwrev="fwrev", serialno="serialno}')
     caseman=$(dmidecode -s chassis-manufacturer)
     casever=$(dmidecode -s chassis-version)
     caseserial=$(dmidecode -s chassis-serial-number)
