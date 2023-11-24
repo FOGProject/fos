@@ -11,4 +11,4 @@ config BR2_PACKAGE_PARTIMAGE
 	  http://www.partimage.org/Main_Page
 
 comment "partimage requires a toolchain with LARGEFILE+WCHAR support"
-        depends on !(BR2_LARGEFILE && BR2_USE_WCHAR)
+        depends on !(BR2_USE_WCHAR)
