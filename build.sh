@@ -1,7 +1,7 @@
 #!/bin/bash
 
-[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.1.22'
-[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2022.02.9'
+[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.1.63'
+[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2023.02.7'
 
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
@@ -153,19 +153,6 @@ cd $buildPath || exit 1
 
 function buildFilesystem() {
     local arch="$1"
-
-    if [[ -f patch/filesystem/fs.patch ]]; then
-        dots " * Applying filesystem patch"
-        echo
-        patch -p1 < patch/filesystem/fs.patch
-        if [[ $? -ne 0 ]]; then
-            echo "Failed"
-            exit 1
-    fi
-    else
-        echo " * WARNING: Did not find a patch file building filesystem without patches!"
-    fi
-
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.xz"
     echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
     if [[ ! -d fssource$arch ]]; then
@@ -182,8 +169,20 @@ function buildFilesystem() {
         mv buildroot-$BUILDROOT_VERSION fssource$arch
         echo "Done"
     fi
-    dots "Preparing code"
     cd fssource$arch
+    if [[ -f ../patch/filesystem/fs.patch ]]; then
+        dots " * Applying filesystem patch"
+        echo
+        patch -p1 < ../patch/filesystem/fs.patch
+        if [[ $? -ne 0 ]]; then
+            echo "Failed"
+            exit 1
+        fi
+        echo "Done"
+    else
+        echo " * WARNING: Did not find any patch file(s), building filesystem without patches!"
+    fi
+    dots "Preparing code"
     if [[ ! -f .packConfDone ]]; then
         cat ../Buildroot/package/newConf.in >> package/Config.in
         touch .packConfDone
