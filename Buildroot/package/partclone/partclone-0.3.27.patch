@@ -1,7 +1,7 @@
-diff -Nur partclone-0.3.20_original/src/progress.c partclone-0.3.20_patched/src/progress.c
---- partclone-0.3.20_original/src/progress.c	2022-04-27 01:56:42.000000000 -0500
-+++ partclone-0.3.20_patched/src/progress.c	2022-09-12 16:15:01.807055634 -0500
-@@ -193,6 +193,47 @@
+diff -Nur partclone-0.3.27_original/src/progress.c partclone-0.3.27_patched/src/progress.c
+--- partclone-0.3.27_original/src/progress.c	2023-10-04 02:18:19.000000000 -0700
++++ partclone-0.3.27_patched/src/progress.c	2023-10-25 11:47:49.162860998 -0700
+@@ -196,6 +196,47 @@
      strncpy(prog_stat->Rformated, Rformated, sizeof(Rformated)+1);
  }
  
@@ -49,15 +49,15 @@ diff -Nur partclone-0.3.20_original/src/progress.c partclone-0.3.20_patched/src/
  /// update information at progress bar
  extern void progress_update(struct progress_bar *prog, unsigned long long copied, unsigned long long current, int done)
  {
-@@ -214,6 +255,7 @@
+@@ -217,6 +258,7 @@
  	    fprintf(stderr, _(", %6.2f%s/min,"), prog_stat.speed, prog_stat.speed_unit);
  	if(prog->flag == IO)
- 	    fprintf(stderr, "\n\r%80c\rcurrent block: %10Lu, total block: %10Lu, Complete: %6.2f%%%s\r", clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
-+	fogLogStatusFile(prog, &prog_stat, current);
+ 	    fprintf(stderr, _("\n\r%80c\rCurrent block: %10Lu, Total block: %10Lu, Complete: %6.2f%%%s\r"), clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
++    fogLogStatusFile(prog, &prog_stat, current);
      } else {
  	setlocale(LC_ALL, "");
  	bindtextdomain(PACKAGE, LOCALEDIR);
-@@ -289,6 +331,7 @@
+@@ -294,6 +336,7 @@
  	wrefresh(p_win);
          wrefresh(bar_win);
          wrefresh(tbar_win);
