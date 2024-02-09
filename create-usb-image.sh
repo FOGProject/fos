@@ -2,11 +2,11 @@
 
 set -e
 
-targetrelease=$1
+dl_url=$1
 
-if [ -z "$targetrelease" ]; then
-    echo "Usage: $0 <release>"
-    echo "Example: $0 20231208"
+if [ -z "$dl_url" ]; then
+    echo "Usage: $0 <base URL for downloading bzImage and init.xz>"
+    echo "Example: $0 https://github.com/fogproject/fos/releases/download/20231208"
     exit 1
 fi
 
@@ -35,8 +35,8 @@ echo Install GRUB
 grub-install --removable --no-nvram --no-uefi-secure-boot --efi-directory=/mnt --boot-directory=/mnt/boot --target=x86_64-efi
 
 echo Download the FOG kernels and inits
-wget -P /mnt/boot/ https://github.com/geek-at/fos/releases/download/$targetrelease/bzImage
-wget -P /mnt/boot/ https://github.com/geek-at/fos/releases/download/$targetrelease/init.xz
+wget -P /mnt/boot/ ${dl_url}/bzImage
+wget -P /mnt/boot/ ${dl_url}/init.xz
 wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/web/service/ipxe/memdisk
 wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/web/service/ipxe/memtest.bin
 wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/tftp/ipxe.krn

@@ -16,8 +16,7 @@ jobs:
       - name: Create USB Image
         run: |
             sudo apt-get install grub-efi-amd64 parted kpartx
-            chmod +x ./create-usb-image.sh
-            sudo ./create-usb-image.sh ${{ github.event.release.tag_name }}
+            sudo ./create-usb-image.sh "https://github.com/${{github.repository}}/releases/download/${{ github.event.release.tag_name }}" 
 
       - name: Release
         uses: softprops/action-gh-release@v1
