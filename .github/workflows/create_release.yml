@@ -1,4 +1,4 @@
-name: Create Release
+name: Create Latest/Official Release
 
 on:
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
@@ -57,9 +57,9 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: distribution-files
+          name: distribution-files-kernel-arm64
           path: dist
           retention-days: 1
 
@@ -70,7 +70,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
@@ -85,9 +85,9 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: distribution-files
+          name: distribution-files-kernel-x86
           path: dist
           retention-days: 1
 
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
@@ -113,9 +113,9 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: distribution-files
+          name: distribution-files-kernel-x64
           path: dist
           retention-days: 1
 
@@ -126,7 +126,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
@@ -141,16 +141,16 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: distribution-files
+          name: distribution-files-initrd-arm64
           path: dist
           retention-days: 1
 
       - name: Save log file
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Buildroot-logs
+          name: Buildroot-logs-arm64
           path: fssourcearm64/buildrootarm64.log
           retention-days: 30
 
@@ -161,7 +161,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
@@ -176,16 +176,16 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: distribution-files
+          name: distribution-files-initrd-x86
           path: dist
           retention-days: 1
 
       - name: Save log file
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Buildroot-logs
+          name: Buildroot-logs-x86
           path: fssourcex86/buildrootx86.log
           retention-days: 30
 
@@ -196,7 +196,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
@@ -211,16 +211,16 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: distribution-files
+          name: distribution-files-initrd-x64
           path: dist
           retention-days: 1
 
       - name: Save log file
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: Buildroot-logs
+          name: Buildroot-logs-x64
           path: fssourcex64/buildrootx64.log
           retention-days: 30
 
@@ -239,11 +239,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download distribution files
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
+        with:
+          pattern: distribution-files-*
+          merge-multiple: true
+          path: distribution-files
 
+      # DO NOT change the release name. FOG uses this format to grab the releases for the Kernel Update page.
       - name: Set release name variable
         run: |
           echo "RELEASE_NAME=Latest from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
@@ -260,6 +265,7 @@ jobs:
         run: |
           echo "BUILDROOT_VER=$(cat build.sh | sed -n -e 's/^.*BUILDROOT_VERSION=//p' | cut -d\' -f 2)" >> $GITHUB_ENV
 
+      # DO NOT change the release name. FOG uses this format to grab the releases for the Kernel Update page.
       - name: Set release name and tag name variable if it is an Official FOG release
         run: |
           is_official="${{ inputs.is_official_release }}"
@@ -276,7 +282,7 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: ${{ env.RELEASE_NAME }}
           body: |
