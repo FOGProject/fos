@@ -1,0 +1,325 @@
+name: Experimental Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      init_arm64:
+        type: boolean
+        default: false
+        description: "Create arm64 Init"
+      init_x64:
+        type: boolean
+        default: false
+        description: "Create x64 Init"
+      init_x86:
+        type: boolean
+        default: false
+        description: "Create x86 Init"
+      kernel_arm64:
+        type: boolean
+        default: false
+        description: "Create arm64 kernel"
+      kernel_x64:
+        type: boolean
+        default: false
+        description: "Create x64 kernel"
+      kernel_x86:
+        type: boolean
+        default: false
+        description: "Create x86 kernel"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  input_checks:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Make sure at least one workflow input is selected
+        run: |
+          init_arm64="${{ inputs.init_arm64 }}"
+          init_x64="${{ inputs.init_x64 }}"
+          init_x86="${{ inputs.init_x86 }}"
+          kernel_arm64="${{ inputs.kernel_arm64 }}"
+          kernel_x64="${{ inputs.kernel_x64 }}"
+          kernel_x86="${{ inputs.kernel_x86 }}"
+          if [[ "$init_arm64" == "false" && "$init_x64" == "false" && "$init_x86" == "false" && "$kernel_arm64" == "false" && "$kernel_x64" == "false" && "$kernel_x86" == "false" ]]; then
+            echo "No kernels or inits selected to build."
+            exit 1
+          fi
+
+  build_kernel_arm64:
+    needs: input_checks
+
+    if: ${{ inputs.kernel_arm64 }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build arm64 kernel
+        run: ./build.sh -nka arm64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-files-kernel-arm64
+          path: dist
+          retention-days: 1
+
+  build_kernel_x86:
+    needs: input_checks
+
+    if: ${{ inputs.kernel_x86 }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x86 kernel
+        run: ./build.sh -nka x86
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-files-kernel-x86
+          path: dist
+          retention-days: 1
+
+  build_kernel_x64:
+    needs: input_checks
+
+    if: ${{ inputs.kernel_x64 }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x64 kernel
+        run: ./build.sh -nka x64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-files-kernel-x64
+          path: dist
+          retention-days: 1
+
+  build_initrd_arm64:
+    needs: input_checks
+
+    if: ${{ inputs.init_arm64 }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build arm64 initrd
+        run: ./build.sh -nfa arm64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-files-initrd-arm64
+          path: dist
+          retention-days: 1
+
+      - name: Save log file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Buildroot-logs-arm64
+          path: fssourcearm64/buildrootarm64.log
+          retention-days: 30
+
+  build_initrd_x86:
+    needs: input_checks
+
+    if: ${{ inputs.init_x86 }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x86 initrd
+        run: ./build.sh -nfa x86
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-files-initrd-x86
+          path: dist
+          retention-days: 1
+
+      - name: Save log file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Buildroot-logs-x86
+          path: fssourcex86/buildrootx86.log
+          retention-days: 30
+
+  build_initrd_x64:
+    needs: input_checks
+
+    if: ${{ inputs.init_x64 }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
+
+      - name: Build x64 initrd
+        run: ./build.sh -nfa x64
+
+      - name: Run sha256 checksum
+        run: |
+          cd dist
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+
+      - name: Save distribution files
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-files-initrd-x64
+          path: dist
+          retention-days: 1
+
+      - name: Save log file
+        uses: actions/upload-artifact@v4
+        with:
+          name: Buildroot-logs-x64
+          path: fssourcex64/buildrootx64.log
+          retention-days: 30
+
+  release:
+    needs:
+      [
+        build_kernel_arm64,
+        build_kernel_x86,
+        build_kernel_x64,
+        build_initrd_arm64,
+        build_initrd_x86,
+        build_initrd_x64,
+      ]
+
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download distribution files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: distribution-files-*
+          merge-multiple: true
+          path: distribution-files
+
+      - name: Set release name variable
+        run: |
+          echo "RELEASE_NAME=Experimental release from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Set tag name variable
+        run: |
+          echo "TAG_NAME=EXP_$(date '+%Y%m%d')" >> $GITHUB_ENV
+
+      - name: Get Linux Kernel version from build.sh
+        run: |
+          echo "LINUX_KERNEL_VER=$(cat build.sh | sed -n -e 's/^.*KERNEL_VERSION=//p' | cut -d\' -f 2)" >> $GITHUB_ENV
+
+      - name: Get Buildroot version from build.sh
+        run: |
+          echo "BUILDROOT_VER=$(cat build.sh | sed -n -e 's/^.*BUILDROOT_VERSION=//p' | cut -d\' -f 2)" >> $GITHUB_ENV
+
+      - name: Run sha256 checksum on all files
+        run: |
+          cd distribution-files
+          sha256sum -c ./*.sha256
+          if [[ $? -ne 0 ]]; then exit 1; fi
+      
+      - name: Create release body
+        run: |
+          release_body_text="WARNING! This is an experimental releases. Backup your previous kernels/inits before installing these.\n\n"
+          # 
+          if [[ "${{ inputs.kernel_arm64 }}" == "true" || "${{ inputs.kernel_x64 }}" == "true" || "${{ inputs.kernel_x86 }}" == "true" ]]; then
+            release_body_text+="Linux kernel ${{ env.LINUX_KERNEL_VER}}\n"
+          fi
+          # 
+          if [[ "${{ inputs.init_arm64 }}" == "true" || "${{ inputs.init_x64 }}" == "true" || "${{ inputs.init_x86 }}" == "true" ]]; then
+            release_body_text+="Buildroot ${{ env.BUILDROOT_VER}}"
+          fi
+          # GH Actions way of making a multiline text environment variable
+          {
+            echo 'RELEASE_BODY_TEXT<<EOF'
+            echo -e $release_body_text
+            echo EOF
+          } >> "$GITHUB_ENV"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.RELEASE_NAME }}
+          body: ${{ env.RELEASE_BODY_TEXT }}
+          tag_name: ${{ env.TAG_NAME }}
+          prerelease: true
+          files: |
+            distribution-files/*
