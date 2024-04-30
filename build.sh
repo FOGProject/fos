@@ -1,7 +1,7 @@
 #!/bin/bash
 
-[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.1.63'
-[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2023.02.7'
+[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.1.89'
+[[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2024.02.1'
 
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
@@ -114,19 +114,19 @@ while getopts "$optspec" o; do
             ;;
     esac
 done
-debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev"
-rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel"
+debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev file cpio"
+rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel file cpio perl-English perl-ExtUtils-MakeMaker perl-Thread-Queue perl-FindBin perl-IPC-Cmd"
 [[ -z $arch ]] && arch="x64 x86 arm64"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 echo "Checking packages needed for building"
-if grep -iqE "Debian|Ubuntu" /proc/version ; then
+if grep -iqE "Debian|Ubuntu" /etc/os-release ; then
     os="deb"
     eabi="eabi"
     pkgmgr() {
         dpkg -l
     }
-elif grep -iqE "Red Hat|Redhat" /proc/version ; then
+elif grep -iqE "Red Hat|Redhat" /etc/os-release ; then
     os="rhel"
     eabi=""
     pkgmgr() {
