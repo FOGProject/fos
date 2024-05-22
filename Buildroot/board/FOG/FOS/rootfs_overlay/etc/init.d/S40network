@@ -9,6 +9,14 @@ if [[ -n $has_usb_nic ]]; then
     echo "Sleeping for 5 seconds to allow USB to sync back with system"
     sleep 5
 fi
+
+# Geo-Grabbing kernel parameters because the variables are probably not set yet
+for var in $(cat /proc/cmdline); do
+	var=$(echo "${var}" | awk -F= '{name=$1; gsub(/[+][_][+]/," ",$2); gsub(/"/,"\\\"", $2); value=$2; if (length($2) == 0 || $0 !~ /=/ || $0 ~ /nvme_core\.default_ps_max_latency_us=/) {print "";} else {printf("%s=%s", name, value)}}')
+    [[ -z $var ]] && continue;
+    eval "export ${var}" 2>/dev/null
+done
+
 # Enable loopback interface
 echo -e "auto lo\niface lo inet loopback\n\n" > /etc/network/interfaces
 /sbin/ip addr add 127.0.0.1/8 dev lo
@@ -43,9 +51,24 @@ for iface in $ifaces; do
         # we know we have link so no need to continue on.
         # NOTE: the link to web is kind of important, just
         # exiting on dhcp request is not sufficient.
-        [[ $ustat -eq 0 && $cstat -eq 0 ]] && exit 0
+        if [[ $ustat -eq 0 && $cstat -eq 0 ]]; then
+            if [[ ! -z $mac && ! -z $domacset ]]; then
+                # Update the mac address if the DoMACSet flag
+                # has been raised
+                ip link set dev $iface down
+                ip link set dev $iface address $mac
+                ip link set dev $iface up
+            fi
+        fi
         echo "Either DHCP failed or we were unable to access ${web}/index.php for connection testing."
-        sleep 1
+        # Geo-If we are on the 2nd loop, lets check too see if
+        # spanning tree is blocking dhcp
+        if [[ $seq -eq 2 ]]; then
+            echo "Waiting for Spanning Tree timeout on ${iface}..."
+            sleep 27
+        else
+            sleep 1
+        fi
     done
     echo "No DHCP response on interface $iface, skipping it."
 done
