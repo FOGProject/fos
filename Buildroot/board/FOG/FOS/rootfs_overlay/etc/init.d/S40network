@@ -53,6 +53,9 @@ for iface in $ifaces; do
         # exiting on dhcp request is not sufficient.
         if [[ $ustat -eq 0 && $cstat -eq 0 ]]; then
             if [[ ! -z $mac && ! -z $domacset ]]; then
+                if [[ ! -z $setmacto ]]; then
+                    mac=$setmacto
+                fi
                 # Update the mac address if the DoMACSet flag
                 # has been raised
                 ip link set dev $iface down
@@ -61,7 +64,7 @@ for iface in $ifaces; do
             fi
         fi
         echo "Either DHCP failed or we were unable to access ${web}/index.php for connection testing."
-        # Geo-If we are on the 2nd loop, lets check too see if
+        # Geo-If we are on the 2nd loop, lets check to see if
         # spanning tree is blocking dhcp
         if [[ $seq -eq 2 ]]; then
             echo "Waiting for Spanning Tree timeout on ${iface}..."
