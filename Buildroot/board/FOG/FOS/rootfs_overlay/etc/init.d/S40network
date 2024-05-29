@@ -62,6 +62,7 @@ for iface in $ifaces; do
                 ip link set dev $iface address $mac
                 ip link set dev $iface up
             fi
+            exit 0
         fi
         echo "Either DHCP failed or we were unable to access ${web}/index.php for connection testing."
         # Geo-If we are on the 2nd loop, lets check to see if
