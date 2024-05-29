@@ -52,14 +52,14 @@ for iface in $ifaces; do
         # NOTE: the link to web is kind of important, just
         # exiting on dhcp request is not sufficient.
         if [[ $ustat -eq 0 && $cstat -eq 0 ]]; then
-            if [[ ! -z $mac && ! -z $domacset ]]; then
+            if [[ ! -z $mac0 && ! -z $domacset ]]; then
                 if [[ ! -z $setmacto ]]; then
-                    mac=$setmacto
+                    mac0=$setmacto
                 fi
                 # Update the mac address if the DoMACSet flag
                 # has been raised
                 ip link set dev $iface down
-                ip link set dev $iface address $mac
+                ip link set dev $iface address $mac0
                 ip link set dev $iface up
             fi
             exit 0
