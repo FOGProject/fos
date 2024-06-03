@@ -61,7 +61,7 @@ for iface in $ifaces; do
                     ip link set dev $iface up
                 else
                     ip link set dev $iface down
-                    ip link set dev $iface address $mac0
+                    ip link set dev $iface address $mac
                     ip link set dev $iface up
                 fi
             fi
