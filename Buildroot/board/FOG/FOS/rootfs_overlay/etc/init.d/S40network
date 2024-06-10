@@ -59,10 +59,12 @@ for iface in $ifaces; do
                     ip link set dev $iface down
                     ip link set dev $iface address $setmacto
                     ip link set dev $iface up
+                    /sbin/udhcpc -i $iface --now
                 else
                     ip link set dev $iface down
                     ip link set dev $iface address $mac
                     ip link set dev $iface up
+                    /sbin/udhcpc -i $iface --now
                 fi
             fi
             exit 0
