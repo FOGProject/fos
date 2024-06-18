@@ -54,15 +54,16 @@ for iface in $ifaces; do
         if [[ $ustat -eq 0 && $cstat -eq 0 ]]; then
             mac_curr=$(ip link show $iface | awk '/ether/ {print tolower($2)}')
             if [[ ! -z $setmacto ]]; then
-                mac_sett=$(echo "$setmacto" | tr '[:upper:]' '[:lower:]')
+                mac_sett=$(echo "$setmacto" | awk '{print tolower($1)}')
                 if [[ "x$mac_curr" != "x$mac_sett" ]]; then
                     ip link set dev $iface down
                     ip link set dev $iface address $mac_sett
-                    ip link set def $iface up
+                    ip link set dev $iface up
                     /sbin/udhcpc -i $iface --now
                     ustat="$?"
                     curl -Ikfso /dev/null "${web}"/index.php --connect-timeout 5
                     cstat="$?"
+                    [[ $ustat -eq 0 && $cstat -eq 0 ]] && exit 0
                 fi
             fi
             [[ $ustat -eq 0 && $cstat -eq 0 ]] && exit 0
