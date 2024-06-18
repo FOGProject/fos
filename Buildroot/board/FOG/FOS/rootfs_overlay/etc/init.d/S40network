@@ -52,17 +52,20 @@ for iface in $ifaces; do
         # NOTE: the link to web is kind of important, just
         # exiting on dhcp request is not sufficient.
         if [[ $ustat -eq 0 && $cstat -eq 0 ]]; then
-            if [[ ! -z $domacset ]]; then
-                if [[ ! -z $setmacto ]]; then
-                    # Update the mac address if the DoMACSet flag
-                    # has been raised
+            mac_curr=$(ip link show $iface | awk '/ether/ {print tolower($2)}')
+            if [[ ! -z $setmacto ]]; then
+                mac_sett=$(echo "$setmacto" | tr '[:upper:]' '[:lower:]')
+                if [[ "x$mac_curr" != "x$mac_sett" ]]; then
                     ip link set dev $iface down
-                    ip link set dev $iface address $setmacto
-                    ip link set dev $iface up
+                    ip link set dev $iface address $mac_sett
+                    ip link set def $iface up
                     /sbin/udhcpc -i $iface --now
+                    ustat="$?"
+                    curl -Ikfso /dev/null "${web}"/index.php --connect-timeout 5
+                    cstat="$?"
                 fi
             fi
-            exit 0
+            [[ $ustat -eq 0 && $cstat -eq 0 ]] && exit 0
         fi
         echo "Either DHCP failed or we were unable to access ${web}/index.php for connection testing."
         # Geo-If we are on the 2nd loop, lets check to see if
