@@ -72,7 +72,7 @@ preparePartitions() {
                         done
                     fi
                     ;;
-                [5-7]|9)
+                [5-7]|[9-11])
                     [[ ! -d $imagePath && ! -f $imagePath/sys.img.000 ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
                     sfdiskOriginalPartitionFileName "$imagePath" "1"
                     sfdiskLegacyOriginalPartitionFileName "$imagePath" "1"
@@ -245,7 +245,7 @@ putDataBack() {
                 [1-2])
                     [[ ! -f $imagePath && ! -d $imagePath ]] && handleError "Fatal Error: Could not locate file ($0)\n   Args Passed: $*"
                     ;;
-                [5-7]|9)
+                [5-7]|[9-11])
                     [[ ! -d $imagePath && ! -f $imagePath/sys.img.000 ]] && handleError "Fatal Error: Could not locate file ($0)\n   Args Passed: $*"
                     ;;
                 4|50|51)
