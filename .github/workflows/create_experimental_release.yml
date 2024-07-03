@@ -167,6 +167,7 @@ jobs:
           retention-days: 1
 
       - name: Save log file
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Buildroot-logs-arm64
@@ -203,6 +204,7 @@ jobs:
           retention-days: 1
 
       - name: Save log file
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Buildroot-logs-x86
@@ -239,6 +241,7 @@ jobs:
           retention-days: 1
 
       - name: Save log file
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Buildroot-logs-x64
