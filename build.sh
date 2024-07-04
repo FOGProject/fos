@@ -11,109 +11,63 @@ Usage() {
     echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
     echo -e "\t\t-n --noconfirm (optional) Build systems without confirmation."
     echo -e "\t\t-h --help -? Display this message."
+    exit 0
 }
 [[ -n $arch ]] && unset $arch
-optspec="?hknfh-:a:v:p:"
-while getopts "$optspec" o; do
-    case "${o}" in
-        -)
-            case $OPTARG in
-                help)
-                    Usage
-                    exit 0
-                    ;;
-                arch)
-                    val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
-                    if [[ -z $val ]]; then
-                        echo "Option --${OPTARG} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    hasa=1
-                    arch=$val
-                    ;;
-                arch=*)
-                    val=${OPTARG#*=}
-                    opt=${OPTARG%=$val}
-                    if [[ -z $val ]]; then
-                        echo "Option --${opt} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    hasa=1
-                    arch=$val
-                    ;;
-                path)
-                    val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
-                    if [[ -z $val ]]; then
-                        echo "Option --${OPTARG} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    buildPath=${val}
-                    ;;
-                path=*)
-                    val=${OPTARG#*=}
-                    opt=${OPTARG%=$val}
-                    if [[ -z $val ]]; then
-                        echo "Option --${opt} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    buildPath=${val}
-                    ;;
-                kernel-only)
-                    buildKernelOnly="y"
-                    ;;
-                filesystem-only)
-                    buildFSOnly="y"
-                    ;;
-                noconfirm)
-                    confirm="n"
-                    ;;
-                *)
-                    if [[ $OPTERR == 1 && ${optspec:0:1} != : ]]; then
-                        echo "Unknown option: --${OPTARG}"
-                        Usage
-                        exit 1
-                    fi
-                    ;;
-            esac
-            ;;
-        h|'?')
+
+
+shortopts="?hkfna:p:"
+longopts="help,kernel-only,filesystem-only,noconfirm,arch:,path:"
+
+optargs=$(getopt -o $shortopts -l $longopts -n "$0" -- "$@")
+[[ $? -ne 0 ]] && Usage
+
+eval set -- "$optargs"
+
+while :; do
+    case $1 in
+        -\? | -h | --help)
             Usage
             exit 0
             ;;
-        a)
-            hasa=1
-            arch=${OPTARG}
-            ;;
-        p)
-            buildPath=${OPTARG}
-            ;;
-        k)
+        -k | --kernel-only)
             buildKernelOnly="y"
+            shift
             ;;
-        f)
+        -f | --filesystem-only)
             buildFSOnly="y"
+            shift
             ;;
-        n)
+        -n | --noconfirm)
             confirm="n"
+            shift
             ;;
-        :)
-            echo "Option -${OPTARG} requires a value"
-            Usage
-            exit 2
-            ;;
-        *)
-            if [[ ${OPTERR} -eq 1 && ${optspec:0:1} != : ]]; then
-                echo "Unknown option: -${OPTARG}"
+        -a | --arch)
+            arch=$2
+            if [[ "$arch" != "x64" && "$arch" != "x86" && "$arch" != "arm64" ]]; then
+                echo "Error: Invalid architecture specified. Valid options are: x64, x86, arm64"
                 Usage
                 exit 1
             fi
+            shift 2
+            ;;
+        -p | --path)
+            buildPath=$2
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Error: Invalid option."
+            Usage
+            exit 1
             ;;
     esac
 done
+
+
 debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev file cpio"
 rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel file cpio perl-English perl-ExtUtils-MakeMaker perl-Thread-Queue perl-FindBin perl-IPC-Cmd"
 [[ -z $arch ]] && arch="x64 x86 arm64"
