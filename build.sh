@@ -3,9 +3,12 @@
 [[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.6.34'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2024.02.3'
 
+declare -ar ARCHITECTURES=("x64" "x86" "arm64")
+PIPE_JOINED_ARCHITECTURES=$(IFS="|"; echo "${ARCHITECTURES[@]}"; unset IFS)
+
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
-    echo -e "\t\t-a --arch [x86|x64|arm64] (optional) pick the architecture to build. Default is to build for all."
+    echo -e "\t\t-a --arch [$PIPE_JOINED_ARCHITECTURES] (optional) pick the architecture to build. Default is to build for all."
     echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
     echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
@@ -14,7 +17,6 @@ Usage() {
     exit 0
 }
 [[ -n $arch ]] && unset $arch
-
 
 shortopts="?hkfna:p:"
 longopts="help,kernel-only,filesystem-only,noconfirm,arch:,path:"
@@ -44,8 +46,8 @@ while :; do
             ;;
         -a | --arch)
             arch=$2
-            if [[ "$arch" != "x64" && "$arch" != "x86" && "$arch" != "arm64" ]]; then
-                echo "Error: Invalid architecture specified. Valid options are: x64, x86, arm64"
+            if ! echo ${ARCHITECTURES[@]} | grep -w $arch >/dev/null; then
+                echo "Error: Invalid architecture specified. Valid options are: $PIPE_JOINED_ARCHITECTURES"
                 Usage
                 exit 1
             fi
@@ -70,7 +72,7 @@ done
 
 debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev file cpio"
 rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel file cpio perl-English perl-ExtUtils-MakeMaker perl-Thread-Queue perl-FindBin perl-IPC-Cmd"
-[[ -z $arch ]] && arch="x64 x86 arm64"
+[[ -z $arch ]] && arch="${ARCHITECTURES[@]}"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
 echo "Checking packages needed for building"
