@@ -245,6 +245,21 @@ function buildKernel() {
     tar xJf linux-$KERNEL_VERSION.tar.xz
     mv linux-$KERNEL_VERSION kernelsource$arch
     echo "Done"
+    if [[ ! -d linux-firmware ]]; then
+        dots "Cloning Linux firmware repository"
+        git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
+        echo "Done"
+    else
+        dots "Updating Linux firmware repository"
+        cd linux-firmware
+        git pull --rebase >/dev/null 2>&1
+        cd ..
+        echo "Done"
+    fi
+    dots "Copying firmware files"
+    cp -r linux-firmware kernelsource$arch/
+    echo "Done"
+
     dots "Preparing kernel source"
     cd kernelsource$arch
     make mrproper
@@ -261,9 +276,6 @@ function buildKernel() {
     else
         echo " * WARNING: Did not find a patch file building vanilla kernel without patches!"
     fi
-    dots "Cloning Linux firmware repository"
-    git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
-    echo "Done"
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
