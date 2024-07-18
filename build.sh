@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source ./dependencies.sh
+
 [[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.6.34'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2024.02.3'
 
@@ -13,13 +15,14 @@ Usage() {
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
     echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
     echo -e "\t\t-n --noconfirm (optional) Build systems without confirmation."
+    echo -e "\t\t-i --install-dep (optional) Attempt to install dependencies."
     echo -e "\t\t-h --help -? Display this message."
     exit 0
 }
 [[ -n $arch ]] && unset $arch
 
-shortopts="?hkfna:p:"
-longopts="help,kernel-only,filesystem-only,noconfirm,arch:,path:"
+shortopts="?hkfnia:p:"
+longopts="help,kernel-only,filesystem-only,noconfirm,install-dep,arch:,path:"
 
 optargs=$(getopt -o $shortopts -l $longopts -n "$0" -- "$@")
 [[ $? -ne 0 ]] && Usage
@@ -42,6 +45,10 @@ while :; do
             ;;
         -n | --noconfirm)
             confirm="n"
+            shift
+            ;;
+        -i | --install-dep)
+            installDep="y"
             shift
             ;;
         -a | --arch)
@@ -70,39 +77,13 @@ while :; do
 done
 
 
-debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev file cpio"
-rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel file cpio perl-English perl-ExtUtils-MakeMaker perl-Thread-Queue perl-FindBin perl-IPC-Cmd"
 [[ -z $arch ]] && arch="${ARCHITECTURES[@]}"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
-echo "Checking packages needed for building"
-if grep -iqE "Debian|Ubuntu" /etc/os-release ; then
-    os="deb"
-    eabi="eabi"
-    pkgmgr() {
-        dpkg -l
-    }
-elif grep -iqE "Red Hat|Redhat" /etc/os-release ; then
-    os="rhel"
-    eabi=""
-    pkgmgr() {
-        rpm -qa --qf "ii %{NAME}\n"
-    }
-fi
-osDeps=${os}Deps
-missing=""
-for pkg in ${!osDeps}
-do
-    pkgmgr | awk '{print $2}' | cut -d':' -f1 | grep -qe "^${pkg}$"
-    if [[ $? != 0 ]]; then
-        missing="${missing} ${pkg}"
-        fail=1
-    fi
-done
-if [[ $fail == 1 ]]; then
-    echo "Package(s) missing, exiting now, please install packages:${missing}"
-    exit 1
-fi
+[[ -z $installDep ]] && installDep="n"
+
+checkDependencies
+installDependencies $installDep
 
 cd $buildPath || exit 1
 
