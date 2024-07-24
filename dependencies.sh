@@ -1,14 +1,10 @@
 #!/bin/bash
 
 # Distros that have been tested:
-#   - Debian 11
-#   - Debian 12
-#   - Ubuntu 22.04
-#   - Ubuntu 24.04
-#   - RHEL 8.10
-#   - RHEL 9.4
-#   - Fedora 39
-#   - Fedora 40
+#   - Debian 11, 12
+#   - Ubuntu 22.04, 24.04
+#   - RHEL 8.10, 9.4
+#   - Fedora 39, 40
 #   - Rocky 9.4
 
 
@@ -108,7 +104,3 @@ function installDependencies() {
         fi
     fi
 }
-
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    echo ""
-fi
