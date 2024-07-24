@@ -60,11 +60,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
-
       - name: Build arm64 kernel
-        run: ./build.sh -nka arm64
+        run: ./build.sh --install-dep -nka arm64
 
       - name: Run sha256 checksum
         run: |
@@ -89,11 +86,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
-
       - name: Build x86 kernel
-        run: ./build.sh -nka x86
+        run: ./build.sh --install-dep -nka x86
 
       - name: Run sha256 checksum
         run: |
@@ -118,11 +112,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
-
       - name: Build x64 kernel
-        run: ./build.sh -nka x64
+        run: ./build.sh --install-dep -nka x64
 
       - name: Run sha256 checksum
         run: |
@@ -147,11 +138,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
-
       - name: Build arm64 initrd
-        run: ./build.sh -nfa arm64
+        run: ./build.sh --install-dep -nfa arm64
 
       - name: Run sha256 checksum
         run: |
@@ -184,11 +172,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
-
       - name: Build x86 initrd
-        run: ./build.sh -nfa x86
+        run: ./build.sh --install-dep -nfa x86
 
       - name: Run sha256 checksum
         run: |
@@ -221,11 +206,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt update && sudo apt install meld build-essential libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev -y
-
       - name: Build x64 initrd
-        run: ./build.sh -nfa x64
+        run: ./build.sh --install-dep -nfa x64
 
       - name: Run sha256 checksum
         run: |
