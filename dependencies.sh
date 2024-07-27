@@ -69,7 +69,8 @@ function checkDependencies() {
             ;;
         *)
             echo "Untested OS: $running_os"
-            return
+            echo "Exiting now."
+            exit 1
             ;;
     esac
 
