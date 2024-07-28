@@ -91,8 +91,8 @@ function checkDependencies() {
 function installDependencies() {
     local install_dep=$1
 
-    if [[ $install_dep != "y" ]]; then
-        echo "Exiting now, please install the packages manually."
+    if [[ $install_dep != "y" && -n $missing_packages ]]; then
+        echo "Exiting now, please install the packages manually or add the -i or --install-dep flag to install them automatically."
         exit 1
     fi
 
