@@ -1,152 +1,89 @@
 #!/bin/bash
 
+source ./dependencies.sh
+
 [[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.6.34'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2024.02.3'
 
+declare -ar ARCHITECTURES=("x64" "x86" "arm64")
+PIPE_JOINED_ARCHITECTURES=$(IFS="|"; echo "${ARCHITECTURES[@]}"; unset IFS)
+
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
-    echo -e "\t\t-a --arch [x86|x64|arm64] (optional) pick the architecture to build. Default is to build for all."
+    echo -e "\t\t-a --arch [$PIPE_JOINED_ARCHITECTURES] (optional) pick the architecture to build. Default is to build for all."
     echo -e "\t\t-f --filesystem-only (optional) Build the FOG filesystem but not the kernel."
     echo -e "\t\t-k --kernel-only (optional) Build the FOG kernel but not the filesystem."
     echo -e "\t\t-p --path (optional) Specify a path to download and build the sources."
     echo -e "\t\t-n --noconfirm (optional) Build systems without confirmation."
+    echo -e "\t\t-i --install-dep (optional) Attempt to install dependencies."
     echo -e "\t\t-h --help -? Display this message."
+    exit 0
 }
 [[ -n $arch ]] && unset $arch
-optspec="?hknfh-:a:v:p:"
-while getopts "$optspec" o; do
-    case "${o}" in
-        -)
-            case $OPTARG in
-                help)
-                    Usage
-                    exit 0
-                    ;;
-                arch)
-                    val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
-                    if [[ -z $val ]]; then
-                        echo "Option --${OPTARG} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    hasa=1
-                    arch=$val
-                    ;;
-                arch=*)
-                    val=${OPTARG#*=}
-                    opt=${OPTARG%=$val}
-                    if [[ -z $val ]]; then
-                        echo "Option --${opt} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    hasa=1
-                    arch=$val
-                    ;;
-                path)
-                    val="${!OPTIND}"; OPTIND=$(($OPTIND + 1))
-                    if [[ -z $val ]]; then
-                        echo "Option --${OPTARG} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    buildPath=${val}
-                    ;;
-                path=*)
-                    val=${OPTARG#*=}
-                    opt=${OPTARG%=$val}
-                    if [[ -z $val ]]; then
-                        echo "Option --${opt} requires a value"
-                        Usage
-                        exit 2
-                    fi
-                    buildPath=${val}
-                    ;;
-                kernel-only)
-                    buildKernelOnly="y"
-                    ;;
-                filesystem-only)
-                    buildFSOnly="y"
-                    ;;
-                noconfirm)
-                    confirm="n"
-                    ;;
-                *)
-                    if [[ $OPTERR == 1 && ${optspec:0:1} != : ]]; then
-                        echo "Unknown option: --${OPTARG}"
-                        Usage
-                        exit 1
-                    fi
-                    ;;
-            esac
-            ;;
-        h|'?')
+
+shortopts="?hkfnia:p:"
+longopts="help,kernel-only,filesystem-only,noconfirm,install-dep,arch:,path:"
+
+optargs=$(getopt -o $shortopts -l $longopts -n "$0" -- "$@")
+[[ $? -ne 0 ]] && Usage
+
+eval set -- "$optargs"
+
+while :; do
+    case $1 in
+        -\? | -h | --help)
             Usage
             exit 0
             ;;
-        a)
-            hasa=1
-            arch=${OPTARG}
-            ;;
-        p)
-            buildPath=${OPTARG}
-            ;;
-        k)
+        -k | --kernel-only)
             buildKernelOnly="y"
+            shift
             ;;
-        f)
+        -f | --filesystem-only)
             buildFSOnly="y"
+            shift
             ;;
-        n)
+        -n | --noconfirm)
             confirm="n"
+            shift
             ;;
-        :)
-            echo "Option -${OPTARG} requires a value"
-            Usage
-            exit 2
+        -i | --install-dep)
+            installDep="y"
+            shift
             ;;
-        *)
-            if [[ ${OPTERR} -eq 1 && ${optspec:0:1} != : ]]; then
-                echo "Unknown option: -${OPTARG}"
+        -a | --arch)
+            arch=$2
+            if ! echo ${ARCHITECTURES[@]} | grep -w $arch >/dev/null; then
+                echo "Error: Invalid architecture specified. Valid options are: $PIPE_JOINED_ARCHITECTURES"
                 Usage
                 exit 1
             fi
+            shift 2
+            ;;
+        -p | --path)
+            buildPath=$2
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Error: Invalid option."
+            Usage
+            exit 1
             ;;
     esac
 done
-debDeps="tar xz-utils git meld build-essential bc rsync libncurses5-dev bison flex gcc-aarch64-linux-gnu libelf-dev file cpio"
-rhelDeps="epel-release tar xz git meld gcc gcc-c++ kernel-devel make bc rsync ncurses-devel bison flex gcc-aarch64-linux-gnu elfutils-libelf-devel file cpio perl-English perl-ExtUtils-MakeMaker perl-Thread-Queue perl-FindBin perl-IPC-Cmd"
-[[ -z $arch ]] && arch="x64 x86 arm64"
+
+
+[[ -z $arch ]] && arch="${ARCHITECTURES[@]}"
 [[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
 [[ -z $confirm ]] && confirm="y"
-echo "Checking packages needed for building"
-if grep -iqE "Debian|Ubuntu" /etc/os-release ; then
-    os="deb"
-    eabi="eabi"
-    pkgmgr() {
-        dpkg -l
-    }
-elif grep -iqE "Red Hat|Redhat" /etc/os-release ; then
-    os="rhel"
-    eabi=""
-    pkgmgr() {
-        rpm -qa --qf "ii %{NAME}\n"
-    }
-fi
-osDeps=${os}Deps
-missing=""
-for pkg in ${!osDeps}
-do
-    pkgmgr | awk '{print $2}' | cut -d':' -f1 | grep -qe "^${pkg}$"
-    if [[ $? != 0 ]]; then
-        missing="${missing} ${pkg}"
-        fail=1
-    fi
-done
-if [[ $fail == 1 ]]; then
-    echo "Package(s) missing, exiting now, please install packages:${missing}"
-    exit 1
-fi
+[[ -z $installDep ]] && installDep="n"
+
+checkDependencies
+installDependencies $installDep
 
 cd $buildPath || exit 1
 
@@ -308,6 +245,21 @@ function buildKernel() {
     tar xJf linux-$KERNEL_VERSION.tar.xz
     mv linux-$KERNEL_VERSION kernelsource$arch
     echo "Done"
+    if [[ ! -d linux-firmware ]]; then
+        dots "Cloning Linux firmware repository"
+        git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
+        echo "Done"
+    else
+        dots "Updating Linux firmware repository"
+        cd linux-firmware
+        git pull --rebase >/dev/null 2>&1
+        cd ..
+        echo "Done"
+    fi
+    dots "Copying firmware files"
+    cp -r linux-firmware kernelsource$arch/
+    echo "Done"
+
     dots "Preparing kernel source"
     cd kernelsource$arch
     make mrproper
@@ -324,9 +276,6 @@ function buildKernel() {
     else
         echo " * WARNING: Did not find a patch file building vanilla kernel without patches!"
     fi
-    dots "Cloning Linux firmware repository"
-    git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
-    echo "Done"
     if [[ $confirm != n ]]; then
         read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
