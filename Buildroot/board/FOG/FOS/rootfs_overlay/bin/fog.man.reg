@@ -340,7 +340,7 @@ done
 dots "Attempting to register host"
 res=""
 while [[ -z $res ]]; do
-    res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&username=$user64&groupid=$group64&snapinid=$snapin64&productKey=$productKey" ${web}service/auto.register.php 2>/dev/null)
+    res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&username=$user64&password=$pass64&groupid=$group64&snapinid=$snapin64&productKey=$productKey" ${web}service/auto.register.php 2>/dev/null)
     echo "$res"
     usleep 2000000
 done
