@@ -27,6 +27,7 @@ declare -ar deb_dependencies=(
     "libelf-dev"
     "xz-utils"
     "g++"
+    "libncurses-dev"
 )
 
 declare -ar rhel_dependencies=(
@@ -34,6 +35,7 @@ declare -ar rhel_dependencies=(
     "perl"
     "xz"
     "gcc-c++"
+    "ncurses-devel"
 )
 
 
