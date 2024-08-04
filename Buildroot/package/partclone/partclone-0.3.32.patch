@@ -1,7 +1,8 @@
-diff -Nur partclone-0.3.27_original/src/progress.c partclone-0.3.27_patched/src/progress.c
---- partclone-0.3.27_original/src/progress.c	2023-10-04 02:18:19.000000000 -0700
-+++ partclone-0.3.27_patched/src/progress.c	2023-10-25 11:47:49.162860998 -0700
-@@ -196,6 +196,47 @@
+diff --git a/src/progress.c b/src/progress.c
+index 91f053a..3b22853 100644
+--- a/src/progress.c
++++ b/src/progress.c
+@@ -228,6 +228,47 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
      strncpy(prog_stat->Rformated, Rformated, sizeof(Rformated)+1);
  }
  
@@ -49,15 +50,15 @@ diff -Nur partclone-0.3.27_original/src/progress.c partclone-0.3.27_patched/src/
  /// update information at progress bar
  extern void progress_update(struct progress_bar *prog, unsigned long long copied, unsigned long long current, int done)
  {
-@@ -217,6 +258,7 @@
- 	    fprintf(stderr, _(", %6.2f%s/min,"), prog_stat.speed, prog_stat.speed_unit);
+@@ -249,6 +290,7 @@ extern void progress_update(struct progress_bar *prog, unsigned long long copied
+ 	    fprintf(stderr, _(", %6.2f%s/%s,"), prog_stat.speed, prog_stat.speed_unit, prog->time_unit);
  	if(prog->flag == IO)
  	    fprintf(stderr, _("\n\r%80c\rCurrent block: %10Lu, Total block: %10Lu, Complete: %6.2f%%%s\r"), clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
-+    fogLogStatusFile(prog, &prog_stat, current);
++        fogLogStatusFile(prog, &prog_stat, current);
      } else {
  	setlocale(LC_ALL, "");
  	bindtextdomain(PACKAGE, LOCALEDIR);
-@@ -294,6 +336,7 @@
+@@ -326,6 +368,7 @@ extern void Ncurses_progress_update(struct progress_bar *prog, unsigned long lon
  	wrefresh(p_win);
          wrefresh(bar_win);
          wrefresh(tbar_win);
