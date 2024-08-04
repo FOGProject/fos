@@ -1,5 +1,5 @@
 #!/bin/bash
-export initversion=19800101
+export initversion="2022.02.9"
 . /usr/share/fog/lib/partition-funcs.sh
 REG_LOCAL_MACHINE_XP="/ntfs/WINDOWS/system32/config/system"
 REG_LOCAL_MACHINE_7="/ntfs/Windows/System32/config/SYSTEM"
@@ -45,7 +45,8 @@ displayBanner() {
     echo "   =================================="
     echo "   == Released under GPL Version 3 =="
     echo "   =================================="
-    echo "   Version: $version"
+    echo "   FOG Version: $version"
+    echo "   Kernel Version: $(uname -r)"
     echo "   Init Version: $initversion"
 }
 # Gets all system mac addresses except for loopback
