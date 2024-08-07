@@ -499,7 +499,7 @@ prepareUploadLocation() {
     echo "Done"
     debugPause
     dots "Setting permission on $imagePath"
-    chmod -R 777 $imagePath >/dev/null 2>&1
+    chmod -R 775 $imagePath >/dev/null 2>&1
     case $? in
         0)
             echo "Done"
@@ -1586,7 +1586,7 @@ findHDDInfo() {
 completeTasking() {
     case $type in
         up)
-            chmod -R 777 "$imagePath" >/dev/null 2>&1
+            chmod -R 775 "$imagePath" >/dev/null 2>&1
             killStatusReporter
             . /bin/fog.imgcomplete
             ;;
