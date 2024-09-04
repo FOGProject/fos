@@ -81,8 +81,26 @@ verifyNetworkConnection() {
 validResizeOS() {
     [[ $osid != @([1-2]|4|[5-7]|9|10|11|50|51) ]] && handleError " * Invalid operating system id: $osname ($osid) (${FUNCNAME[0]})\n   Args Passed: $*"
 }
+# Gets the graphics information from the system
+getGraphics() {
+    local graphics_info=$(lshw -json -C display | jq -r '.[] | select(.vendor != null) | "\(.vendor),\(.product)"')
+
+    graphics_vendors_array=()
+    graphics_products_array=()
+    while IFS=',' read -r vendor product; do
+        graphics_vendors_array+=("$vendor")
+        graphics_products_array+=("$product")
+    done <<< "$graphics_info"
+
+    inventory_graphics_vendor=$(IFS=,; echo "${graphics_vendors_array[*]}")
+    inventory_graphics_product=$(IFS=,; echo "${graphics_products_array[*]}")
+
+    inventory_graphics_vendor64=$(echo "$inventory_graphics_vendor" | base64)
+    inventory_graphics_product64=$(echo "$inventory_graphics_product" | base64)
+}
 # Gets the information from the system for inventory
 doInventory() {
+    getGraphics
     sysman=$(dmidecode -s system-manufacturer)
     sysproduct=$(dmidecode -s system-product-name)
     sysversion=$(dmidecode -s system-version)
