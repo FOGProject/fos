@@ -83,19 +83,20 @@ validResizeOS() {
 }
 # Gets the graphics information from the system
 getGraphics() {
-    local graphics_vendor0=$(lshw -json -C display | jq -r '.[0] | .vendor')
-    local graphics_vendor1=$(lshw -json -C display | jq -r '.[1] | .vendor')
-    local graphics_vendor2=$(lshw -json -C display | jq -r '.[2] | .vendor')
+    local graphics_info=$(lshw -json -C display | jq -r '.[] | select(.vendor != null) | "\(.vendor),\(.product)"')
 
-    local graphics_name0=$(lshw -json -C display | jq -r 'map(select(.vendor != null) | .product) | .[0]')
-    local graphics_name1=$(lshw -json -C display | jq -r 'map(select(.vendor != null) | .product) | .[1]')
-    local graphics_name2=$(lshw -json -C display | jq -r 'map(select(.vendor != null) | .product) | .[2]')
+    graphics_vendors_array=()
+    graphics_products_array=()
+    while IFS=',' read -r vendor product; do
+        graphics_vendors_array+=("$vendor")
+        graphics_products_array+=("$product")
+    done <<< "$graphics_info"
 
-    graphics_vendor="$graphics_vendor0,$graphics_vendor1,$graphics_vendor2"
-    graphics_name="$graphics_name0,$graphics_name1,$graphics_name2"
+    inventory_graphics_vendor=$(IFS=,; echo "${graphics_vendors_array[*]}")
+    inventory_graphics_product=$(IFS=,; echo "${graphics_products_array[*]}")
 
-    graphics_vendor64=$(echo $graphics_vendor | base64)
-    graphics_name64=$(echo $graphics_name | base64)
+    inventory_graphics_vendor64=$(echo "$inventory_graphics_vendor" | base64)
+    inventory_graphics_product64=$(echo "$inventory_graphics_product" | base64)
 }
 # Gets the information from the system for inventory
 doInventory() {
