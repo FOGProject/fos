@@ -1,0 +1,32 @@
+#! /bin/bash
+
+function fetchBootTask () {
+    res=$(curl -Lks --data "sysserial=${sysserial}&sysuuid=${sysuuid}&mac=$mac&productKey=${productKey}" ${web}service/ipxe/boot.php 2>/dev/null)
+    res=$(echo "$res" | head -n 8 | tail -n 1)
+}
+
+
+fetchBootTask
+
+while [[ ! "$res" =~ ^kernel.bzImage.* ]]; do
+    sleep 5
+    echo "Fetching tasks for $mac from $web"
+
+    fetchBootTask
+done
+
+echo "A new task has been received with the following options"
+
+for var in $(echo $res); do
+    var=$(echo "${var}" | awk -F= '{name=$1; gsub(/[+][_][+]/," ",$2); gsub(/"/,"\\\"", $2); value=$2; if (length($2) == 0 || $0 !~ /=/ || $0 ~ /nvme_core\.default_ps_max_latency_us=/) {print "";} else {printf("%s=%s", name, value)}}')
+    [[ -z $var ]] && continue;
+    echo "- $var"
+
+    eval "export ${var}" 2>/dev/null
+done
+
+echo "Start default fog script in 5 seconds"
+sleep 5
+
+fog
+
