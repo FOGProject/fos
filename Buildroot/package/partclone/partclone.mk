@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-PARTCLONE_VERSION = 0.3.32
+PARTCLONE_VERSION = 0.3.33
 PARTCLONE_SOURCE = partclone-$(PARTCLONE_VERSION).tar.gz
 PARTCLONE_SITE = $(call github,Thomas-Tsai,partclone,$(PARTCLONE_VERSION))
 PARTCLONE_INSTALL_STAGING = YES

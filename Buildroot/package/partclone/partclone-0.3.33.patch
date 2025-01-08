@@ -1,5 +1,5 @@
 diff --git a/src/progress.c b/src/progress.c
-index 91f053a..3b22853 100644
+index 9858511..8b98adc 100644
 --- a/src/progress.c
 +++ b/src/progress.c
 @@ -228,6 +228,47 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
@@ -54,7 +54,7 @@ index 91f053a..3b22853 100644
  	    fprintf(stderr, _(", %6.2f%s/%s,"), prog_stat.speed, prog_stat.speed_unit, prog->time_unit);
  	if(prog->flag == IO)
  	    fprintf(stderr, _("\n\r%80c\rCurrent block: %10Lu, Total block: %10Lu, Complete: %6.2f%%%s\r"), clear_buf, current, prog->total, prog_stat.total_percent, "\x1b[A");
-+        fogLogStatusFile(prog, &prog_stat, current);
++    fogLogStatusFile(prog, &prog_stat, current);
      } else {
  	setlocale(LC_ALL, "");
  	bindtextdomain(PACKAGE, LOCALEDIR);
