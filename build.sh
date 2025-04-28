@@ -2,7 +2,7 @@
 
 source ./dependencies.sh
 
-[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.6.69'
+[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.12.25'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2024.02.9'
 
 declare -ar ARCHITECTURES=("x64" "x86" "arm64")
