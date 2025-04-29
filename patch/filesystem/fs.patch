@@ -1,8 +1,8 @@
 diff --git a/Config.in b/Config.in
-index df43db7eff..8a3e0ac0a4 100644
+index d730f2034b..9ad4198d14 100644
 --- a/Config.in
 +++ b/Config.in
-@@ -712,6 +712,24 @@ config BR2_GLOBAL_PATCH_DIR
+@@ -741,6 +741,24 @@ config BR2_GLOBAL_PATCH_DIR
  
  menu "Advanced"
  
@@ -28,10 +28,10 @@ index df43db7eff..8a3e0ac0a4 100644
  	bool "Force the building of host dependencies"
  	help
 diff --git a/package/Makefile.in b/package/Makefile.in
-index 1cedfefa7e..62bcbd3269 100644
+index 829636900b..b2028f9a7c 100644
 --- a/package/Makefile.in
 +++ b/package/Makefile.in
-@@ -431,8 +431,9 @@ else ifeq ($(BR2_SHARED_STATIC_LIBS),y)
+@@ -447,8 +447,9 @@ else ifeq ($(BR2_SHARED_STATIC_LIBS),y)
  SHARED_STATIC_LIBS_OPTS = --enable-static --enable-shared
  endif
  
@@ -53,7 +53,7 @@ index 3430fcce11..71344e2c69 100644
 +BR2_COMPILER_PARANOID_UNSAFE_PATH=y
  BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
 diff --git a/toolchain/toolchain-wrapper.c b/toolchain/toolchain-wrapper.c
-index e436889760..caadda4eb0 100644
+index 8b1fb79dde..6d23b81ef8 100644
 --- a/toolchain/toolchain-wrapper.c
 +++ b/toolchain/toolchain-wrapper.c
 @@ -157,6 +157,7 @@ static const struct str_len_s unsafe_opts[] = {
@@ -87,10 +87,10 @@ index e436889760..caadda4eb0 100644
  	char *env_debug;
 +	char *paranoid_wrapper;
 +	int paranoid;
- 	int ret, i, count = 0, debug = 0, found_shared = 0;
+ 	int ret, i, count = 0, debug = 0, found_shared = 0, found_nonoption = 0;
  
  	/* Debug the wrapper to see arguments it was called with.
-@@ -474,6 +479,12 @@ int main(int argc, char **argv)
+@@ -475,6 +480,12 @@ int main(int argc, char **argv)
  #endif
  	}
  
@@ -103,7 +103,7 @@ index e436889760..caadda4eb0 100644
  	/* Check for unsafe library and header paths */
  	for (i = 1; i < argc; i++) {
  		const struct str_len_s *opt;
-@@ -490,9 +501,9 @@ int main(int argc, char **argv)
+@@ -491,9 +502,9 @@ int main(int argc, char **argv)
  				i++;
  				if (i == argc)
  					break;
