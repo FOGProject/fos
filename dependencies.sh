@@ -21,6 +21,8 @@ declare -ar common_dependencies=(
     "file"
     "rsync"
     "patch"
+    "unzip"
+    "bzip2"
 )
 
 declare -ar deb_dependencies=(
