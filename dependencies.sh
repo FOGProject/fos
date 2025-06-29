@@ -50,7 +50,8 @@ function __epel_repo_message() {
 
 
 function checkDependencies() {
-    local running_os=$(cat /etc/os-release | grep "^ID=" | cut -d'=' -f2 | tr -d '"')
+    local running_os
+    running_os=$(grep "^ID=" /etc/os-release | cut -d'=' -f2 | tr -d '"')
     package_manager=""
 
     case $running_os in
@@ -81,7 +82,7 @@ function checkDependencies() {
     missing_packages=""
     for package in "${dependencies[@]}"; do
         pkgmgr | awk '{print $2}' | cut -d':' -f1 | grep -qe "${package}"
-        if [[ $? > 0 ]]; then
+        if [[ $? -ne 0 ]]; then
             missing_packages="${missing_packages} ${package}"
         fi
     done
@@ -103,7 +104,7 @@ function installDependencies() {
     if [[ -n $missing_packages ]]; then
         echo "Atempting to install missing dependencies..."
         $package_manager "${dependencies[@]}" > /dev/null 2>&1
-        if [[ $? > 0 ]]; then
+        if [[ $? -ne 0 ]]; then
             echo "Failed to install dependencies, please install the packages manually. Exiting now."
             exit 1
         fi
