@@ -8,6 +8,8 @@ source ./dependencies.sh
 declare -ar ARCHITECTURES=("x64" "x86" "arm64")
 PIPE_JOINED_ARCHITECTURES=$(IFS="|"; echo "${ARCHITECTURES[@]}"; unset IFS)
 
+PROJECT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 Usage() {
     echo -e "Usage: $0 [-knfvh?] [-a x64]"
     echo -e "\t\t-a --arch [$PIPE_JOINED_ARCHITECTURES] (optional) pick the architecture to build. Default is to build for all."
@@ -242,6 +244,11 @@ function buildKernel() {
     tar xJf "linux-$KERNEL_VERSION.tar.xz"
     mv "linux-$KERNEL_VERSION" "kernelsource$arch"
     echo "Done"
+
+    dots "Adding kernel packages"
+    addKernelPackages
+    echo "Done"
+
     if [[ ! -d linux-firmware ]]; then
         dots "Cloning Linux firmware repository"
         git clone git://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git >/dev/null 2>&1
@@ -387,6 +394,29 @@ function dots() {
     return 0
 }
 
+function addKernelPackages() {
+    local source_kernel_package_dir="$PROJECT_DIRECTORY/KernelPackages"
+    local target_kernel_dir="$PROJECT_DIRECTORY/kernelsource$arch"
+
+    find "$source_kernel_package_dir" -type f | while read -r source_file; do
+        # Get the relative path from the package directory to the source file
+        local relative_path="${source_file#"$source_kernel_package_dir"/}"
+
+        # Find the corresponding destination path
+        local destination_file="$target_kernel_dir/$relative_path"
+        local destination_dir
+        destination_dir="$(dirname "$destination_file")"
+
+        mkdir -p "$destination_dir"
+
+        # Append if the destination file exists, otherwise copy
+        if [[ -e "$destination_file" ]]; then
+            cat "$source_file" >> "$destination_file"
+        else
+            cp "$source_file" "$destination_file"
+        fi
+    done
+}
 
 
 for buildArch in $arch
