@@ -1,0 +1,1 @@
+savedcmd_drivers/net/ethernet/realtek/r8125/built-in.a := rm -f drivers/net/ethernet/realtek/r8125/built-in.a;  printf "drivers/net/ethernet/realtek/r8125/%s " r8125_n.o rtl_eeprom.o rtltool.o r8125_fiber.o | xargs ar cDPrST drivers/net/ethernet/realtek/r8125/built-in.a
