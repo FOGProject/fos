@@ -1,0 +1,6 @@
+config R8168
+    tristate "Realtek GBE Ethernet driver (r8168)"
+    depends on PCI && MII
+    help
+      This is the official Realtek GBE Ethernet driver. 
+

@@ -1,0 +1,1 @@
+savedcmd_drivers/net/ethernet/realtek/r8168/built-in.a := rm -f drivers/net/ethernet/realtek/r8168/built-in.a;  printf "drivers/net/ethernet/realtek/r8168/%s " r8168_n.o r8168_asf.o rtl_eeprom.o rtltool.o | xargs ar cDPrST drivers/net/ethernet/realtek/r8168/built-in.a
