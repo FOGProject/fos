@@ -19,12 +19,12 @@ Usage() {
     echo -e "\t\t-h --help -? Display this message."
     exit 0
 }
-[[ -n $arch ]] && unset $arch
+[[ -n "$arch" ]] && unset "$arch"
 
 shortopts="?hkfnia:p:"
 longopts="help,kernel-only,filesystem-only,noconfirm,install-dep,arch:,path:"
 
-optargs=$(getopt -o $shortopts -l $longopts -n "$0" -- "$@")
+optargs=$(getopt -o "$shortopts" -l "$longopts" -n "$0" -- "$@")
 [[ $? -ne 0 ]] && Usage
 
 eval set -- "$optargs"
@@ -33,7 +33,6 @@ while :; do
     case $1 in
         -\? | -h | --help)
             Usage
-            exit 0
             ;;
         -k | --kernel-only)
             buildKernelOnly="y"
@@ -53,10 +52,9 @@ while :; do
             ;;
         -a | --arch)
             arch=$2
-            if ! echo ${ARCHITECTURES[@]} | grep -w $arch >/dev/null; then
+            if ! echo "${ARCHITECTURES[@]}" | grep -w "$arch" >/dev/null; then
                 echo "Error: Invalid architecture specified. Valid options are: $PIPE_JOINED_ARCHITECTURES"
                 Usage
-                exit 1
             fi
             shift 2
             ;;
@@ -71,21 +69,20 @@ while :; do
         *)
             echo "Error: Invalid option."
             Usage
-            exit 1
             ;;
     esac
 done
 
 
-[[ -z $arch ]] && arch="${ARCHITECTURES[@]}"
-[[ -z $buildPath ]] && buildPath=$(dirname $(readlink -f $0))
+[[ -z $arch ]] && arch="${ARCHITECTURES[*]}"
+[[ -z $buildPath ]] && buildPath="$(dirname "$(readlink -f "$0")")"
 [[ -z $confirm ]] && confirm="y"
 [[ -z $installDep ]] && installDep="n"
 
 checkDependencies
-installDependencies $installDep
+installDependencies "$installDep"
 
-cd $buildPath || exit 1
+cd "$buildPath" || exit 1
 
 
 function buildFilesystem() {
@@ -95,18 +92,18 @@ function buildFilesystem() {
     if [[ ! -d fssource$arch ]]; then
         if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.xz ]]; then
             dots "Downloading buildroot source package"
-            wget -q $brURL && echo "Done"
+            wget -q "$brURL" && echo "Done"
             if [[ $? -ne 0 ]]; then
                 echo "Failed"
                 exit 1
             fi
         fi
         dots "Extracting buildroot sources"
-        tar xJf buildroot-$BUILDROOT_VERSION.tar.xz
-        mv buildroot-$BUILDROOT_VERSION fssource$arch
+        tar xJf "buildroot-$BUILDROOT_VERSION.tar.xz"
+        mv "buildroot-$BUILDROOT_VERSION" "fssource$arch"
         echo "Done"
     fi
-    cd fssource$arch
+    cd "fssource$arch" || { echo "Couldn't change directory to fssource$arch"; exit 1; }
     if [[ -f ../patch/filesystem/fs.patch ]]; then
         dots " * Applying filesystem patch"
         echo
@@ -127,7 +124,7 @@ function buildFilesystem() {
     rsync -avPrI ../Buildroot/ . > /dev/null
     sed -i "s/^export initversion=[0-9][0-9]*$/export initversion=$(date +%Y%m%d)/" board/FOG/FOS/rootfs_overlay/usr/share/fog/lib/funcs.sh
     if [[ ! -f .config ]]; then
-        cp ../configs/fs$arch.config .config
+        cp "../configs/fs$arch.config" .config
         case "${arch}" in
             x64)
                 make oldconfig
@@ -145,7 +142,7 @@ function buildFilesystem() {
     fi
     echo "Done"
     if [[ $confirm != n ]]; then
-        read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
+        read -rp "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
             case "${arch}" in
                 x64)
@@ -178,7 +175,7 @@ function buildFilesystem() {
                     ;;
             esac
         fi
-        read -p "We are ready to build are you [y|n]?" ready
+        read -rp "We are ready to build are you [y|n]?" ready
         if [[ $ready == n ]]; then
             echo "Nothing to build!? Skipping."
             cd ..
@@ -189,27 +186,27 @@ function buildFilesystem() {
     PING_LOOP_PID=$!
     case "${arch}" in
         x64)
-            make >buildroot$arch.log 2>&1
+            make > "buildroot$arch.log" 2>&1
             status=$?
             ;;
         x86)
-            make ARCH=i486 >buildroot$arch.log 2>&1
+            make ARCH=i486 > "buildroot$arch.log" 2>&1
             status=$?
             ;;
         arm64)
-            make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- >buildroot$arch.log 2>&1
+            make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- > "buildroot$arch.log" 2>&1
             status=$?
             ;;
         *)
-            make >buildroot$arch.log 2>&1
+            make > "buildroot$arch.log" 2>&1
             status=$?
             ;;
     esac
     kill $PING_LOOP_PID
-    [[ $status -gt 0 ]] && tail buildroot$arch.log && exit $status
+    [[ $status -gt 0 ]] && tail "buildroot$arch.log" && exit $status
     cd ..
     [[ ! -d dist ]] && mkdir dist
-    cd dist
+    cd dist || { echo "Couldn't change directory to dist"; exit 1; }
     case "${arch}" in
         x64)
             compiledfile="../fssource$arch/output/images/rootfs.ext2.xz"
@@ -224,7 +221,7 @@ function buildFilesystem() {
             initfile='arm_init.cpio.gz'
             ;;
     esac
-    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $initfile && sha256sum $initfile > ${initfile}.sha256
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp "$compiledfile" "$initfile" && sha256sum "$initfile" > "${initfile}.sha256"
     cd ..
 }
 
@@ -232,18 +229,18 @@ function buildKernel() {
     local arch="$1"
     kernelURL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
     echo "Preparing kernel $KERNEL_VERSION on $arch build:"
-    [[ -d kernelsource$arch ]] && rm -rf kernelsource$arch
+    [[ -d kernelsource$arch ]] && rm -rf "kernelsource$arch"
     if [[ ! -f linux-$KERNEL_VERSION.tar.xz ]]; then
         dots "Downloading kernel source"
-        wget -q $kernelURL && echo "Done"
+        wget -q "$kernelURL" && echo "Done"
         if [[ $? -ne 0 ]]; then
             echo "Failed"
             exit 1
         fi
     fi
     dots "Extracting kernel source"
-    tar xJf linux-$KERNEL_VERSION.tar.xz
-    mv linux-$KERNEL_VERSION kernelsource$arch
+    tar xJf "linux-$KERNEL_VERSION.tar.xz"
+    mv "linux-$KERNEL_VERSION" "kernelsource$arch"
     echo "Done"
     if [[ ! -d linux-firmware ]]; then
         dots "Cloning Linux firmware repository"
@@ -251,33 +248,33 @@ function buildKernel() {
         echo "Done"
     else
         dots "Updating Linux firmware repository"
-        cd linux-firmware
+        cd linux-firmware || { echo "Couldn't change directory to linux-firmware"; exit 1; }
         git pull --rebase >/dev/null 2>&1
         cd ..
         echo "Done"
     fi
     dots "Copying firmware files"
-    cp -r linux-firmware kernelsource$arch/
+    cp -r linux-firmware "kernelsource$arch/"
     echo "Done"
 
     dots "Preparing kernel source"
-    cd kernelsource$arch
+    cd "kernelsource$arch" || { echo "Couldn't change directory to kernelsource$arch"; exit 2; }
     make mrproper
-    cp ../configs/kernel$arch.config .config
+    cp "../configs/kernel$arch.config" .config
     echo "Done"
     if [[ -f ../patch/kernel/linux.patch ]]; then
         dots " * Applying patch"
-	echo
+        echo
         patch -p1 < ../patch/kernel/linux.patch
         if [[ $? -ne 0 ]]; then
             echo "Failed"
             exit 1
-	fi
+        fi
     else
         echo " * WARNING: Did not find a patch file building vanilla kernel without patches!"
     fi
     if [[ $confirm != n ]]; then
-        read -p "We are ready to build. Would you like to edit the config file [y|n]?" config
+        read -rp "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
             case "${arch}" in
                 x64)
@@ -310,24 +307,24 @@ function buildKernel() {
                     ;;
             esac
         fi
-        read -p "We are ready to build are you [y|n]?" ready
+        read -rp "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
             case "${arch}" in
                 x64)
-                    make -j $(nproc) bzImage
+                    make -j "$(nproc)" bzImage
                     status=$?
                     ;;
                 x86)
-                    make ARCH=i386 -j $(nproc) bzImage
+                    make ARCH=i386 -j "$(nproc)" bzImage
                     status=$?
                     ;;
                 arm64)
-                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
+                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j "$(nproc)" Image
                     status=$?
                     ;;
                 *)
-                    make -j $(nproc) bzImage
+                    make -j "$(nproc)" bzImage
                     status=$?
                     ;;
             esac
@@ -341,22 +338,22 @@ function buildKernel() {
         case "${arch}" in
             x64)
                 make oldconfig
-                make -j $(nproc) bzImage
+                make -j "$(nproc)" bzImage
                 status=$?
                 ;;
             x86)
                 make ARCH=i386 oldconfig
-                make ARCH=i386 -j $(nproc) bzImage
+                make ARCH=i386 -j "$(nproc)" bzImage
                 status=$?
                 ;;
             arm64)
                 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-                make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j $(nproc) Image
+                make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j "$(nproc)" Image
                 status=$?
                 ;;
             *)
                 make oldconfig
-                make -j $(nproc) bzImage
+                make -j "$(nproc)" bzImage
                 status=$?
                 ;;
         esac
@@ -364,7 +361,7 @@ function buildKernel() {
     [[ $status -gt 0 ]] && exit $status
     cd ..
     mkdir -p dist
-    cd dist
+    cd dist || { echo "Couldn't change directory to dist"; exit 1; }
     case "$arch" in
         x64)
             compiledfile="../kernelsource$arch/arch/x86/boot/bzImage"
@@ -379,12 +376,13 @@ function buildKernel() {
             kernelfile='arm_Image'
             ;;
     esac
-    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp $compiledfile $kernelfile && sha256sum $kernelfile > ${kernelfile}.sha256
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp "$compiledfile" "$kernelfile" && sha256sum "$kernelfile" > "${kernelfile}.sha256"
     cd ..
 }
 
-dots() {
-    local pad=$(printf "%0.1s" "."{1..60})
+function dots() {
+    local pad
+    pad=$(printf "%0.1s" "."{1..60})
     printf " * %s%*.*s" "$1" 0 $((60-${#1})) "$pad"
     return 0
 }
@@ -394,9 +392,9 @@ dots() {
 for buildArch in $arch
 do
     if [[ -z $buildKernelOnly ]]; then
-        buildFilesystem $buildArch
+        buildFilesystem "$buildArch"
     fi
     if [[ -z $buildFSOnly ]]; then
-        buildKernel $buildArch
+        buildKernel "$buildArch"
     fi
 done
