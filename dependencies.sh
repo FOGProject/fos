@@ -23,6 +23,7 @@ declare -ar common_dependencies=(
     "patch"
     "unzip"
     "bzip2"
+    "findutils"
 )
 
 declare -ar deb_dependencies=(
