@@ -1481,7 +1481,7 @@ getPartitions() {
 getHardDisk() {
     hd=""
     disks=""
-    local devs=$(lsblk -dpno KNAME -I 3,8,9,179,202,253,259 | uniq | sort -V)
+    local devs=$(lsblk -dpno KNAME,SIZE -I 3,8,9,179,202,253,259 | awk '$2 != "0B" { print $1 }' | sort -uV)
     if [[ -n $fdrive ]]; then
         for spec in $(echo $fdrive | tr "," "\n"); do
             for dev in $devs; do
