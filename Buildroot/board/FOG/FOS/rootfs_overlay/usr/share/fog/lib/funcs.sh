@@ -1483,23 +1483,30 @@ getHardDisk() {
     disks=""
     local devs=$(lsblk -dpno KNAME,SIZE -I 3,8,9,179,202,253,259 | awk '$2 != "0B" { print $1 }' | sort -uV)
     if [[ -n $fdrive ]]; then
+        found_match=0
         for spec in $(echo $fdrive | tr "," "\n"); do
+            matched=0
             for dev in $devs; do
                 if [[ "x$spec" = "x$dev" ||
                       "x$spec" = "x$(trim $(blockdev --getsize64 $dev))" ||
                       "x$spec" = "x$(trim $(lsblk -pdno SERIAL $dev))" ||
                       "x$spec" = "x$(trim $(lsblk -pdno WWN $dev))" ]]; then
+                    matched=1
+                    found_match=1
                     disks=$(echo "$disks $dev")
                     escaped_dev=$(echo $dev | sed -e 's/[]"\/$&*.^|[]/\\&/g')
                     devs=$(echo ${devs} | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
                     break
-                else
-                    p1="$(trim $(blockdev --getsize64 $dev))"
-                    p2="$(trim $(lsblk -pdno SERIAL $dev))"
-                    p3="$(trim $(lsblk -pdno WWN $dev))"
                 fi
             done
+            if [[ $matched -eq 0 ]]; then
+                echo "WARNING: Drive spec '$spec' does not match any known device. Ignorning." >&2
+            fi
         done
+
+        if [[ $found_match -eq 0 ]]; then
+            handleError "Fatal Error: No valid drives found from 'Host Primary Disk'='$fdrive'. Please check that the drive exists and is not 0 bytes. ($0)"
+        fi
         disks=$( echo "${disks} ${devs}" | xargs)
     elif [[ -r ${imagePath}/d1.size && -r ${imagePath}/d2.size ]]; then
         disks=$(echo ${devs})
