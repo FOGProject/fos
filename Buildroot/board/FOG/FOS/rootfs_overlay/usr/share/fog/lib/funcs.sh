@@ -1476,6 +1476,9 @@ getPartitions() {
     [[ -z $disk ]] && handleError "No disk found (${FUNCNAME[0]})\n   Args Passed: $*"
     parts=$(lsblk -I 3,8,9,179,202,253,259 -lpno KNAME,TYPE $disk | awk '{if ($2 ~ /part/ || $2 ~ /md/) print $1}' | sort -V | uniq)
 }
+normalize() {
+    echo "$1" | xargs | tr '[:upper:]' '[:lower:]'
+}
 # Gets the hard drive on the host
 # Note: This function makes a best guess
 getHardDisk() {
@@ -1488,12 +1491,21 @@ getHardDisk() {
         for spec in $(echo "$fdrive" | tr "," "\n"); do
             matched=0
             for dev in $devs; do
-                serial=$(lsblk -pdno SERIAL "$dev" 2>/dev/null | xargs | tr '[:upper:] [:lower:]')
-                wwn=$(lsblk -pdno WWN "$dev" 2>/dev/null | xargs | tr '[:upper:] [:lower:]')
-                uuid=$(blkid -s UUID -o value "$dev" 2>/dev/null | xargs | tr '[:upper:] [:lower:]')
-                spec_lc=$(echo "$spec" | tr '[:upper:] [:lower:]')
-                if [[ "x$spec" = "x$dev" ||
-                      "x$spec_lc" = "x$(trim $(blockdev --getsize64 "$dev"))" ||
+                dev_trimmed=$(echo "$dev" | xargs)
+                spec_lc=$(normalize "$spec")
+                size=$(blockdev --getsize64 "$dev_trimmed" 2>/dev/null | normalize)
+                uuid=$(blkid -s UUID -o value "$dev_trimmed" 2>/dev/null | normalize)
+                read -r serial wwn <<< "$(lsblk -pdno SERIAL,WWN "$dev_trimmed" 2>/dev/null | normalize)"
+                if [[ -n $isdebug ]];; then
+                    echo "Comparing spec='$spec_lc' with:"
+                    echo "  dev=$dev"
+                    echo "  size=$size"
+                    echo "  serial=$serial"
+                    echo "  wwn=$wwn"
+                    echo "  uuid=$uuid"
+                fi
+                if [[ "x$spec" = "x$dev_trimmed" ||
+                      "x$spec_lc" = "x$(trim $(blockdev --getsize64 "$dev_trimmed"))" ||
                       "x$spec_lc" = "x$wwn" ||
                       "x$spec_lc" = "x$serial" ||
                       "x$spec_lc" = "x$uuid" ]]; then
