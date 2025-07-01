@@ -1488,10 +1488,15 @@ getHardDisk() {
         for spec in $(echo "$fdrive" | tr "," "\n"); do
             matched=0
             for dev in $devs; do
+                serial=$(lsblk -pdno SERIAL "$dev" 2>/dev/null | xargs | tr '[:upper:] [:lower:]')
+                wwn=$(lsblk -pdno WWN "$dev" 2>/dev/null | xargs | tr '[:upper:] [:lower:]')
+                uuid=$(blkid -s UUID -o value "$dev" 2>/dev/null | xargs | tr '[:upper:] [:lower:]')
+                spec_lc=$(echo "$spec" | tr '[:upper:] [:lower:]')
                 if [[ "x$spec" = "x$dev" ||
-                      "x$spec" = "x$(trim $(blockdev --getsize64 "$dev"))" ||
-                      "x$spec" = "x$(trim $(lsblk -pdno SERIAL "$dev"))" ||
-                      "x$spec" = "x$(trim $(lsblk -pdno WWN "$dev"))" ]]; then
+                      "x$spec_lc" = "x$(trim $(blockdev --getsize64 "$dev"))" ||
+                      "x$spec_lc" = "x$wwn" ||
+                      "x$spec_lc" = "x$serial" ||
+                      "x$spec_lc" = "x$uuid" ]]; then
                     matched=1
                     found_match=1
                     disks="${disks} $dev"
