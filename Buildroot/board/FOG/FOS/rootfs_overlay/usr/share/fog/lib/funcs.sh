@@ -1496,7 +1496,7 @@ getHardDisk() {
                 size=$(blockdev --getsize64 "$dev_trimmed" 2>/dev/null | normalize)
                 uuid=$(blkid -s UUID -o value "$dev_trimmed" 2>/dev/null | normalize)
                 read -r serial wwn <<< "$(lsblk -pdno SERIAL,WWN "$dev_trimmed" 2>/dev/null | normalize)"
-                if [[ -n $isdebug ]];; then
+                if [[ -n $isdebug ]]; then
                     echo "Comparing spec='$spec_lc' with:"
                     echo "  dev=$dev"
                     echo "  size=$size"
