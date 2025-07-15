@@ -1513,7 +1513,7 @@ getHardDisk() {
                     found_match=1
                     disks="${disks} $dev"
                     # Remove matched dev from devs to avoid duplicates
-                    escaped_dev=$(echo "$dev" | sed -e 's/[]"\/$&*.^|[]/\\&/g')
+                    escaped_dev=$(echo "$dev" | sed -e 's/[]"$&*.^|[]/\\&/g')
                     devs=$(echo "$devs" | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
                     break
                 fi
