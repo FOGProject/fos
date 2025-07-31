@@ -1477,7 +1477,14 @@ getPartitions() {
     parts=$(lsblk -I 3,8,9,179,202,253,259 -lpno KNAME,TYPE $disk | awk '{if ($2 ~ /part/ || $2 ~ /md/) print $1}' | sort -V | uniq)
 }
 normalize() {
-    echo "$1" | xargs | tr '[:upper:]' '[:lower:]'
+    local input="$*"
+
+    # If no arguments, read from stdin
+    if [[ -z "$input" ]]; then
+        input=$(cat)
+    fi
+
+    echo "$input" | xargs | tr '[:upper:]' '[:lower:]'
 }
 # Gets the hard drive on the host
 # Note: This function makes a best guess
@@ -1493,7 +1500,7 @@ getHardDisk() {
             for dev in $devs; do
                 dev_trimmed=$(echo "$dev" | xargs)
                 spec_lc=$(normalize "$spec")
-                size=$(blockdev --getsize64 "$dev_trimmed" 2>/dev/null | normalize)
+                size=$(blockdev --getsize64 "$dev" | normalize)
                 uuid=$(blkid -s UUID -o value "$dev_trimmed" 2>/dev/null | normalize)
                 read -r serial wwn <<< "$(lsblk -pdno SERIAL,WWN "$dev_trimmed" 2>/dev/null | normalize)"
                 if [[ -n $isdebug ]]; then
@@ -1513,7 +1520,7 @@ getHardDisk() {
                     found_match=1
                     disks="${disks} $dev"
                     # Remove matched dev from devs to avoid duplicates
-                    escaped_dev=$(echo "$dev" | sed -e 's/[]"$&*.^|[]/\\&/g')
+                    escaped_dev=$(echo "$dev" | sed -e 's/[]"\/$&*.^|[]/\\&/g')
                     devs=$(echo "$devs" | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
                     break
                 fi
