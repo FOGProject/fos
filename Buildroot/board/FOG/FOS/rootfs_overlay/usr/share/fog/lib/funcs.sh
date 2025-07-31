@@ -1499,7 +1499,8 @@ getHardDisk() {
             matched=0
             for dev in $devs; do
                 dev_trimmed=$(echo "$dev" | xargs)
-                spec_lc=$(normalize "$spec")
+                spec_resolved=$(realpath "$spec" 2>/dev/null || echo "$spec")
+                spec_lc=$(normalize "$spec_resolved")
                 size=$(blockdev --getsize64 "$dev" | normalize)
                 uuid=$(blkid -s UUID -o value "$dev_trimmed" 2>/dev/null | normalize)
                 read -r serial wwn <<< "$(lsblk -pdno SERIAL,WWN "$dev_trimmed" 2>/dev/null | normalize)"
@@ -1511,7 +1512,8 @@ getHardDisk() {
                     echo "  wwn=$wwn"
                     echo "  uuid=$uuid"
                 fi
-                if [[ "x$spec" = "x$dev_trimmed" ||
+                if [[ "x$spec_resolved" = "x$dev_trimmed" ||
+                      "x$spec_lc" = "x$dev_trimmed" ||
                       "x$spec_lc" = "x$(trim $(blockdev --getsize64 "$dev_trimmed"))" ||
                       "x$spec_lc" = "x$wwn" ||
                       "x$spec_lc" = "x$serial" ||
@@ -1520,7 +1522,7 @@ getHardDisk() {
                     found_match=1
                     disks="${disks} $dev"
                     # Remove matched dev from devs to avoid duplicates
-                    escaped_dev=$(echo "$dev" | sed -e 's/[]"\/$&*.^|[]/\\&/g')
+                    escaped_dev=$(echo "$dev" | sed -e 's/[]\/"$&*.^|[]/\\&/g')
                     devs=$(echo "$devs" | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
                     break
                 fi
