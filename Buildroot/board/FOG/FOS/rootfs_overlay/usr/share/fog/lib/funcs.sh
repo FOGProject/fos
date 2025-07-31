@@ -1484,71 +1484,80 @@ normalize() {
         input=$(cat)
     fi
 
-    echo "$input" | xargs | tr '[:upper:]' '[:lower:]'
+    echo $(trim "$input" | xargs | tr '[:upper:]' '[:lower:]')
+}
+resolve_path() {
+    local input="$*"
+
+    # If no arguments, read from stdin
+    if [[ -z "$input" ]]; then
+        input=$(cat)
+    fi
+
+    echo $(readlink -f "$input" 2>/dev/null || echo "$input")
 }
 # Gets the hard drive on the host
 # Note: This function makes a best guess
 getHardDisk() {
     hd=""
     disks=""
-    local devs=$(lsblk -dpno KNAME,SIZE -I 3,8,9,179,202,253,259 | awk '$2 != "0B" { print $1 }' | sort -uV)
+    # Get valid devices (filter out 0B disks) once
+    local devs
+    devs=$(lsblk -dpno KNAME,SIZE -I 3,8,9,179,202,253,259 | awk '$2 != "0B" { print $1 }' | sort -uV)
 
     if [[ -n $fdrive ]]; then
-        found_match=0
-        for spec in $(echo "$fdrive" | tr "," "\n"); do
-            matched=0
+        local found_match=0
+        for spec in ${fdrive//,/ }; do
+            local spec_resolved
+            spec_resolved=$(resolve_path "$spec")
+            local spec_norm
+            spec_norm=$(normalize "$spec_resolved")
+            local matched=0
+            local spec_normalized
+            spec_normalized=$(normalize "$spec")
+
             for dev in $devs; do
-                dev_trimmed=$(echo "$dev" | xargs)
-                spec_resolved=$(realpath "$spec" 2>/dev/null || echo "$spec")
-                spec_lc=$(normalize "$spec_resolved")
+                local size uuid serial wwn
                 size=$(blockdev --getsize64 "$dev" | normalize)
-                uuid=$(blkid -s UUID -o value "$dev_trimmed" 2>/dev/null | normalize)
-                read -r serial wwn <<< "$(lsblk -pdno SERIAL,WWN "$dev_trimmed" 2>/dev/null | normalize)"
-                if [[ -n $isdebug ]]; then
-                    echo "Comparing spec='$spec_lc' with:"
-                    echo "  dev=$dev"
-                    echo "  size=$size"
-                    echo "  serial=$serial"
-                    echo "  wwn=$wwn"
-                    echo "  uuid=$uuid"
-                fi
-                if [[ "x$spec_resolved" = "x$dev_trimmed" ||
-                      "x$spec_lc" = "x$dev_trimmed" ||
-                      "x$spec_lc" = "x$(trim $(blockdev --getsize64 "$dev_trimmed"))" ||
-                      "x$spec_lc" = "x$wwn" ||
-                      "x$spec_lc" = "x$serial" ||
-                      "x$spec_lc" = "x$uuid" ]]; then
+                uuid=$(blkid -s UUID -o value "$dev" 2>/dev/null | normalize)
+                read -r serial wwn <<< "$(lsblk -pdno SERIAL,WWN "$dev" 2>/dev/null | normalize)"
+
+                [[ -n $isdebug ]] && {
+                    echo "Comparing spec='$spec' (resolved: '$spec_resolved') with dev=$dev"
+                    echo "  size=$size serial=$serial wwn=$wwn uuid=$uuid"
+                }
+                if [[ "x$spec_resolved" == "x$dev" || "x$spec_normalized" == "x$size" ||
+                      "x$spec_normalized" == "x$wwn" || "x$spec_normalized" == "x$serial" ||
+                      "x$spec_normalized" == "x$uuid" ]]; then
+                    [[ -n $isdebug ]] && echo "Matched spec '$spec' to device '$dev' (size=$size, serial=$serial, wwn=$wwn, uuid=$uuid)"
                     matched=1
                     found_match=1
-                    disks="${disks} $dev"
-                    # Remove matched dev from devs to avoid duplicates
-                    escaped_dev=$(echo "$dev" | sed -e 's/[]\/"$&*.^|[]/\\&/g')
-                    devs=$(echo "$devs" | sed "s/[[:space:]]*${escaped_dev}[[:space:]]*/ /")
+                    disks="$disks $dev"
+                    devs=${devs// $dev/}   # remove matched dev
                     break
                 fi
             done
-            if [[ $matched -eq 0 ]]; then
-                echo "WARNING: Drive spec '$spec' does not match any available device. Ignoring." >&2
-            fi
+
+            [[ $matched -eq 0 ]] && echo "WARNING: Drive spec '$spec' does not match any available device." >&2
         done
 
-        if [[ $found_match -eq 0 ]]; then
-            handleError "Fatal Error: No valid drives found from 'Host Primary Disk'='$fdrive'. Please ensure the device exists and is not 0 bytes. ($0)"
-        fi
+        [[ $found_match -eq 0 ]] && handleError "Fatal: No valid drives found for 'Host Primary Disk'='$fdrive'."
 
-        disks=$(echo "${disks} ${devs}" | xargs)
+        disks=$(echo "$disks $devs" | xargs)   # add unmatched devices for completeness
+
     elif [[ -r ${imagePath}/d1.size && -r ${imagePath}/d2.size ]]; then
-        disks=$(echo "$devs")
+        disks="$devs"
     else
-        # Auto-select the largest available drive if no fdrive and no imagePath match
-        hd=$(echo "$devs" | while read line; do echo "$(blockdev --getsize64 "$line") $line"; done | sort -n | tail -1 | cut -d' ' -f2)
-        [[ -z $hd ]] && handleError "Could not determine a suitable disk automatically. No drives available? ($0)"
+        # Auto-select largest available drive
+        hd=$(for d in $devs; do echo "$(blockdev --getsize64 "$d") $d"; done | sort -n | tail -1 | cut -d' ' -f2)
+        [[ -z $hd ]] && handleError "Could not determine a suitable disk automatically."
         disks="$hd"
     fi
 
     # Set primary hard disk
-    hd=$(echo "$disks" | awk '{print $1}')
+    hd=$(awk '{print $1}' <<< "$disks")
 }
+
 # Finds the hard drive info and set's up the type
 findHDDInfo() {
     dots "Looking for Hard Disk(s)"
