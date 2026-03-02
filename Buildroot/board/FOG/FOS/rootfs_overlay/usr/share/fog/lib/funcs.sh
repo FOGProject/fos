@@ -628,9 +628,27 @@ shrinkPartition() {
             tmpoutput=$(cat /tmp/tmpoutput.txt | tr -d \\0)
             size=$(cat /tmp/tmpoutput.txt | tr -d \\0 | sed -n 's/.*you might resize at\s\+\([0-9]\+\).*$/\1/pi')
             [[ -z $size ]] && handleError " * (${FUNCNAME[0]})\n   Args Passed: $*\n\nFatal Error, Unable to determine possible ntfs size\n * To better help you debug we will run the ntfs resize\n\t but this time with full output, please wait!\n\t $(cat /tmp/tmpoutput.txt | tr -d \\0)"
+            local min_slack_bytes=$((500 * 1024 * 1024))
+
+            # percent-based slack, in bytes (integer math)
+            # NOTE: relies on your calculate() handling basic math; if calculate uses bc, this is fine too.
+            local sizeadd_bytes
+            sizeadd_bytes=$(calculate "${percent}/100*${size}")
+            [[ -z $sizeadd_bytes ]] && sizeadd_bytes=0
+
+            # ensure at least 500MB slack
+            local slack_bytes="$sizeadd_bytes"
+            if [[ $slack_bytes -lt $min_slack_bytes ]]; then
+                slack_bytes=$min_slack_bytes
+            fi
+
+            # target size in KiB for ntfsresize
+            # (bytes -> KiB), and add slack (also bytes -> KiB)
             rm /tmp/tmpoutput.txt >/dev/null 2>&1
-            local sizeadd=$(calculate "${percent}/100*${size}/1024")
-            sizentfsresize=$(calculate "${size}/1024+${sizeadd}")
+            sizentfsresize=$(calculate "(${size}+${slack_bytes})/1024")
+            [[ -z $sizentfsresize || $sizentfsresize -lt 1 ]] && handleError " * (${FUNCNAME[0]})\n   Args Passed: $*\n\nFatal Error, Unable to determine NTFS target size with 500MB minimum slack"
+
+            echo " * Possible resize partition size (includes >=500MB slack): ${sizentfsresize}k"
             echo " * Possible resize partition size: ${sizentfsresize}k"
             dots "Running resize test $part"
             yes | ntfsresize -fns ${sizentfsresize}k ${part} >/tmp/tmpoutput.txt 2>&1
