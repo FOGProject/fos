@@ -1498,7 +1498,7 @@ normalize() {
     local input="$*"
 
     # If no arguments, read from stdin
-    if [[ -z "$input" ]]; then
+    if [[ $# -eq 0 ]]; then
         input=$(cat)
     fi
 
@@ -1508,7 +1508,7 @@ resolve_path() {
     local input="$*"
 
     # If no arguments, read from stdin
-    if [[ -z "$input" ]]; then
+    if [[ $# -eq 0 ]]; then
         input=$(cat)
     fi
 
