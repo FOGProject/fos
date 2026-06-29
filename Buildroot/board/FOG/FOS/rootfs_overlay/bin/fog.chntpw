@@ -15,6 +15,9 @@ parts=""
 part=""
 getPartitions "$hd"
 for part in $parts; do
+    blCont=0
+    blStop=0
+    sam=""
     while [[ $blCont -eq 0 && $blStop -eq 0 ]]; do
         umount /ntfs 2>/dev/null >/dev/null
         mount -o rw "$part" /ntfs >/tmp/mount-output 2>&1

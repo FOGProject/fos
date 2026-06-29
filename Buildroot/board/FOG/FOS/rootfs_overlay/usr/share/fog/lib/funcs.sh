@@ -154,7 +154,9 @@ doInventory() {
 # Gets the location of the SAM registry if found
 getSAMLoc() {
     local path=""
-    local paths="/ntfs/WINDOWS/system32/config/SAM /ntfs/Windows/System32/config/SAM"
+    local mntpnt="${1:-/ntfs}"
+    local paths="$mntpnt/WINDOWS/system32/config/SAM $mntpnt/Windows/System32/config/SAM"
+    sam=""
     for path in $paths; do
         [[ ! -f $path ]] && continue
         sam="$path" && break
@@ -893,6 +895,7 @@ writeImage()  {
     esac
     local format=$imgLegacy
     [[ -z $format ]] && format=$imgFormat
+    set -o pipefail
     case $format in
         5|6)
             # ZSTD Compressed image.
@@ -922,7 +925,8 @@ writeImage()  {
             ;;
     esac
     exitcode=$?
-    [[ ! $exitcode -eq 0 ]] && handleWarning "Image failed to restore and exited with exit code $exitcode (${FUNCNAME[0]})\n   Info: $(cat /tmp/partclone.log)\n   Args Passed: $*"
+    set +o pipefail
+    [[ ! $exitcode -eq 0 ]] && handleError "Image failed to restore and exited with exit code $exitcode (${FUNCNAME[0]})\n   Info: $(cat /tmp/partclone.log)\n   Args Passed: $*"
     rm -rf /tmp/pigz1 >/dev/null 2>&1
 }
 # Gets the valid restore parts. They're only
@@ -1284,7 +1288,7 @@ clearMountedDevices() {
                         *)
                             echo "Failed"
                             debugPause
-                            /umount /ntfs >/dev/null 2>&1
+                            umount /ntfs >/dev/null 2>&1
                             echo " * Could not clear partition $part"
                             return
                             ;;
@@ -1946,7 +1950,7 @@ uploadFormat() {
     case $imgFormat in
         6)
             # ZSTD Split files compressed.
-            zstdmt --rsyncable --ultra $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. &
+            ( set -o pipefail; zstdmt --rsyncable --ultra $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. ) &
             ;;
         5)
             # ZSTD compressed.
@@ -1954,7 +1958,7 @@ uploadFormat() {
             ;;
         4)
             # Split files uncompressed.
-            cat $fifo | split -a 3 -d -b 200m - ${file}. &
+            ( set -o pipefail; cat $fifo | split -a 3 -d -b 200m - ${file}. ) &
             ;;
         3)
             # Uncompressed.
@@ -1962,13 +1966,14 @@ uploadFormat() {
             ;;
         2)
             # GZip/piGZ Split file compressed.
-            pigz $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. &
+            ( set -o pipefail; pigz $PIGZ_COMP < $fifo | split -a 3 -d -b 200m - ${file}. ) &
             ;;
         *)
             # GZip/piGZ Compressed.
             pigz $PIGZ_COMP < $fifo > ${file}.000 &
         ;;
     esac
+    formatPID=$!
 }
 # Thank you, fractal13 Code Base
 #
@@ -2421,6 +2426,9 @@ savePartition() {
             uploadFormat "$fifoname" "$imgpart"
             partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1
             exitcode=$?
+            wait $formatPID 2>/dev/null
+            formatexit=$?
+            [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
             case $exitcode in
                 0)
                     mv ${imgpart}.000 $imgpart >/dev/null 2>&1
@@ -2448,6 +2456,9 @@ savePartition() {
                     uploadFormat "$fifoname" "$imgpart"
                     partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1 -a0
                     exitcode=$?
+                    wait $formatPID 2>/dev/null
+                    formatexit=$?
+                    [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
                     case $exitcode in
                         0)
                             mv ${imgpart}.000 $imgpart >/dev/null 2>&1

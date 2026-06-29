@@ -228,6 +228,11 @@ beginUpload() {
             mkfifo /tmp/pigz1 >/dev/null 2>&1
             uploadFormat "/tmp/pigz1" "$imgpart"
             partclone.imager -c -s "$hd" -O /tmp/pigz1 -N -f 1 -a0
+            exitcode=$?
+            wait $formatPID 2>/dev/null
+            formatexit=$?
+            [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
+            [[ ! $exitcode -eq 0 ]] && handleError "Failed to complete capture (beginUpload dd)\n   Exit code: $exitcode\n   Server Disk Space Available: $(getServerDiskSpaceSvailable)"
             rm /tmp/pigz1 >/dev/null 2>&1
             clearScreen
             ;;
