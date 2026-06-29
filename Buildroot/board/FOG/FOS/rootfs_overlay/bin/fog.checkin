@@ -1,7 +1,6 @@
 #!/bin/bash
 . /usr/share/fog/lib/funcs.sh
 RUN_CHKDSK=""
-HOSTNAME_EARLY=0
 OS_ID_WIN7=5
 OS_ID_WIN8=6
 for arg in $(cat /proc/cmdline | tr -d \\0); do
@@ -25,7 +24,6 @@ macWinSafe=$(echo $mac|sed 's/://g')
 sockets=$(grep "physical id" /proc/cpuinfo|sort -u|wc -l)
 arch=$(uname -m)
 [[ $chkdsk -eq 1 ]] && RUN_CHKDSK="-x"
-[[ $hostearly -eq 1 ]] && HOSTNAME_EARLY=1
 case $mc in
     yes)
         method="UDPCAST"
