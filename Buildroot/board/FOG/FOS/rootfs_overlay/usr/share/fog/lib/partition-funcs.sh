@@ -51,8 +51,8 @@ restoreUUIDInformation() {
         partitionIsSwap "$part"
         getPartitionNumber "$part"
         [[ $is_swap -gt 0 ]] && continue
-        partuuid=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
-        parttype=$(awk -F[,\ ] "match(\$0, /${part_number} : start=.*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
+        partuuid=$(awk -F[,\ ] "match(\$0, /[^0-9]${part_number} : start=.*uuid=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
+        parttype=$(awk -F[,\ ] "match(\$0, /[^0-9]${part_number} : start=.*type=([A-Za-z0-9-]+)[,]?.*$/, type){printf(\"%s:%s\", $part_number, tolower(type[1]))}" $file)
         dots "Partition type being set to"
         echo $parttype
         debugPause

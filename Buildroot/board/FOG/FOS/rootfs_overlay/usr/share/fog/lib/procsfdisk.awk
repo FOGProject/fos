@@ -421,7 +421,7 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         # Set p_size variable.
         p_size = int(partitions[pName, "size"]);
         # Regex setter.
-        regex = "/^([:]+)?"p_number"([:]+)?$|([:]+)?"p_number"([:]+)?|([:]+)?"p_number"$/"
+        regex = "(^|[:])"p_number"([:]|$)"
         # If we're dos label do stuff.
         if (label != "gpt") {
             # If this is an extended partition
@@ -530,7 +530,7 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         # Reset our p_orig_size variable.
         p_orig_size = int(partitions[pName, "orig_size"]);
         # Regex setter.
-        regex = "/^([:]+)?"p_number"([:]+)?$|([:]+)?"p_number"([:]+)?|([:]+)?"p_number"$/"
+        regex = "(^|[:])"p_number"([:]|$)"
         # If a fixed partition, go to next.
         if (match(fixedList, regex)) {
             continue;
@@ -572,7 +572,7 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         # Set p_start.
         p_start = int(partitions[pName, "start"]);
         # Regex setter.
-        regex = "/^([:]+)?"p_number"([:]+)?$|([:]+)?"p_number"([:]+)?|([:]+)?"p_number"$/"
+        regex = "(^|[:])"p_number"([:]|$)"
         # Skip empty sized partitions.
         if (p_size == 0) {
             continue;

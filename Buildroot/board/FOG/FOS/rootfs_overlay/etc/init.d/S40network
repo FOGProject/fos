@@ -71,7 +71,7 @@ for iface in $ifaces; do
         echo "Either DHCP failed or we were unable to access ${web}/index.php for connection testing."
         # Geo-If we are on the 2nd loop, lets check to see if
         # spanning tree is blocking dhcp
-        if [[ $seq -eq 2 ]]; then
+        if [[ $retry -eq 2 ]]; then
             echo "Waiting for Spanning Tree timeout on ${iface}..."
             sleep 27
         else

@@ -327,6 +327,11 @@ while [[ -z $askme ]]; do
                         echo " * Error: Invalid Login! ($retry remaining)"
                         let retry-=1
                         ;;
+                    *)
+                        echo
+                        echo " * Error: Unexpected response from server ($retry remaining)"
+                        let retry-=1
+                        ;;
                 esac
             done
             askme="Y"
