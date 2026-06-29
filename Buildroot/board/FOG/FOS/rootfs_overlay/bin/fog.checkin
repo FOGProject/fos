@@ -69,19 +69,6 @@ checkin() {
     done
     echo "Done"
     debugPause
-    directive="${res:3}"
-    if [[ $directive != GO ]]; then
-        tmpStorageIp=$(echo $queueinfo|cut -d'@' -f2 2>/dev/null)
-        tmpStorage=$(echo $queueinfo|cut -d'@' -f3 2>/dev/null)
-        tmpName=$(echo $queueinfo|cut -d'@' -f4 2>/dev/null)
-        [[ -z $tmpStorage || -z $tmpStorageIp ]] && handleError "Error determining storage server! ($0)\n   Args Passed: $*"
-        storage="$tmpStorage"
-        storageip="$tmpStorageIp"
-        nfsServerName="$tmpName"
-        dots "Using Storage Node"
-        echo "$nfsServerName"
-        debugPause
-    fi
 }
 case $mc in
     [Yy][Ee][Ss])
