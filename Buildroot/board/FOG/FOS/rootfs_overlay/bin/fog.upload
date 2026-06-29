@@ -232,7 +232,7 @@ beginUpload() {
             wait $formatPID 2>/dev/null
             formatexit=$?
             [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
-            [[ ! $exitcode -eq 0 ]] && handleError "Failed to complete capture (beginUpload dd)\n   Exit code: $exitcode\n   Server Disk Space Available: $(getServerDiskSpaceSvailable)"
+            [[ ! $exitcode -eq 0 ]] && handleError "Failed to complete capture (beginUpload dd)\n   Exit code: $exitcode\n   Server Disk Space Available: $(getServerDiskSpaceAvailable)"
             rm /tmp/pigz1 >/dev/null 2>&1
             clearScreen
             ;;

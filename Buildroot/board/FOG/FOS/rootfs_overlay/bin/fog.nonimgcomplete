@@ -8,6 +8,7 @@ sysuuid=${sysuuid,,}
 dots "Updating Database"
 while [[ $res != "##" ]]; do
     res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mactosend" ${web}service/Post_Wipe.php 2>/dev/null)
+    [[ $res == "##" ]] && break
     if [[ $count -ge 10 ]]; then
         echo "Failed"
         debugPause

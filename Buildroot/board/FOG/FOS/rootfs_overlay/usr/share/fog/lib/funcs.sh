@@ -282,7 +282,7 @@ expandPartition() {
             # Based on info from @mstabrin on forums.fogproject.org
             dots "Resizing $fstype volume ($part)"
             if [[ ! -d /tmp/btrfs ]]; then
-                mkdir /tmp/btrfs >>/tmp/btfrslog.txt 2>&1
+                mkdir /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
                 if [[ $? -gt 0 ]]; then
                     echo "Failed"
                     debugPause
@@ -491,7 +491,7 @@ getPartBlockSize() {
 }
 # Retrieve available space from NFS share
 # Should only be used when the share is mounted to `/images`
-getServerDiskSpaceSvailable() {
+getServerDiskSpaceAvailable() {
     local space=$(df -h | grep "/images" | sed -n '/dev/{s/  */ /gp}' | cut -d ' ' -f4)
     [[ $space == "0" ]] && local space="0M"
     echo $space
@@ -511,7 +511,7 @@ prepareUploadLocation() {
             *)
                 echo "Failed"
                 debugPause
-                local spaceAvailable=$(getServerDiskSpaceSvailable)
+                local spaceAvailable=$(getServerDiskSpaceAvailable)
                 handleError "Failed to create image capture path (${FUNCNAME[0]})\nServer Disk Space Available: $spaceAvailable\n   Args Passed: $*"
                 ;;
         esac
@@ -777,7 +777,7 @@ shrinkPartition() {
             # https://forums.fogproject.org/topic/15159/btrfs-postdownloadscript/3
             dots "Shrinking $part partition"
             if [[ ! -d /tmp/btrfs ]]; then
-                mkdir /tmp/btrfs >>/tmp/btfrslog.txt 2>&1
+                mkdir /tmp/btrfs >>/tmp/btrfslog.txt 2>&1
                 if [[ $? -gt 0 ]]; then
                     echo "Failed"
                     debugPause
@@ -794,7 +794,7 @@ shrinkPartition() {
             local fsize_pct=$(calculate_float "${percent}/100")
             local mult_val=$(calculate_float "1-${fsize_pct}")
             local free_size=$(calculate "${mult_val}*${free_size_original}")
-            while ! btrfs filesystem resize -${free_size} /tmp/btrfs >>/tmp/btrfslog.txt; do
+            while ! btrfs filesystem resize -${free_size} /tmp/btrfs >>/tmp/btrfslog.txt 2>&1; do
                 [[ $(echo "${mult_val} <= 0" | bc -l) -gt 0 ]] && break || mult_val=$(calculate_float "${mult_val} - 0.05")
                 free_size=$(calculate "${mult_val}*${free_size_original}")
             done
@@ -2436,7 +2436,7 @@ savePartition() {
                     debugPause
                     ;;
                 *)
-                    local spaceAvailable=$(getServerDiskSpaceSvailable)
+                    local spaceAvailable=$(getServerDiskSpaceAvailable)
                     handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -s -O $fifoname -Nf 1\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
                     ;;
             esac
@@ -2466,7 +2466,7 @@ savePartition() {
                             debugPause
                             ;;
                         *)
-                            local spaceAvailable=$(getServerDiskSpaceSvailable)
+                            local spaceAvailable=$(getServerDiskSpaceAvailable)
                             handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
                             ;;
                     esac
