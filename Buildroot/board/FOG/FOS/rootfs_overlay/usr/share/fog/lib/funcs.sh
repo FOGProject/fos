@@ -214,16 +214,7 @@ expandPartition() {
         ntfs)
             dots "Resizing $fstype volume ($part)"
             yes | ntfsresize $part -fbP >/tmp/tmpoutput.txt 2>&1
-            case $? in
-                0)
-                    echo "Done"
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/tmpoutput.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "done" "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/tmpoutput.txt)\n   Args Passed: $*"
             debugPause
             resetFlag "$part"
             ;;
@@ -243,15 +234,7 @@ expandPartition() {
                     ;;
             esac
             resize2fs $part >/tmp/resize2fs.txt 2>&1
-            case $? in
-                0)
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "silent" "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
             case $? in
                 0)
@@ -510,29 +493,11 @@ prepareUploadLocation() {
     debugPause
     dots "Setting permission on $imagePath"
     chmod -R 775 $imagePath >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Failed to set permissions (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Failed to set permissions (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
     dots "Removing any pre-existing files"
     rm -Rf $imagePath/* >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not clean files (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Could not clean files (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
 }
 # Moves partitions if possible for upload (resizable images only)
@@ -673,16 +638,7 @@ shrinkPartition() {
                 debugPause
                 dots "Resizing filesystem"
                 yes | ntfsresize -fs ${sizentfsresize}k ${part} >/tmp/output.txt 2>&1
-                case $? in
-                    0)
-                        echo "Done"
-                        ;;
-                    *)
-                        echo "Failed"
-                        debugPause
-                        handleError "Could not resize disk (${FUNCNAME[0]})\n   Info: $(cat /tmp/output.txt)\n   Args Passed: $*"
-                        ;;
-                esac
+                checkStatus $? "done" "Could not resize disk (${FUNCNAME[0]})\n   Info: $(cat /tmp/output.txt)\n   Args Passed: $*"
             fi
             if [[ $do_resizepart -eq 1 ]]; then
                 debugPause
@@ -711,16 +667,7 @@ shrinkPartition() {
         extfs)
             dots "Checking $fstype volume ($part)"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
-            case $? in
-                0)
-                    echo "Done"
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "e2fsck failed to check $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "done" "e2fsck failed to check $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
             debugPause
             extminsize=$(resize2fs -P $part 2>/dev/null | awk -F': ' '{print $2}')
             block_size=$(dumpe2fs -h $part 2>/dev/null | awk '/^Block[ ]size:/{print $3}')
@@ -730,16 +677,7 @@ shrinkPartition() {
             [[ -z $sizeextresize || $sizeextresize -lt 1 ]] && handleError "Error calculating the new size of extfs ($part) (${FUNCNAME[0]})\n   Args Passed: $*"
             dots "Shrinking $fstype volume ($part)"
             resize2fs $part -M >/tmp/resize2fs.txt 2>&1
-            case $? in
-                0)
-                    echo "Done"
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "Could not shrink $fstype volume ($part) (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "done" "Could not shrink $fstype volume ($part) (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
             debugPause
             dots "Shrinking $part partition"
             resizePartition "$part" "$sizeextresize" "$imagePath"
@@ -1047,17 +985,7 @@ changeHostname() {
     fi
     umount /ntfs >/dev/null 2>&1
     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
-    case $? in
-        0)
-            echo "Done"
-            debugPause
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-            ;;
-    esac
+    checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
     if [[ ! -f /usr/share/fog/lib/EOFREG ]]; then
         case $osid in
             1)
@@ -1113,28 +1041,10 @@ fixWin7boot() {
     dots "Mounting partition"
     if [[ ! -d /bcdstore ]]; then
         mkdir -p /bcdstore >/dev/null 2>&1
-        case $? in
-            0)
-                ;;
-            *)
-                echo "Failed"
-                debugPause
-                handleError " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
-                ;;
-        esac
+        checkStatus $? "silent" " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
     fi
     ntfs-3g -o remove_hiberfile,rw $part /bcdstore >/tmp/ntfs-mount-output 2>&1
-    case $? in
-        0)
-            echo "Done"
-            debugPause
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-            ;;
-    esac
+    checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
     if [[ ! -f /bcdstore/Boot/BCD ]]; then
         umount /bcdstore >/dev/null 2>&1
         return
@@ -1202,15 +1112,7 @@ clearMountedDevices() {
                 ntfs)
                     dots "Clearing part ($part)"
                     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
-                    case $? in
-                        0)
-                            ;;
-                        *)
-                            echo "Failed"
-                            debugPause
-                            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-                            ;;
-                    esac
+                    checkStatus $? "silent" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
                     if [[ ! -f $REG_LOCAL_MACHINE_7 ]]; then
                         echo "Reg file not found"
                         debugPause
@@ -1253,29 +1155,11 @@ removePageFile() {
                     dots "Mounting partition ($part)"
                     if [[ ! -d /ntfs ]]; then
                         mkdir -p /ntfs >/dev/null 2>&1
-                        case $? in
-                            0)
-                                ;;
-                            *)
-                                echo "Failed"
-                                debugPause
-                                handleError " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
-                                ;;
-                        esac
+                        checkStatus $? "silent" " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
                     fi
                     umount /ntfs >/dev/null 2>&1
                     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
-                    case $? in
-                        0)
-                            echo "Done"
-                            debugPause
-                            ;;
-                        *)
-                            echo "Failed"
-                            debugPause
-                            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-                            ;;
-                    esac
+                    checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
                     if [[ -f /ntfs/pagefile.sys ]]; then
                         dots "Removing page file"
                         rm -rf /ntfs/pagefile.sys >/dev/null 2>&1
@@ -1692,86 +1576,21 @@ correctVistaMBR() {
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
     dots "Correcting Vista MBR"
     dd if=$disk of=/tmp.mbr count=1 bs=512 >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not create backup (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not create backup (${FUNCNAME[0]})\n   Args Passed: $*"
     xxd /tmp.mbr /tmp.mbr.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "xxd command failed (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "xxd command failed (${FUNCNAME[0]})\n   Args Passed: $*"
     rm /tmp.mbr >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Couldn't remove /tmp.mbr file (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Couldn't remove /tmp.mbr file (${FUNCNAME[0]})\n   Args Passed: $*"
     fogmbrfix /tmp.mbr.txt /tmp.mbr.fix.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "fogmbrfix failed to operate (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "fogmbrfix failed to operate (${FUNCNAME[0]})\n   Args Passed: $*"
     rm /tmp.mbr.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not remove the text file (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not remove the text file (${FUNCNAME[0]})\n   Args Passed: $*"
     xxd -r /tmp.mbr.fix.txt /mbr.mbr >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not run second xxd command (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not run second xxd command (${FUNCNAME[0]})\n   Args Passed: $*"
     rm /tmp.mbr.fix.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not remove the fix file (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not remove the fix file (${FUNCNAME[0]})\n   Args Passed: $*"
     dd if=/mbr.mbr of="$disk" count=1 bs=512 >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not apply fixed MBR (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Could not apply fixed MBR (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
 }
 # Prints an error with visible information
@@ -2017,6 +1836,40 @@ debugPause() {
             ;;
         *)
             return
+            ;;
+    esac
+}
+# Handle the exit status of the immediately-preceding command using the shared
+# Done/Failed idiom. Usage:
+#   checkStatus <status> <success-mode> <error-message> [extra handleError args...]
+# <success-mode> controls what is emitted when <status> is 0:
+#   done        -> echo "Done"
+#   done-pause  -> echo "Done"; debugPause
+#   silent      -> emit nothing
+# On any non-zero status: echo "Failed"; debugPause; handleError <message> <extra...>.
+# The caller expands ${FUNCNAME[0]} and $* into <error-message> itself, so the
+# function name and args shown match the original inline case block exactly.
+checkStatus() {
+    local status="$1" mode="$2" msg="$3"
+    shift 3
+    case $status in
+        0)
+            case $mode in
+                done)
+                    echo "Done"
+                    ;;
+                done-pause)
+                    echo "Done"
+                    debugPause
+                    ;;
+                silent)
+                    ;;
+            esac
+            ;;
+        *)
+            echo "Failed"
+            debugPause
+            handleError "$msg" "$@"
             ;;
     esac
 }
@@ -2489,16 +2342,7 @@ runFixparts() {
     echo
     dots "Attempting fixparts"
     fixparts $disk </usr/share/fog/lib/EOFFIXPARTS >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not fix partition layout (${FUNCNAME[0]})\n   Args Passed: $*" "yes"
-            ;;
-    esac
+    checkStatus $? "done" "Could not fix partition layout (${FUNCNAME[0]})\n   Args Passed: $*" "yes"
     debugPause
     runPartprobe "$disk"
 }
