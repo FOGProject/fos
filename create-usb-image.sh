@@ -37,10 +37,10 @@ grub-install --removable --no-nvram --no-uefi-secure-boot --efi-directory=/mnt -
 echo Download the FOG kernels and inits
 wget -P /mnt/boot/ ${dl_url}/bzImage
 wget -P /mnt/boot/ ${dl_url}/init.xz
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/web/service/ipxe/memdisk
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/web/service/ipxe/memtest.bin
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/tftp/ipxe.krn
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/blob/dev-branch/packages/tftp/ipxe.efi
+fp_base="https://github.com/FOGProject/fogproject/blob/dev-branch/packages"
+for f in web/service/ipxe/memdisk web/service/ipxe/memtest.bin tftp/ipxe.krn tftp/ipxe.efi; do
+    wget -P /mnt/boot/ "${fp_base}/${f}"
+done
 
 cat > /mnt/boot/README.txt << 'EOF'
 

@@ -101,8 +101,29 @@ installDependencies "$installDep"
 cd "$buildPath" || exit 1
 
 
+# Echo the ARCH / CROSS_COMPILE make flags for an architecture in a given build
+# domain. The kernel and filesystem builds use different 32-bit (i386 vs i486)
+# and arm64 (arm64 vs aarch64) ARCH values, so the domain (fs|kernel) selects
+# the correct set. x64 and any unknown arch get no extra flags.
+function makeFlags() {
+    local arch="$1" domain="$2"
+    case "$arch" in
+        x86)
+            [[ $domain == kernel ]] && echo "ARCH=i386" || echo "ARCH=i486"
+            ;;
+        arm64)
+            [[ $domain == kernel ]] && echo "ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-" || echo "ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu-"
+            ;;
+        *)
+            : # x64 and default: no extra flags
+            ;;
+    esac
+}
+
 function buildFilesystem() {
     local arch="$1"
+    local fsflags
+    fsflags=$(makeFlags "$arch" fs)
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.xz"
     echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
     if [[ ! -d fssource$arch ]]; then
@@ -141,20 +162,8 @@ function buildFilesystem() {
     sed -i "s/^export initversion=[0-9][0-9]*$/export initversion=$(date +%Y%m%d)/" board/FOG/FOS/rootfs_overlay/usr/share/fog/lib/funcs.sh
     if [[ ! -f .config ]]; then
         cp "../configs/fs$arch.config" .config
-        case "${arch}" in
-            x64)
-                make oldconfig
-                ;;
-            x86)
-                make ARCH=i486 oldconfig
-                ;;
-            arm64)
-                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-                ;;
-            *)
-                make oldconfig
-                ;;
-        esac
+        # shellcheck disable=SC2086
+        make $fsflags oldconfig
     fi
     echo "Done"
 
@@ -169,36 +178,12 @@ function buildFilesystem() {
     if [[ $confirm != n ]]; then
         read -rp "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
-            case "${arch}" in
-                x64)
-                    make menuconfig
-                    ;;
-                x86)
-                    make ARCH=i486 menuconfig
-                    ;;
-                arm64)
-                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
-                    ;;
-                *)
-                    make menuconfig
-                    ;;
-            esac
+            # shellcheck disable=SC2086
+            make $fsflags menuconfig
         else
             echo "Ok, running make oldconfig instead to ensure the config is clean."
-            case "${arch}" in
-                x64)
-                    make oldconfig
-                    ;;
-                x86)
-                    make ARCH=i486 oldconfig
-                    ;;
-                arm64)
-                    make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-                    ;;
-                *)
-                    make oldconfig
-                    ;;
-            esac
+            # shellcheck disable=SC2086
+            make $fsflags oldconfig
         fi
         read -rp "We are ready to build are you [y|n]?" ready
         if [[ $ready == n ]]; then
@@ -209,45 +194,15 @@ function buildFilesystem() {
     fi
 
     if [[ $verbose == "y" ]]; then
-        case "${arch}" in
-            x64)
-                make | tee "buildroot$arch.log"
-                status=${PIPESTATUS[0]}
-                ;;
-            x86)
-                make ARCH=i486 | tee "buildroot$arch.log"
-                status=${PIPESTATUS[0]}
-                ;;
-            arm64)
-                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- | tee "buildroot$arch.log"
-                status=${PIPESTATUS[0]}
-                ;;
-            *)
-                make | tee "buildroot$arch.log"
-                status=${PIPESTATUS[0]}
-                ;;
-        esac
+        # shellcheck disable=SC2086
+        make $fsflags | tee "buildroot$arch.log"
+        status=${PIPESTATUS[0]}
     else
         bash -c "while true; do echo \$(date) - building ...; sleep 30s; done" &
         PING_LOOP_PID=$!
-        case "${arch}" in
-            x64)
-                make > "buildroot$arch.log" 2>&1
-                status=$?
-                ;;
-            x86)
-                make ARCH=i486 > "buildroot$arch.log" 2>&1
-                status=$?
-                ;;
-            arm64)
-                make ARCH=aarch64 CROSS_COMPILE=aarch64-linux-gnu- > "buildroot$arch.log" 2>&1
-                status=$?
-                ;;
-            *)
-                make > "buildroot$arch.log" 2>&1
-                status=$?
-                ;;
-        esac
+        # shellcheck disable=SC2086
+        make $fsflags > "buildroot$arch.log" 2>&1
+        status=$?
         kill $PING_LOOP_PID
     fi
 
@@ -275,6 +230,10 @@ function buildFilesystem() {
 
 function buildKernel() {
     local arch="$1"
+    local kflags ktarget
+    kflags=$(makeFlags "$arch" kernel)
+    ktarget=bzImage
+    [[ $arch == arm64 ]] && ktarget=Image
     kernelURL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
     echo "Preparing kernel $KERNEL_VERSION on $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf "kernelsource$arch"
@@ -329,58 +288,19 @@ function buildKernel() {
     if [[ $confirm != n ]]; then
         read -rp "We are ready to build. Would you like to edit the config file [y|n]?" config
         if [[ $config == y ]]; then
-            case "${arch}" in
-                x64)
-                    make menuconfig
-                    ;;
-                x86)
-                    make ARCH=i386 menuconfig
-                    ;;
-                arm64)
-                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- menuconfig
-                    ;;
-                *)
-                    make menuconfig
-                    ;;
-            esac
+            # shellcheck disable=SC2086
+            make $kflags menuconfig
         else
             echo "Ok, running make oldconfig instead to ensure the config is clean."
-            case "${arch}" in
-                x64)
-                    make oldconfig
-                    ;;
-                x86)
-                    make ARCH=i386 oldconfig
-                    ;;
-                arm64)
-                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-                    ;;
-                *)
-                    make oldconfig
-                    ;;
-            esac
+            # shellcheck disable=SC2086
+            make $kflags oldconfig
         fi
         read -rp "We are ready to build are you [y|n]?" ready
         if [[ $ready == y ]]; then
             echo "This make take a long time. Get some coffee, you'll be here a while!"
-            case "${arch}" in
-                x64)
-                    make -j "$(nproc)" bzImage
-                    status=$?
-                    ;;
-                x86)
-                    make ARCH=i386 -j "$(nproc)" bzImage
-                    status=$?
-                    ;;
-                arm64)
-                    make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j "$(nproc)" Image
-                    status=$?
-                    ;;
-                *)
-                    make -j "$(nproc)" bzImage
-                    status=$?
-                    ;;
-            esac
+            # shellcheck disable=SC2086
+            make $kflags -j "$(nproc)" $ktarget
+            status=$?
         else
             echo "Nothing to build!? Skipping."
             cd ..
@@ -388,28 +308,11 @@ function buildKernel() {
         fi
         [[ $status -gt 0 ]] && exit $status
     else
-        case "${arch}" in
-            x64)
-                make oldconfig
-                make -j "$(nproc)" bzImage
-                status=$?
-                ;;
-            x86)
-                make ARCH=i386 oldconfig
-                make ARCH=i386 -j "$(nproc)" bzImage
-                status=$?
-                ;;
-            arm64)
-                make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-                make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j "$(nproc)" Image
-                status=$?
-                ;;
-            *)
-                make oldconfig
-                make -j "$(nproc)" bzImage
-                status=$?
-                ;;
-        esac
+        # shellcheck disable=SC2086
+        make $kflags oldconfig
+        # shellcheck disable=SC2086
+        make $kflags -j "$(nproc)" $ktarget
+        status=$?
     fi
     [[ $status -gt 0 ]] && exit $status
     cd ..

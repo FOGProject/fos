@@ -132,17 +132,7 @@ saveEBR() {
     [[ ! $hasEBR -gt 0 ]] && return
     dots "Saving EBR for ($part)"
     dd if=$part of=$file bs=512 count=1 >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            debugPause
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not backup EBR (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done-pause" "Could not backup EBR (${FUNCNAME[0]})\n   Args Passed: $*"
 }
 # $1 = DriveName  (e.g. /dev/sdb)
 # $2 = DriveNumber  (e.g. 1)
@@ -183,17 +173,7 @@ restoreEBR() {
     [[ ! -e $file ]] && return
     dots "Restoring EBR for ($part)"
     dd of=$part if=$file bs=512 count=1 >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            debugPause
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not reload EBR data (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done-pause" "Could not reload EBR data (${FUNCNAME[0]})\n   Args Passed: $*"
 }
 # $1 = DriveName  (e.g. /dev/sdb)
 # $2 = DriveNumber  (e.g. 1)
@@ -342,16 +322,7 @@ makeSwapSystem() {
     [[ -n $uuid ]] && option="-U $uuid"
     dots "Restoring swap partition"
     mkswap $option $part >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not create swap on $part (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Could not create swap on $part (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
 }
 # $1 is the partition device (e.g. /dev/sda1)

@@ -101,55 +101,45 @@ getGraphics() {
 # Gets the information from the system for inventory
 doInventory() {
     getGraphics
-    sysman=$(dmidecode -s system-manufacturer)
-    sysproduct=$(dmidecode -s system-product-name)
-    sysversion=$(dmidecode -s system-version)
-    sysserial=$(dmidecode -s system-serial-number)
-    sysuuid=$(dmidecode -s system-uuid)
+    # Uniform "dmidecode -s <keyword>" lookups, driven from a var:keyword list.
+    local dmifield
+    for dmifield in \
+        sysman:system-manufacturer \
+        sysproduct:system-product-name \
+        sysversion:system-version \
+        sysserial:system-serial-number \
+        sysuuid:system-uuid \
+        biosversion:bios-version \
+        biosvendor:bios-vendor \
+        biosdate:bios-release-date \
+        mbman:baseboard-manufacturer \
+        mbproductname:baseboard-product-name \
+        mbversion:baseboard-version \
+        mbserial:baseboard-serial-number \
+        mbasset:baseboard-asset-tag \
+        cpuman:processor-manufacturer \
+        cpuversion:processor-version \
+        caseman:chassis-manufacturer \
+        casever:chassis-version \
+        caseserial:chassis-serial-number \
+        caseasset:chassis-asset-tag; do
+        printf -v "${dmifield%%:*}" '%s' "$(dmidecode -s "${dmifield#*:}")"
+    done
+    # Non-uniform inventory items kept explicit (different tools/parsing).
     sysuuid=${sysuuid,,}
     systype=$(dmidecode -t 3 | grep Type:)
-    biosversion=$(dmidecode -s bios-version)
-    biosvendor=$(dmidecode -s bios-vendor)
-    biosdate=$(dmidecode -s bios-release-date)
-    mbman=$(dmidecode -s baseboard-manufacturer)
-    mbproductname=$(dmidecode -s baseboard-product-name)
-    mbversion=$(dmidecode -s baseboard-version)
-    mbserial=$(dmidecode -s baseboard-serial-number)
-    mbasset=$(dmidecode -s baseboard-asset-tag)
-    cpuman=$(dmidecode -s processor-manufacturer)
-    cpuversion=$(dmidecode -s processor-version)
     cpucurrent=$(dmidecode -t 4 | grep 'Current Speed:' | head -n1)
     cpumax=$(dmidecode -t 4 | grep 'Max Speed:' | head -n1)
     mem=$(cat /proc/meminfo | grep MemTotal | tr -d \\0)
     hdinfo=$(hdparm -i $hd 2>/dev/null | grep Model= || smartctl -i $hd | grep -A2 "Model Number" | awk -F ":" '/Model Number:/{gsub(/ /,""); modelno=$NF};/Serial Number:/{gsub(/ /,""); serialno=$NF};/Firmware Version:/{gsub(/ /,""); fwrev=$NF; print "model="modelno", fwrev="fwrev", serialno="serialno}')
-    caseman=$(dmidecode -s chassis-manufacturer)
-    casever=$(dmidecode -s chassis-version)
-    caseserial=$(dmidecode -s chassis-serial-number)
-    caseasset=$(dmidecode -s chassis-asset-tag)
-    sysman64=$(echo $sysman | base64)
-    sysproduct64=$(echo $sysproduct | base64)
-    sysversion64=$(echo $sysversion | base64)
-    sysserial64=$(echo $sysserial | base64)
-    sysuuid64=$(echo $sysuuid | base64)
-    systype64=$(echo $systype | base64)
-    biosversion64=$(echo $biosversion | base64)
-    biosvendor64=$(echo $biosvendor | base64)
-    biosdate64=$(echo $biosdate | base64)
-    mbman64=$(echo $mbman | base64)
-    mbproductname64=$(echo $mbproductname | base64)
-    mbversion64=$(echo $mbversion | base64)
-    mbserial64=$(echo $mbserial | base64)
-    mbasset64=$(echo $mbasset | base64)
-    cpuman64=$(echo $cpuman | base64)
-    cpuversion64=$(echo $cpuversion | base64)
-    cpucurrent64=$(echo $cpucurrent | base64)
-    cpumax64=$(echo $cpumax | base64)
-    mem64=$(echo $mem | base64)
-    hdinfo64=$(echo $hdinfo | base64)
-    caseman64=$(echo $caseman | base64)
-    casever64=$(echo $casever | base64)
-    caseserial64=$(echo $caseserial | base64)
-    caseasset64=$(echo $caseasset | base64)
+    # base64-encode each inventory field into its <name>64 counterpart.
+    local invfield
+    for invfield in sysman sysproduct sysversion sysserial sysuuid systype \
+        biosversion biosvendor biosdate mbman mbproductname mbversion mbserial \
+        mbasset cpuman cpuversion cpucurrent cpumax mem hdinfo caseman casever \
+        caseserial caseasset; do
+        printf -v "${invfield}64" '%s' "$(echo ${!invfield} | base64)"
+    done
 }
 # Gets the location of the SAM registry if found
 getSAMLoc() {
@@ -224,16 +214,7 @@ expandPartition() {
         ntfs)
             dots "Resizing $fstype volume ($part)"
             yes | ntfsresize $part -fbP >/tmp/tmpoutput.txt 2>&1
-            case $? in
-                0)
-                    echo "Done"
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/tmpoutput.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "done" "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/tmpoutput.txt)\n   Args Passed: $*"
             debugPause
             resetFlag "$part"
             ;;
@@ -253,15 +234,7 @@ expandPartition() {
                     ;;
             esac
             resize2fs $part >/tmp/resize2fs.txt 2>&1
-            case $? in
-                0)
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "silent" "Could not resize $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
             case $? in
                 0)
@@ -520,29 +493,11 @@ prepareUploadLocation() {
     debugPause
     dots "Setting permission on $imagePath"
     chmod -R 775 $imagePath >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Failed to set permissions (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Failed to set permissions (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
     dots "Removing any pre-existing files"
     rm -Rf $imagePath/* >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not clean files (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Could not clean files (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
 }
 # Moves partitions if possible for upload (resizable images only)
@@ -683,16 +638,7 @@ shrinkPartition() {
                 debugPause
                 dots "Resizing filesystem"
                 yes | ntfsresize -fs ${sizentfsresize}k ${part} >/tmp/output.txt 2>&1
-                case $? in
-                    0)
-                        echo "Done"
-                        ;;
-                    *)
-                        echo "Failed"
-                        debugPause
-                        handleError "Could not resize disk (${FUNCNAME[0]})\n   Info: $(cat /tmp/output.txt)\n   Args Passed: $*"
-                        ;;
-                esac
+                checkStatus $? "done" "Could not resize disk (${FUNCNAME[0]})\n   Info: $(cat /tmp/output.txt)\n   Args Passed: $*"
             fi
             if [[ $do_resizepart -eq 1 ]]; then
                 debugPause
@@ -721,16 +667,7 @@ shrinkPartition() {
         extfs)
             dots "Checking $fstype volume ($part)"
             e2fsck -fp $part >/tmp/e2fsck.txt 2>&1
-            case $? in
-                0)
-                    echo "Done"
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "e2fsck failed to check $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "done" "e2fsck failed to check $part (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
             debugPause
             extminsize=$(resize2fs -P $part 2>/dev/null | awk -F': ' '{print $2}')
             block_size=$(dumpe2fs -h $part 2>/dev/null | awk '/^Block[ ]size:/{print $3}')
@@ -740,16 +677,7 @@ shrinkPartition() {
             [[ -z $sizeextresize || $sizeextresize -lt 1 ]] && handleError "Error calculating the new size of extfs ($part) (${FUNCNAME[0]})\n   Args Passed: $*"
             dots "Shrinking $fstype volume ($part)"
             resize2fs $part -M >/tmp/resize2fs.txt 2>&1
-            case $? in
-                0)
-                    echo "Done"
-                    ;;
-                *)
-                    echo "Failed"
-                    debugPause
-                    handleError "Could not shrink $fstype volume ($part) (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
-                    ;;
-            esac
+            checkStatus $? "done" "Could not shrink $fstype volume ($part) (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
             debugPause
             dots "Shrinking $part partition"
             resizePartition "$part" "$sizeextresize" "$imagePath"
@@ -1024,26 +952,28 @@ changeHostname() {
     local part="$1"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $hostname || $hostearly -eq 0 ]] && return
-    REG_HOSTNAME_KEY1="\ControlSet001\Services\Tcpip\Parameters\NV Hostname"
-    REG_HOSTNAME_KEY2="\ControlSet001\Services\Tcpip\Parameters\Hostname"
-    REG_HOSTNAME_KEY3="\ControlSet001\Services\Tcpip\Parameters\NV HostName"
-    REG_HOSTNAME_KEY4="\ControlSet001\Services\Tcpip\Parameters\HostName"
-    REG_HOSTNAME_KEY5="\ControlSet001\Control\ComputerName\ActiveComputerName\ComputerName"
-    REG_HOSTNAME_KEY6="\ControlSet001\Control\ComputerName\ComputerName\ComputerName"
-    REG_HOSTNAME_KEY7="\ControlSet001\services\Tcpip\Parameters\NV Hostname"
-    REG_HOSTNAME_KEY8="\ControlSet001\services\Tcpip\Parameters\Hostname"
-    REG_HOSTNAME_KEY9="\ControlSet001\services\Tcpip\Parameters\NV HostName"
-    REG_HOSTNAME_KEY10="\ControlSet001\services\Tcpip\Parameters\HostName"
-    REG_HOSTNAME_KEY11="\CurrentControlSet\Services\Tcpip\Parameters\NV Hostname"
-    REG_HOSTNAME_KEY12="\CurrentControlSet\Services\Tcpip\Parameters\Hostname"
-    REG_HOSTNAME_KEY13="\CurrentControlSet\Services\Tcpip\Parameters\NV HostName"
-    REG_HOSTNAME_KEY14="\CurrentControlSet\Services\Tcpip\Parameters\HostName"
-    REG_HOSTNAME_KEY15="\CurrentControlSet\Control\ComputerName\ActiveComputerName\ComputerName"
-    REG_HOSTNAME_KEY16="\CurrentControlSet\Control\ComputerName\ComputerName\ComputerName"
-    REG_HOSTNAME_KEY17="\CurrentControlSet\services\Tcpip\Parameters\NV Hostname"
-    REG_HOSTNAME_KEY18="\CurrentControlSet\services\Tcpip\Parameters\Hostname"
-    REG_HOSTNAME_KEY19="\CurrentControlSet\services\Tcpip\Parameters\NV HostName"
-    REG_HOSTNAME_KEY20="\CurrentControlSet\services\Tcpip\Parameters\HostName"
+    local reg_hostname_keys=(
+        "\ControlSet001\Services\Tcpip\Parameters\NV Hostname"
+        "\ControlSet001\Services\Tcpip\Parameters\Hostname"
+        "\ControlSet001\Services\Tcpip\Parameters\NV HostName"
+        "\ControlSet001\Services\Tcpip\Parameters\HostName"
+        "\ControlSet001\Control\ComputerName\ActiveComputerName\ComputerName"
+        "\ControlSet001\Control\ComputerName\ComputerName\ComputerName"
+        "\ControlSet001\services\Tcpip\Parameters\NV Hostname"
+        "\ControlSet001\services\Tcpip\Parameters\Hostname"
+        "\ControlSet001\services\Tcpip\Parameters\NV HostName"
+        "\ControlSet001\services\Tcpip\Parameters\HostName"
+        "\CurrentControlSet\Services\Tcpip\Parameters\NV Hostname"
+        "\CurrentControlSet\Services\Tcpip\Parameters\Hostname"
+        "\CurrentControlSet\Services\Tcpip\Parameters\NV HostName"
+        "\CurrentControlSet\Services\Tcpip\Parameters\HostName"
+        "\CurrentControlSet\Control\ComputerName\ActiveComputerName\ComputerName"
+        "\CurrentControlSet\Control\ComputerName\ComputerName\ComputerName"
+        "\CurrentControlSet\services\Tcpip\Parameters\NV Hostname"
+        "\CurrentControlSet\services\Tcpip\Parameters\Hostname"
+        "\CurrentControlSet\services\Tcpip\Parameters\NV HostName"
+        "\CurrentControlSet\services\Tcpip\Parameters\HostName"
+    )
     dots "Mounting directory"
     if [[ ! -d /ntfs ]]; then
         mkdir -p /ntfs >/dev/null 2>&1
@@ -1055,38 +985,8 @@ changeHostname() {
     fi
     umount /ntfs >/dev/null 2>&1
     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
-    case $? in
-        0)
-            echo "Done"
-            debugPause
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-            ;;
-    esac
+    checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
     if [[ ! -f /usr/share/fog/lib/EOFREG ]]; then
-        key1="$REG_HOSTNAME_KEY1"
-        key2="$REG_HOSTNAME_KEY2"
-        key3="$REG_HOSTNAME_KEY3"
-        key4="$REG_HOSTNAME_KEY4"
-        key5="$REG_HOSTNAME_KEY5"
-        key6="$REG_HOSTNAME_KEY6"
-        key7="$REG_HOSTNAME_KEY7"
-        key8="$REG_HOSTNAME_KEY8"
-        key9="$REG_HOSTNAME_KEY9"
-        key10="$REG_HOSTNAME_KEY10"
-        key11="$REG_HOSTNAME_KEY11"
-        key12="$REG_HOSTNAME_KEY12"
-        key13="$REG_HOSTNAME_KEY13"
-        key14="$REG_HOSTNAME_KEY14"
-        key15="$REG_HOSTNAME_KEY15"
-        key16="$REG_HOSTNAME_KEY16"
-        key17="$REG_HOSTNAME_KEY17"
-        key18="$REG_HOSTNAME_KEY18"
-        key19="$REG_HOSTNAME_KEY19"
-        key20="$REG_HOSTNAME_KEY20"
         case $osid in
             1)
                 regfile="$REG_LOCAL_MACHINE_XP"
@@ -1095,49 +995,16 @@ changeHostname() {
                 regfile="$REG_LOCAL_MACHINE_7"
                 ;;
         esac
-        echo "ed $key1" >/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key2" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key3" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key4" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key5" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key6" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key7" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key8" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key9" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key10" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key11" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key12" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key13" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key14" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key15" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key16" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key17" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key18" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key19" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "ed $key20" >>/usr/share/fog/lib/EOFREG
-        echo "$hostname" >>/usr/share/fog/lib/EOFREG
-        echo "q" >> /usr/share/fog/lib/EOFREG
-        echo "y" >> /usr/share/fog/lib/EOFREG
-        echo >> /usr/share/fog/lib/EOFREG
+        local regkey
+        {
+            for regkey in "${reg_hostname_keys[@]}"; do
+                echo "ed $regkey"
+                echo "$hostname"
+            done
+            echo "q"
+            echo "y"
+            echo
+        } >/usr/share/fog/lib/EOFREG
     fi
     if [[ -e $regfile ]]; then
         dots "Changing hostname"
@@ -1174,28 +1041,10 @@ fixWin7boot() {
     dots "Mounting partition"
     if [[ ! -d /bcdstore ]]; then
         mkdir -p /bcdstore >/dev/null 2>&1
-        case $? in
-            0)
-                ;;
-            *)
-                echo "Failed"
-                debugPause
-                handleError " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
-                ;;
-        esac
+        checkStatus $? "silent" " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
     fi
     ntfs-3g -o remove_hiberfile,rw $part /bcdstore >/tmp/ntfs-mount-output 2>&1
-    case $? in
-        0)
-            echo "Done"
-            debugPause
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-            ;;
-    esac
+    checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
     if [[ ! -f /bcdstore/Boot/BCD ]]; then
         umount /bcdstore >/dev/null 2>&1
         return
@@ -1263,15 +1112,7 @@ clearMountedDevices() {
                 ntfs)
                     dots "Clearing part ($part)"
                     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
-                    case $? in
-                        0)
-                            ;;
-                        *)
-                            echo "Failed"
-                            debugPause
-                            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-                            ;;
-                    esac
+                    checkStatus $? "silent" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
                     if [[ ! -f $REG_LOCAL_MACHINE_7 ]]; then
                         echo "Reg file not found"
                         debugPause
@@ -1314,29 +1155,11 @@ removePageFile() {
                     dots "Mounting partition ($part)"
                     if [[ ! -d /ntfs ]]; then
                         mkdir -p /ntfs >/dev/null 2>&1
-                        case $? in
-                            0)
-                                ;;
-                            *)
-                                echo "Failed"
-                                debugPause
-                                handleError " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
-                                ;;
-                        esac
+                        checkStatus $? "silent" " * Could not create mount location (${FUNCNAME[0]})\n    Args Passed: $*"
                     fi
                     umount /ntfs >/dev/null 2>&1
                     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
-                    case $? in
-                        0)
-                            echo "Done"
-                            debugPause
-                            ;;
-                        *)
-                            echo "Failed"
-                            debugPause
-                            handleError " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
-                            ;;
-                    esac
+                    checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
                     if [[ -f /ntfs/pagefile.sys ]]; then
                         dots "Removing page file"
                         rm -rf /ntfs/pagefile.sys >/dev/null 2>&1
@@ -1753,86 +1576,21 @@ correctVistaMBR() {
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
     dots "Correcting Vista MBR"
     dd if=$disk of=/tmp.mbr count=1 bs=512 >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not create backup (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not create backup (${FUNCNAME[0]})\n   Args Passed: $*"
     xxd /tmp.mbr /tmp.mbr.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "xxd command failed (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "xxd command failed (${FUNCNAME[0]})\n   Args Passed: $*"
     rm /tmp.mbr >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Couldn't remove /tmp.mbr file (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Couldn't remove /tmp.mbr file (${FUNCNAME[0]})\n   Args Passed: $*"
     fogmbrfix /tmp.mbr.txt /tmp.mbr.fix.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "fogmbrfix failed to operate (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "fogmbrfix failed to operate (${FUNCNAME[0]})\n   Args Passed: $*"
     rm /tmp.mbr.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not remove the text file (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not remove the text file (${FUNCNAME[0]})\n   Args Passed: $*"
     xxd -r /tmp.mbr.fix.txt /mbr.mbr >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not run second xxd command (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not run second xxd command (${FUNCNAME[0]})\n   Args Passed: $*"
     rm /tmp.mbr.fix.txt >/dev/null 2>&1
-    case $? in
-        0)
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not remove the fix file (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "silent" "Could not remove the fix file (${FUNCNAME[0]})\n   Args Passed: $*"
     dd if=/mbr.mbr of="$disk" count=1 bs=512 >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not apply fixed MBR (${FUNCNAME[0]})\n   Args Passed: $*"
-            ;;
-    esac
+    checkStatus $? "done" "Could not apply fixed MBR (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
 }
 # Prints an error with visible information
@@ -2081,6 +1839,40 @@ debugPause() {
             ;;
     esac
 }
+# Handle the exit status of the immediately-preceding command using the shared
+# Done/Failed idiom. Usage:
+#   checkStatus <status> <success-mode> <error-message> [extra handleError args...]
+# <success-mode> controls what is emitted when <status> is 0:
+#   done        -> echo "Done"
+#   done-pause  -> echo "Done"; debugPause
+#   silent      -> emit nothing
+# On any non-zero status: echo "Failed"; debugPause; handleError <message> <extra...>.
+# The caller expands ${FUNCNAME[0]} and $* into <error-message> itself, so the
+# function name and args shown match the original inline case block exactly.
+checkStatus() {
+    local status="$1" mode="$2" msg="$3"
+    shift 3
+    case $status in
+        0)
+            case $mode in
+                done)
+                    echo "Done"
+                    ;;
+                done-pause)
+                    echo "Done"
+                    debugPause
+                    ;;
+                silent)
+                    ;;
+            esac
+            ;;
+        *)
+            echo "Failed"
+            debugPause
+            handleError "$msg" "$@"
+            ;;
+    esac
+}
 debugEcho() {
     local str="$*"
     case $isdebug in
@@ -2100,54 +1892,28 @@ majorDebugPause() {
     echo " * Press [Enter] key to continue"
     read -p "$*"
 }
-swapUUIDFileName() {
+# Build "$imagePath/d<disk_number>.<suffix>" into the named variable. Validation
+# errors report the calling helper (FUNCNAME[1]), not this generator.
+partitionFileName() {
     local imagePath="$1"  # e.g. /net/dev/foo
     local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    swapuuidfilename="$imagePath/d${disk_number}.original.swapuuids"
+    local suffix="$3"
+    local __outvar="$4"
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[1]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[1]})\n   Args Passed: $*"
+    printf -v "$__outvar" '%s' "$imagePath/d${disk_number}.${suffix}"
 }
-sfdiskPartitionFileName() {
-    local imagePath="$1"  # e.g. /net/dev/foo
-    local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdiskoriginalpartitionfilename="$imagePath/d${disk_number}.partitions"
-}
-sfdiskLegacyOriginalPartitionFileName() {
-    local imagePath="$1"  # e.g. /net/dev/foo
-    local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdisklegacyoriginalpartitionfilename="$imagePath/d${disk_number}.original.partitions"
-}
-sfdiskMinimumPartitionFileName() {
-    local imagePath="$1"  # e.g. /net/dev/foo
-    local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sfdiskminimumpartitionfilename="$imagePath/d${disk_number}.minimum.partitions"
-}
+swapUUIDFileName() { partitionFileName "$1" "$2" "original.swapuuids" swapuuidfilename; }
+sfdiskPartitionFileName() { partitionFileName "$1" "$2" "partitions" sfdiskoriginalpartitionfilename; }
+sfdiskLegacyOriginalPartitionFileName() { partitionFileName "$1" "$2" "original.partitions" sfdisklegacyoriginalpartitionfilename; }
+sfdiskMinimumPartitionFileName() { partitionFileName "$1" "$2" "minimum.partitions" sfdiskminimumpartitionfilename; }
+fixedSizePartitionsFileName() { partitionFileName "$1" "$2" "fixed_size_partitions" fixed_size_file; }
 sfdiskOriginalPartitionFileName() {
     local imagePath="$1"  # e.g. /net/dev/foo
     local disk_number="$2"    # e.g. 1
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     sfdiskPartitionFileName "$imagePath" "$disk_number"
-}
-sgdiskOriginalPartitionFileName() {
-    local imagePath="$1"  # e.g. /net/dev/foo
-    local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    sgdiskoriginalpartitionfilename="$imagePath/d${disk_number}.sgdisk.original.partitions"
-}
-fixedSizePartitionsFileName() {
-    local imagePath="$1"  # e.g. /net/dev/foo
-    local disk_number="$2"    # e.g. 1
-    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    fixed_size_file="$imagePath/d${disk_number}.fixed_size_partitions"
 }
 hasGrubFileName() {
     local imagePath="$1"  # e.g. /net/dev/foo
@@ -2576,16 +2342,7 @@ runFixparts() {
     echo
     dots "Attempting fixparts"
     fixparts $disk </usr/share/fog/lib/EOFFIXPARTS >/dev/null 2>&1
-    case $? in
-        0)
-            echo "Done"
-            ;;
-        *)
-            echo "Failed"
-            debugPause
-            handleError "Could not fix partition layout (${FUNCNAME[0]})\n   Args Passed: $*" "yes"
-            ;;
-    esac
+    checkStatus $? "done" "Could not fix partition layout (${FUNCNAME[0]})\n   Args Passed: $*" "yes"
     debugPause
     runPartprobe "$disk"
 }
