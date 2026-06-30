@@ -3,6 +3,21 @@
 . /var/lib/buildkite-agent/github-upload.sh
 [[ -z ${GITHUB_USER} || -z ${GITHUB_TOKEN} ]] && echo "Missing Github information, can't proceed." && exit 1
 
+GITHUB_API="https://api.github.com/repos/FOGProject/fos"
+
+# Authenticated call to the FOS GitHub API. Usage:
+#   github_api <METHOD> <endpoint> [json-data]
+# <endpoint> is appended to $GITHUB_API. Response is written to stdout; the
+# caller redirects to a file or pipes to jq as needed.
+github_api() {
+    local method="$1" endpoint="$2" data="$3"
+    if [[ -n $data ]]; then
+        curl -s -X "$method" -u "${GITHUB_USER}:${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" "${GITHUB_API}${endpoint}" -d "$data"
+    else
+        curl -s -X "$method" -u "${GITHUB_USER}:${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json" "${GITHUB_API}${endpoint}"
+    fi
+}
+
 command -v curl
 [[ $? -ne 0 ]] && echo "Package curl not installed, can't proceed." && exit 1
 command -v jq
@@ -15,20 +30,20 @@ if [[ -n "$1" && "$1" =~ ^[0-9]\.[0-9][0-9]*\.[0-9][0-9]*$ ]]; then
     # official release build
     GITHUB_TAG=$1
     GITHUB_NAME="FOG $1 kernels and inits"
-    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
+    github_api POST /releases "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
 elif [[ -n "$1" ]]; then
     # beta testing builds
     GITHUB_TAG="testing"
     GITHUB_NAME="Testing from $(date +%d.%m.%Y)"
-    TESTING_RELEASE_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/tags/${GITHUB_TAG} | jq -r .id)
-    HEAD_SHA=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/heads/${1} | jq -r .object.sha)
-    curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/git/refs/tags/${GITHUB_TAG} -d "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
-    curl -s -X PATCH -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${TESTING_RELEASE_ID} -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\nGithub-Branch ${1}\" }" > response.json
+    TESTING_RELEASE_ID=$(github_api GET /releases/tags/${GITHUB_TAG} | jq -r .id)
+    HEAD_SHA=$(github_api GET /git/refs/heads/${1} | jq -r .object.sha)
+    github_api PATCH /git/refs/tags/${GITHUB_TAG} "{ \"sha\":\"${HEAD_SHA}\" }" > tag_update_response.json
+    github_api PATCH /releases/${TESTING_RELEASE_ID} "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\nGithub-Branch ${1}\" }" > response.json
 else
     # semi-official development builds
     GITHUB_TAG=$(date +%Y%m%d)
     GITHUB_NAME="Latest from $(date +%d.%m.%Y)"
-    curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases -d "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
+    github_api POST /releases "{ \"tag_name\":\"${GITHUB_TAG}\", \"name\":\"${GITHUB_NAME}\", \"body\":\"Linux kernel ${KERNEL_VERSION}\nBuildroot ${BUILDROOT_VERSION}\" }" > response.json
 fi
 
 
@@ -50,9 +65,9 @@ do
     fi
     echo "Uploading ${i}..."
     if [[ -n "$1" ]]; then
-        ASSET_ID=$(curl -s -X GET -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets | jq -r '.[] | "\(.id),\(.name)"' | grep ",${i}\$"| cut -f1 -d,)
+        ASSET_ID=$(github_api GET /releases/${GITHUB_RELEASE_ID}/assets | jq -r '.[] | "\(.id),\(.name)"' | grep ",${i}\$"| cut -f1 -d,)
         if [[ -n "${ASSET_ID}" ]]; then
-            curl -s -X DELETE -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/FOGProject/fos/releases/assets/${ASSET_ID}
+            github_api DELETE /releases/assets/${ASSET_ID}
         fi
     fi
     curl -s -X POST -u ${GITHUB_USER}:${GITHUB_TOKEN} -H "Content-Type: application/octet-stream" --data-binary "@${i}" "https://uploads.github.com/repos/FOGProject/fos/releases/${GITHUB_RELEASE_ID}/assets?name=${i}" > ${i}.uploaded
