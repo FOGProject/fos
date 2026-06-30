@@ -1,0 +1,137 @@
+=== FileName helpers ===
+swapUUIDFileName(/net/dev/foo,1)=/net/dev/foo/d1.original.swapuuids
+sfdiskPartitionFileName(/net/dev/foo,1)=/net/dev/foo/d1.partitions
+sfdiskLegacyOriginalPartitionFileName(/net/dev/foo,1)=/net/dev/foo/d1.original.partitions
+sfdiskMinimumPartitionFileName(/net/dev/foo,1)=/net/dev/foo/d1.minimum.partitions
+sfdiskOriginalPartitionFileName(/net/dev/foo,1)=/net/dev/foo/d1.partitions
+fixedSizePartitionsFileName(/net/dev/foo,1)=/net/dev/foo/d1.fixed_size_partitions
+hasGrubFileName(/net/dev/foo,1)=/net/dev/foo/d1.has_grub
+hasGrubFileName(/net/dev/foo,1,sgdisk)=/net/dev/foo/d1.grub.mbr
+EBRFileName(/net/dev/foo,1,5)=/net/dev/foo/d1p5.ebr
+EBRFileName(/net/dev/foo,1,empty)=
+tmpEBRFileName(1,5)=/tmp/d1p5.ebr
+MBRFileName.up(/net/dev/foo,1)=/net/dev/foo/d1.mbr
+MBRFileName.up.sgdisk(/net/dev/foo,1)=/net/dev/foo/d1.mbr
+swapUUIDFileName(/images/host name,2)=/images/host name/d2.original.swapuuids
+sfdiskPartitionFileName(/images/host name,2)=/images/host name/d2.partitions
+sfdiskLegacyOriginalPartitionFileName(/images/host name,2)=/images/host name/d2.original.partitions
+sfdiskMinimumPartitionFileName(/images/host name,2)=/images/host name/d2.minimum.partitions
+sfdiskOriginalPartitionFileName(/images/host name,2)=/images/host name/d2.partitions
+fixedSizePartitionsFileName(/images/host name,2)=/images/host name/d2.fixed_size_partitions
+hasGrubFileName(/images/host name,2)=/images/host name/d2.has_grub
+hasGrubFileName(/images/host name,2,sgdisk)=/images/host name/d2.grub.mbr
+EBRFileName(/images/host name,2,5)=/images/host name/d2p5.ebr
+EBRFileName(/images/host name,2,empty)=
+tmpEBRFileName(2,5)=/tmp/d2p5.ebr
+MBRFileName.up(/images/host name,2)=/images/host name/d2.mbr
+MBRFileName.up.sgdisk(/images/host name,2)=/images/host name/d2.mbr
+swapUUIDFileName(/mnt/img,10)=/mnt/img/d10.original.swapuuids
+sfdiskPartitionFileName(/mnt/img,10)=/mnt/img/d10.partitions
+sfdiskLegacyOriginalPartitionFileName(/mnt/img,10)=/mnt/img/d10.original.partitions
+sfdiskMinimumPartitionFileName(/mnt/img,10)=/mnt/img/d10.minimum.partitions
+sfdiskOriginalPartitionFileName(/mnt/img,10)=/mnt/img/d10.partitions
+fixedSizePartitionsFileName(/mnt/img,10)=/mnt/img/d10.fixed_size_partitions
+hasGrubFileName(/mnt/img,10)=/mnt/img/d10.has_grub
+hasGrubFileName(/mnt/img,10,sgdisk)=/mnt/img/d10.grub.mbr
+EBRFileName(/mnt/img,10,5)=/mnt/img/d10p5.ebr
+EBRFileName(/mnt/img,10,empty)=
+tmpEBRFileName(10,5)=/tmp/d10p5.ebr
+MBRFileName.up(/mnt/img,10)=/mnt/img/d10.mbr
+MBRFileName.up.sgdisk(/mnt/img,10)=/mnt/img/d10.mbr
+=== doInventory (dmidecode + base64 blocks) ===
+sysman=dmi[-s system-manufacturer]
+sysman64=ZG1pWy1zIHN5c3RlbS1tYW51ZmFjdHVyZXJdCg==
+sysproduct=dmi[-s system-product-name]
+sysproduct64=ZG1pWy1zIHN5c3RlbS1wcm9kdWN0LW5hbWVdCg==
+sysversion=dmi[-s system-version]
+sysversion64=ZG1pWy1zIHN5c3RlbS12ZXJzaW9uXQo=
+sysserial=dmi[-s system-serial-number]
+sysserial64=ZG1pWy1zIHN5c3RlbS1zZXJpYWwtbnVtYmVyXQo=
+sysuuid=dmi[-s system-uuid]
+sysuuid64=ZG1pWy1zIHN5c3RlbS11dWlkXQo=
+systype=
+systype64=Cg==
+biosversion=dmi[-s bios-version]
+biosversion64=ZG1pWy1zIGJpb3MtdmVyc2lvbl0K
+biosvendor=dmi[-s bios-vendor]
+biosvendor64=ZG1pWy1zIGJpb3MtdmVuZG9yXQo=
+biosdate=dmi[-s bios-release-date]
+biosdate64=ZG1pWy1zIGJpb3MtcmVsZWFzZS1kYXRlXQo=
+mbman=dmi[-s baseboard-manufacturer]
+mbman64=ZG1pWy1zIGJhc2Vib2FyZC1tYW51ZmFjdHVyZXJdCg==
+mbproductname=dmi[-s baseboard-product-name]
+mbproductname64=ZG1pWy1zIGJhc2Vib2FyZC1wcm9kdWN0LW5hbWVdCg==
+mbversion=dmi[-s baseboard-version]
+mbversion64=ZG1pWy1zIGJhc2Vib2FyZC12ZXJzaW9uXQo=
+mbserial=dmi[-s baseboard-serial-number]
+mbserial64=ZG1pWy1zIGJhc2Vib2FyZC1zZXJpYWwtbnVtYmVyXQo=
+mbasset=dmi[-s baseboard-asset-tag]
+mbasset64=ZG1pWy1zIGJhc2Vib2FyZC1hc3NldC10YWddCg==
+cpuman=dmi[-s processor-manufacturer]
+cpuman64=ZG1pWy1zIHByb2Nlc3Nvci1tYW51ZmFjdHVyZXJdCg==
+cpuversion=dmi[-s processor-version]
+cpuversion64=ZG1pWy1zIHByb2Nlc3Nvci12ZXJzaW9uXQo=
+cpucurrent=
+cpucurrent64=Cg==
+cpumax=
+cpumax64=Cg==
+mem=MemTotal:       16384000 kB
+mem64=TWVtVG90YWw6IDE2Mzg0MDAwIGtCCg==
+hdinfo= Model=STUBDISK, FwRev=1.0, SerialNo=SN123
+hdinfo64=TW9kZWw9U1RVQkRJU0ssIEZ3UmV2PTEuMCwgU2VyaWFsTm89U04xMjMK
+caseman=dmi[-s chassis-manufacturer]
+caseman64=ZG1pWy1zIGNoYXNzaXMtbWFudWZhY3R1cmVyXQo=
+casever=dmi[-s chassis-version]
+casever64=ZG1pWy1zIGNoYXNzaXMtdmVyc2lvbl0K
+caseserial=dmi[-s chassis-serial-number]
+caseserial64=ZG1pWy1zIGNoYXNzaXMtc2VyaWFsLW51bWJlcl0K
+caseasset=dmi[-s chassis-asset-tag]
+caseasset64=ZG1pWy1zIGNoYXNzaXMtYXNzZXQtdGFnXQo=
+inventory_graphics_vendor=StubVendor
+inventory_graphics_vendor64=U3R1YlZlbmRvcgo=
+inventory_graphics_product=StubGPU
+inventory_graphics_product64=U3R1YkdQVQo=
+=== changeHostname EOFREG ===
+ed \ControlSet001\Services\Tcpip\Parameters\NV Hostname
+GOLDENHOST
+ed \ControlSet001\Services\Tcpip\Parameters\Hostname
+GOLDENHOST
+ed \ControlSet001\Services\Tcpip\Parameters\NV HostName
+GOLDENHOST
+ed \ControlSet001\Services\Tcpip\Parameters\HostName
+GOLDENHOST
+ed \ControlSet001\Control\ComputerName\ActiveComputerName\ComputerName
+GOLDENHOST
+ed \ControlSet001\Control\ComputerName\ComputerName\ComputerName
+GOLDENHOST
+ed \ControlSet001\services\Tcpip\Parameters\NV Hostname
+GOLDENHOST
+ed \ControlSet001\services\Tcpip\Parameters\Hostname
+GOLDENHOST
+ed \ControlSet001\services\Tcpip\Parameters\NV HostName
+GOLDENHOST
+ed \ControlSet001\services\Tcpip\Parameters\HostName
+GOLDENHOST
+ed \CurrentControlSet\Services\Tcpip\Parameters\NV Hostname
+GOLDENHOST
+ed \CurrentControlSet\Services\Tcpip\Parameters\Hostname
+GOLDENHOST
+ed \CurrentControlSet\Services\Tcpip\Parameters\NV HostName
+GOLDENHOST
+ed \CurrentControlSet\Services\Tcpip\Parameters\HostName
+GOLDENHOST
+ed \CurrentControlSet\Control\ComputerName\ActiveComputerName\ComputerName
+GOLDENHOST
+ed \CurrentControlSet\Control\ComputerName\ComputerName\ComputerName
+GOLDENHOST
+ed \CurrentControlSet\services\Tcpip\Parameters\NV Hostname
+GOLDENHOST
+ed \CurrentControlSet\services\Tcpip\Parameters\Hostname
+GOLDENHOST
+ed \CurrentControlSet\services\Tcpip\Parameters\NV HostName
+GOLDENHOST
+ed \CurrentControlSet\services\Tcpip\Parameters\HostName
+GOLDENHOST
+q
+y
+
