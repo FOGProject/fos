@@ -25,6 +25,7 @@ declare -ar common_dependencies=(
     "bzip2"
     "findutils"
     "autoconf"
+    "automake"
     "libtool"
 )
 
