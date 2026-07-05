@@ -26,7 +26,6 @@ declare -ar common_dependencies=(
     "findutils"
     "autoconf"
     "libtool"
-    "autopoint"
 )
 
 declare -ar deb_dependencies=(
@@ -34,6 +33,7 @@ declare -ar deb_dependencies=(
     "xz-utils"
     "g++"
     "libncurses-dev"
+    "autopoint"
 )
 
 declare -ar rhel_dependencies=(
@@ -42,6 +42,7 @@ declare -ar rhel_dependencies=(
     "xz"
     "gcc-c++"
     "ncurses-devel"
+    "gettext-devel"
 )
 
 
