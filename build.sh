@@ -170,6 +170,8 @@ function buildFilesystem() {
     if [[ $fsDownloadOnly == "y" ]]; then
         echo "Downloading Buildroot source packages for $arch ..."
         make source
+        status=$?
+        [[ $status -gt 0 ]] && echo "Failed to download source packages for $arch." && exit $status
         cd ..
         echo "$arch filesystem packages downloaded. Exiting."
         return 0
@@ -234,7 +236,7 @@ function buildKernel() {
     kflags=$(makeFlags "$arch" kernel)
     ktarget=bzImage
     [[ $arch == arm64 ]] && ktarget=Image
-    kernelURL="https://www.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
+    kernelURL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
     echo "Preparing kernel $KERNEL_VERSION on $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf "kernelsource$arch"
     if [[ ! -f linux-$KERNEL_VERSION.tar.xz ]]; then
