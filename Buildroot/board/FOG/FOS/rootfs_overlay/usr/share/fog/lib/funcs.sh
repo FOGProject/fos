@@ -47,6 +47,7 @@ displayBanner() {
     echo "   =================================="
     echo "   Version: $version"
     echo "   Init Version: $initversion"
+    echo "   Kernel Version: $(uname -r)"
 }
 # Gets all system mac addresses except for loopback
 #getMACAddresses() {
