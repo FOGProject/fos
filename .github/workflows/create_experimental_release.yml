@@ -171,9 +171,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.buildroot-ccache-arm64
-          key: ccache-arm64
+          key: ccache-arm64-${{ github.run_id }}
           restore-keys: |
-            ccache-arm64
+            ccache-arm64-
 
       - name: Build arm64 initrd
         run: ./build.sh --install-dep -nfa arm64
@@ -221,9 +221,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.buildroot-ccache-x86
-          key: ccache-x86
+          key: ccache-x86-${{ github.run_id }}
           restore-keys: |
-            ccache-x86
+            ccache-x86-
 
       - name: Build x86 initrd
         run: ./build.sh --install-dep -nfa x86
@@ -271,9 +271,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.buildroot-ccache-x64
-          key: ccache-x64
+          key: ccache-x64-${{ github.run_id }}
           restore-keys: |
-            ccache-x64
+            ccache-x64-
 
       - name: Build x64 initrd
         run: ./build.sh --install-dep -nfa x64
