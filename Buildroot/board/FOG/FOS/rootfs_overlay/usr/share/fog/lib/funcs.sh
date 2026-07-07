@@ -342,6 +342,9 @@ expandPartition() {
                 fi
             fi
             ;;
+        lvm)
+            expandLVMPartition "$part"
+            ;;
         *)
             echo " * Not expanding ($part -- $fstype)"
             debugPause
@@ -745,6 +748,9 @@ shrinkPartition() {
             ;;
         xfs)
             echo " * Cannot shrink XFS partitions"
+            ;;
+        lvm)
+            shrinkLVMPartition "$part"
             ;;
         *)
             echo " * Not shrinking ($part $fstype)"
@@ -2688,7 +2694,7 @@ getLGDevice() {
     lgdev="/dev/mapper/${lggroup}-${lgvol}"
     read lgvUUID lgvSIZE <<< $(lvs --noheadings -v ${lggroup} --units s 2>/dev/null | awk '/'${lgvol}'/ {printf("%s %s", $5, gensub(/[Ss]/,"","g",$10))}')
 }
-# --- LVM per-LV capture and deploy (Phase 1, docs/adr/0004) -----------------
+# --- LVM per-LV capture and deploy (docs/adr/0004, resize docs/adr/0006) ----
 #
 # A partition holding an LVM2 physical volume is not sector-imaged. Capture
 # writes sidecar files next to the usual dNpM ones plus one partclone image
@@ -2696,10 +2702,15 @@ getLGDevice() {
 #   dNpM.lvm        versioned schema: PV/VG identity and one line per LV
 #   dNpM.lvm.vgcfg  vgcfgbackup output (complete LVM metadata, all UUIDs)
 #   dNpM.<lv>.img   partclone image per non-swap LV
-# Deploy recreates the stack with pvcreate --restorefile + vgcfgrestore (the
-# partition is recreated at its original size, so the extent geometry in the
-# backup still fits) and restores each LV. LV devices are addressed as
-# /dev/<vg>/<lv> and never enter the partition-name machinery.
+# Resizable captures first shrink the ext filesystems inside the LVs and
+# record per-LV minimum sizes (LVMFORMAT 2), letting the deploy fill engine
+# scale the PV partition. Deploy dispatches on the target partition size:
+# same size or larger restores with pvcreate --restorefile + vgcfgrestore
+# (all UUIDs preserved; extra space goes to the LVs proportionally), smaller
+# rebuilds the stack with vgcreate/lvcreate at the recorded minimums plus a
+# proportional share (VG/LV UUIDs regenerate; PV, filesystem, and swap UUIDs
+# survive). LV devices are addressed as /dev/<vg>/<lv> and never enter the
+# partition-name machinery.
 #
 # Streams one block device through partclone into the image store, the same
 # way savePartition's inline capture does for a plain partition.
@@ -2738,11 +2749,231 @@ savePartclone() {
     esac
     rm -rf $fifoname >/dev/null 2>&1
 }
+# Interrogates the LVM stack on a PV partition. Sets:
+#   lvm_vggroup      volume group name (empty if none)
+#   lvm_pvuuid       PV UUID
+#   lvm_pvsize       PV size in 512-byte sectors
+#   lvm_unsupported  why per-LV handling cannot apply (empty if supported)
+#
+# $1 = partition device holding the PV
+probeLVMPartition() {
+    local part="$1"
+    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    vgscan >/dev/null 2>&1
+    lvm_vggroup=$(trim "$(pvs --noheadings -o vg_name "$part" 2>/dev/null)")
+    lvm_pvuuid=$(trim "$(pvs --noheadings -o pv_uuid "$part" 2>/dev/null)")
+    lvm_pvsize=$(pvs --noheadings --units s --nosuffix -o pv_size "$part" 2>/dev/null | awk '{printf("%d",$1)}')
+    local pvcount=$(vgs --noheadings -o pv_count "$lvm_vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
+    lvm_unsupported=""
+    if [[ -z $lvm_vggroup ]]; then
+        lvm_unsupported="no volume group found on the physical volume"
+    elif [[ $pvcount -ne 1 ]]; then
+        lvm_unsupported="volume group $lvm_vggroup spans $pvcount physical volumes"
+    elif lvs --noheadings -o lv_layout "$lvm_vggroup" 2>/dev/null | grep -qv '^[[:space:]]*linear[[:space:]]*$'; then
+        lvm_unsupported="volume group $lvm_vggroup contains non-linear volumes (thin/RAID/cache/snapshot)"
+    fi
+}
+# Shrinks the ext filesystems inside a supported LVM stack ahead of capture
+# and records how small each LV — and the whole PV partition — could be
+# rebuilt on a deploy target. The LVs themselves are not reduced; partclone
+# only captures the shrunken filesystem's used blocks either way. Layouts
+# probeLVMPartition rejects are demoted to fixed size, which is exactly the
+# Phase 1 behavior.
+# Writes /tmp/<part>.lvmmin: one "LV <name> <minsectors>" line per LV plus
+# "PARTMIN <sectors>", consumed by saveLVMPartition and
+# applyLVMMinimumSizes.
+#
+# $1 = partition device holding the PV
+shrinkLVMPartition() {
+    local part="$1"
+    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local part_number=0
+    getPartitionNumber "$part"
+    probeLVMPartition "$part"
+    if [[ -n $lvm_unsupported ]]; then
+        echo " * LVM layout is not supported for per-LV capture: $lvm_unsupported"
+        echo " * Not shrinking ($part) trying fixed size"
+        debugPause
+        echo "$(cat "$imagePath/d1.fixed_size_partitions" | tr -d \\0):${part_number}" > "$imagePath/d1.fixed_size_partitions"
+        return
+    fi
+    local vggroup="$lvm_vggroup"
+    dots "Activating volume group ($vggroup)"
+    vgchange -ay "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    udevadm settle >/dev/null 2>&1
+    debugPause
+    local extentsize=$(vgs --noheadings --units s --nosuffix -o vg_extent_size "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
+    local pestart=$(pvs --noheadings --units s --nosuffix -o pe_start "$part" 2>/dev/null | awk '{printf("%d",$1)}')
+    [[ -z $extentsize || $extentsize -lt 1 ]] && handleError "Could not read extent size of $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    local minfile="/tmp/${part##*/}.lvmmin"
+    echo -n "" > "$minfile"
+    local totalextents=0
+    local lvname=""
+    local lvsize=""
+    local minsectors=0
+    while read -r lvname lvsize; do
+        [[ -z $lvname ]] && continue
+        lvsize=${lvsize%.*}
+        local lvdev="/dev/${vggroup}/${lvname}"
+        [[ ! -e $lvdev ]] && handleError "Logical volume device missing: $lvdev (${FUNCNAME[0]})\n   Args Passed: $*"
+        local fstype=""
+        fsTypeSetting "$lvdev"
+        minsectors=$lvsize
+        if [[ $fstype == extfs ]]; then
+            dots "Checking $fstype volume ($lvdev)"
+            e2fsck -fp $lvdev >/tmp/e2fsck.txt 2>&1
+            checkStatus $? "done" "e2fsck failed to check $lvdev (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
+            debugPause
+            local extminsize=$(resize2fs -P $lvdev 2>/dev/null | awk -F': ' '{print $2}')
+            local block_size=$(dumpe2fs -h $lvdev 2>/dev/null | awk '/^Block[ ]size:/{print $3}')
+            local size=$(calculate "${extminsize}*${block_size}")
+            local sizeadd=$(calculate "${percent}/100*${size}")
+            local sizeextresize=$(calculate "${size}+${sizeadd}")
+            [[ -z $sizeextresize || $sizeextresize -lt 1 ]] && handleError "Error calculating the minimum size of extfs ($lvdev) (${FUNCNAME[0]})\n   Args Passed: $*"
+            dots "Shrinking $fstype volume ($lvdev)"
+            resize2fs $lvdev -M >/tmp/resize2fs.txt 2>&1
+            checkStatus $? "done" "Could not shrink $fstype volume ($lvdev) (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
+            debugPause
+            dots "Checking $fstype volume ($lvdev)"
+            e2fsck -fp $lvdev >/tmp/e2fsck.txt 2>&1
+            case $? in
+                0)
+                    echo "Done"
+                    ;;
+                *)
+                    e2fsck -fy $lvdev >>/tmp/e2fsck.txt 2>&1
+                    if [[ $? -gt 0 ]]; then
+                        echo "Failed"
+                        debugPause
+                        handleError "Could not check shrunken volume ($lvdev) (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
+                    fi
+                    echo "Done"
+                    ;;
+            esac
+            debugPause
+            # ceil to sectors; calculate() rounds, which could go under
+            minsectors=$(( (sizeextresize + 511) / 512 ))
+            [[ $minsectors -gt $lvsize ]] && minsectors=$lvsize
+        else
+            echo " * Not shrinking ($lvdev $fstype)"
+            debugPause
+        fi
+        echo "LV $lvname $minsectors" >> "$minfile"
+        totalextents=$(( totalextents + (minsectors + extentsize - 1) / extentsize ))
+    done < <(lvs --noheadings --units s --nosuffix -o lv_name,lv_size "$vggroup" 2>/dev/null)
+    # one spare extent absorbs metadata rounding on the rebuilt target
+    local pvminsectors=$(( pestart + (totalextents + 1) * extentsize ))
+    [[ $pvminsectors -gt $lvm_pvsize ]] && pvminsectors=$lvm_pvsize
+    echo "PARTMIN $pvminsectors" >> "$minfile"
+    vgchange -an "$vggroup" >/dev/null 2>&1 || echo " * Warning: could not deactivate volume group $vggroup"
+}
+# Grows the ext filesystems inside a supported LVM stack out to their LV
+# boundaries. Runs on the source after capture (undoing shrinkLVMPartition)
+# and on the deploy target (claiming space the restore added to the LVs).
+# Layouts probeLVMPartition rejects were captured raw and are skipped.
+#
+# $1 = partition device holding the PV
+expandLVMPartition() {
+    local part="$1"
+    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    probeLVMPartition "$part"
+    if [[ -n $lvm_unsupported ]]; then
+        echo " * Not expanding ($part) $lvm_unsupported"
+        debugPause
+        return
+    fi
+    local vggroup="$lvm_vggroup"
+    dots "Activating volume group ($vggroup)"
+    vgchange -ay "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    udevadm settle >/dev/null 2>&1
+    debugPause
+    local lvname=""
+    while read -r lvname; do
+        [[ -z $lvname ]] && continue
+        local lvdev="/dev/${vggroup}/${lvname}"
+        local fstype=""
+        fsTypeSetting "$lvdev"
+        [[ $fstype != extfs ]] && continue
+        dots "Resizing $fstype volume ($lvdev)"
+        e2fsck -fp $lvdev >/tmp/e2fsck.txt 2>&1
+        case $? in
+            0)
+                ;;
+            *)
+                e2fsck -fy $lvdev >>/tmp/e2fsck.txt 2>&1
+                if [[ $? -gt 0 ]]; then
+                    echo "Failed"
+                    debugPause
+                    handleError "Could not check before resize (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
+                fi
+                ;;
+        esac
+        resize2fs $lvdev >/tmp/resize2fs.txt 2>&1
+        checkStatus $? "silent" "Could not resize $lvdev (${FUNCNAME[0]})\n   Info: $(cat /tmp/resize2fs.txt)\n   Args Passed: $*"
+        e2fsck -fp $lvdev >/tmp/e2fsck.txt 2>&1
+        case $? in
+            0)
+                echo "Done"
+                ;;
+            *)
+                e2fsck -fy $lvdev >>/tmp/e2fsck.txt 2>&1
+                if [[ $? -gt 0 ]]; then
+                    echo "Failed"
+                    debugPause
+                    handleError "Could not check after resize (${FUNCNAME[0]})\n   Info: $(cat /tmp/e2fsck.txt)\n   Args Passed: $*"
+                fi
+                echo "Done"
+                ;;
+        esac
+        debugPause
+    done < <(lvs --noheadings -o lv_name "$vggroup" 2>/dev/null | awk '{print $1}')
+    vgchange -an "$vggroup" >/dev/null 2>&1 || echo " * Warning: could not deactivate volume group $vggroup"
+}
+# Rewrites each shrunken PV partition's size in the minimum-size sfdisk dump
+# to the PARTMIN shrinkLVMPartition recorded, so the deploy fill engine may
+# scale the partition down to it. Starts are left alone — the fill engine
+# repacks them. A no-op for disks without a shrunken LVM stack.
+#
+# $1 = disk
+# $2 = disk number
+# $3 = image path
+applyLVMMinimumSizes() {
+    local disk="$1"
+    local disk_number="$2"
+    local imagePath="$3"
+    [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local sfdiskminimumpartitionfilename=""
+    sfdiskMinimumPartitionFileName "$imagePath" "$disk_number"
+    local parts=""
+    local part=""
+    getPartitions "$disk"
+    for part in $parts; do
+        local minfile="/tmp/${part##*/}.lvmmin"
+        [[ ! -r $minfile ]] && continue
+        local pvminsectors=$(awk '$1=="PARTMIN"{print $2; exit}' "$minfile")
+        [[ -z $pvminsectors ]] && continue
+        # the dump's size= values are in its own logical sectors, PARTMIN
+        # is 512-byte sectors
+        local secsize=$(awk '$1=="sector-size:"{print $2; exit}' "$sfdiskminimumpartitionfilename")
+        [[ -z $secsize ]] && secsize=512
+        local minsize=$(( (pvminsectors * 512 + secsize - 1) / secsize ))
+        dots "Recording LVM minimum size for ($part)"
+        awk -v part="$part" -v newsize="$minsize" '$1 == part {sub(/size=[[:space:]]*[0-9]+/, "size=" newsize)} {print}' "$sfdiskminimumpartitionfilename" > /tmp/lvmmindump.tmp
+        checkStatus $? "silent" "Could not rewrite minimum partition dump (${FUNCNAME[0]})\n   Args Passed: $*"
+        mv /tmp/lvmmindump.tmp "$sfdiskminimumpartitionfilename"
+        checkStatus $? "done" "Could not replace minimum partition dump (${FUNCNAME[0]})\n   Args Passed: $*"
+        debugPause
+    done
+}
 # Captures an LVM2 PV partition: sidecar metadata plus one image per LV.
 # Unsupported topologies (multi-PV VG, non-linear LVs) fall back to the
 # raw partclone.imager blob — the pre-LVM behavior — with a loud notice.
-# Capture never writes to the source: the VG is only activated read-visible
-# and deactivated again.
+# On resizable captures shrinkLVMPartition has already run; its recorded
+# minimums go into the sidecar so a smaller target can rebuild the stack.
 #
 # $1 = partition device holding the PV
 # $2 = disk number
@@ -2756,21 +2987,12 @@ saveLVMPartition() {
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local part_number=0
     getPartitionNumber "$part"
-    vgscan >/dev/null 2>&1
-    local vggroup=$(trim "$(pvs --noheadings -o vg_name "$part" 2>/dev/null)")
-    local pvuuid=$(trim "$(pvs --noheadings -o pv_uuid "$part" 2>/dev/null)")
-    local pvsize=$(pvs --noheadings --units s --nosuffix -o pv_size "$part" 2>/dev/null | awk '{printf("%d",$1)}')
-    local pvcount=$(vgs --noheadings -o pv_count "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
-    local unsupported=""
-    if [[ -z $vggroup ]]; then
-        unsupported="no volume group found on the physical volume"
-    elif [[ $pvcount -ne 1 ]]; then
-        unsupported="volume group $vggroup spans $pvcount physical volumes"
-    elif lvs --noheadings -o lv_layout "$vggroup" 2>/dev/null | grep -qv '^[[:space:]]*linear[[:space:]]*$'; then
-        unsupported="volume group $vggroup contains non-linear volumes (thin/RAID/cache/snapshot)"
-    fi
-    if [[ -n $unsupported ]]; then
-        echo " * LVM layout is not supported for per-LV capture: $unsupported"
+    probeLVMPartition "$part"
+    local vggroup="$lvm_vggroup"
+    local pvuuid="$lvm_pvuuid"
+    local pvsize="$lvm_pvsize"
+    if [[ -n $lvm_unsupported ]]; then
+        echo " * LVM layout is not supported for per-LV capture: $lvm_unsupported"
         echo " * Falling back to raw capture of the whole physical volume"
         debugPause
         savePartclone "$part" "$imagePath/d${disk_number}p${part_number}.img" "imager"
@@ -2791,12 +3013,18 @@ saveLVMPartition() {
     debugPause
     local vguuid=$(trim "$(vgs --noheadings -o vg_uuid "$vggroup" 2>/dev/null)")
     local extentsize=$(vgs --noheadings --units s --nosuffix -o vg_extent_size "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
-    echo "LVMFORMAT 1" > "$lvmfilename"
-    echo "PV $pvuuid $part $pvsize" >> "$lvmfilename"
+    # non-resizable captures have no minfile: minimums default to the sizes
+    local minfile="/tmp/${part##*/}.lvmmin"
+    local pvminsize=""
+    [[ -r $minfile ]] && pvminsize=$(awk '$1=="PARTMIN"{print $2; exit}' "$minfile")
+    [[ -z $pvminsize ]] && pvminsize=$pvsize
+    echo "LVMFORMAT 2" > "$lvmfilename"
+    echo "PV $pvuuid $part $pvsize $pvminsize" >> "$lvmfilename"
     echo "VG $vggroup $vguuid $extentsize" >> "$lvmfilename"
     local lvname=""
     local lvuuid=""
     local lvsize=""
+    local lvminsize=""
     while read -r lvname lvuuid lvsize; do
         [[ -z $lvname ]] && continue
         local lvdev="/dev/${vggroup}/${lvname}"
@@ -2805,26 +3033,167 @@ saveLVMPartition() {
         fsTypeSetting "$lvdev"
         # A PV nested inside an LV is out of scope; capture that LV raw.
         [[ $fstype == lvm ]] && fstype="imager"
+        lvminsize=""
+        [[ -r $minfile ]] && lvminsize=$(awk -v lv="$lvname" '$1=="LV" && $2==lv {print $3; exit}' "$minfile")
+        [[ -z $lvminsize ]] && lvminsize=${lvsize%.*}
         if [[ $fstype == swap ]]; then
             local swapuuid=$(blkid -po udev "$lvdev" | awk -F= '/FS_UUID=/{print $2}')
-            echo "LV $lvname $lvuuid ${lvsize%.*} $fstype - ${swapuuid:--}" >> "$lvmfilename"
+            echo "LV $lvname $lvuuid ${lvsize%.*} $lvminsize $fstype - ${swapuuid:--}" >> "$lvmfilename"
             echo " * Saving swap volume UUID ($lvdev)"
             debugPause
             continue
         fi
         local lvmlvimagefilename=""
         lvmLVImageFileName "$imagePath" "$disk_number" "$part_number" "$lvname"
-        echo "LV $lvname $lvuuid ${lvsize%.*} $fstype ${lvmlvimagefilename##*/} -" >> "$lvmfilename"
+        echo "LV $lvname $lvuuid ${lvsize%.*} $lvminsize $fstype ${lvmlvimagefilename##*/} -" >> "$lvmfilename"
         echo " * Processing Logical Volume: $lvdev ($fstype)"
         debugPause
         savePartclone "$lvdev" "$lvmlvimagefilename" "$fstype"
     done < <(lvs --noheadings --units s --nosuffix -o lv_name,lv_uuid,lv_size "$vggroup" 2>/dev/null)
     vgchange -an "$vggroup" >/dev/null 2>&1 || echo " * Warning: could not deactivate volume group $vggroup"
 }
-# Recreates and restores an LVM2 stack captured by saveLVMPartition. Runs
+# Grows a restored volume group into a target partition larger than the
+# original PV: pvresize claims the new space, then the free extents are
+# spread across the non-swap LVs proportionally to their original sizes —
+# the same policy the fill engine applies to partitions. Swap LVs keep
+# their original size. Filesystems grow later, in expandLVMPartition.
+# Format-2 sidecars only.
+#
+# $1 = partition device holding the PV
+# $2 = volume group
+# $3 = sidecar file
+growLVMPartition() {
+    local part="$1"
+    local vggroup="$2"
+    local lvmfilename="$3"
+    [[ -z $lvmfilename ]] && handleError "No sidecar file passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    dots "Growing physical volume ($part)"
+    pvresize "$part" >/dev/null 2>&1
+    checkStatus $? "done" "Could not grow physical volume on $part (${FUNCNAME[0]})\n   Args Passed: $*"
+    debugPause
+    local freeextents=$(vgs --noheadings -o vg_free_count "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
+    [[ $freeextents -lt 1 ]] && return
+    local tag=""
+    local lvname=""
+    local lvuuid=""
+    local lvsize=""
+    local lvminsize=""
+    local lvfstype=""
+    local lvimage=""
+    local swapuuid=""
+    local totalorig=0
+    local lastlv=""
+    while read -r tag lvname lvuuid lvsize lvminsize lvfstype lvimage swapuuid; do
+        [[ $tag != LV || $lvfstype == swap ]] && continue
+        totalorig=$(( totalorig + lvsize ))
+        lastlv=$lvname
+    done < "$lvmfilename"
+    [[ $totalorig -lt 1 ]] && return
+    local usedextents=0
+    local share=0
+    while read -r tag lvname lvuuid lvsize lvminsize lvfstype lvimage swapuuid; do
+        [[ $tag != LV || $lvfstype == swap ]] && continue
+        if [[ $lvname == $lastlv ]]; then
+            share=$(( freeextents - usedextents ))
+        else
+            share=$(( freeextents * lvsize / totalorig ))
+        fi
+        usedextents=$(( usedextents + share ))
+        [[ $share -lt 1 ]] && continue
+        dots "Growing logical volume ($lvname)"
+        lvextend -l +${share} "/dev/${vggroup}/${lvname}" >/dev/null 2>&1
+        checkStatus $? "done" "Could not grow logical volume $lvname (${FUNCNAME[0]})\n   Args Passed: $*"
+        debugPause
+    done < "$lvmfilename"
+}
+# Rebuilds an LVM stack in a target partition smaller than the original PV.
+# vgcfgrestore cannot apply metadata describing more extents than the PV
+# holds, so the stack is recreated with the standard tools instead: each
+# non-swap LV gets its recorded minimum plus a share of the surplus
+# proportional to its original size; swap LVs keep their original size.
+# The PV UUID, VG/LV names, filesystem UUIDs, and swap UUIDs all survive;
+# the VG and LV UUIDs regenerate (docs/adr/0006). Format-2 sidecars only.
+#
+# $1 = partition device to hold the PV
+# $2 = PV UUID to recreate
+# $3 = volume group name
+# $4 = extent size in 512-byte sectors
+# $5 = sidecar file
+rebuildLVMPartition() {
+    local part="$1"
+    local pvuuid="$2"
+    local vggroup="$3"
+    local extentsize="$4"
+    local lvmfilename="$5"
+    [[ -z $lvmfilename ]] && handleError "No sidecar file passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $extentsize || $extentsize -lt 1 ]] && handleError "No extent size in LVM sidecar (${FUNCNAME[0]})\n   Args Passed: $*"
+    dots "Recreating physical volume"
+    pvcreate -ff -y --norestorefile --uuid "$pvuuid" "$part" >/dev/null 2>&1
+    checkStatus $? "done" "Could not recreate physical volume on $part (${FUNCNAME[0]})\n   Args Passed: $*"
+    debugPause
+    dots "Recreating volume group ($vggroup)"
+    vgcreate -y -s "${extentsize}s" "$vggroup" "$part" >/dev/null 2>&1
+    checkStatus $? "done" "Could not recreate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    debugPause
+    local freeextents=$(vgs --noheadings -o vg_free_count "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
+    local tag=""
+    local lvname=""
+    local lvuuid=""
+    local lvsize=""
+    local lvminsize=""
+    local lvfstype=""
+    local lvimage=""
+    local swapuuid=""
+    local totalminextents=0
+    local totalorig=0
+    local lastlv=""
+    while read -r tag lvname lvuuid lvsize lvminsize lvfstype lvimage swapuuid; do
+        [[ $tag != LV ]] && continue
+        if [[ $lvfstype == swap ]]; then
+            totalminextents=$(( totalminextents + (lvsize + extentsize - 1) / extentsize ))
+        else
+            totalminextents=$(( totalminextents + (lvminsize + extentsize - 1) / extentsize ))
+            totalorig=$(( totalorig + lvsize ))
+            lastlv=$lvname
+        fi
+    done < "$lvmfilename"
+    local surplus=$(( freeextents - totalminextents ))
+    [[ $surplus -lt 0 ]] && handleError "Partition $part is too small for the minimum LVM layout ($freeextents extents available, $totalminextents needed) (${FUNCNAME[0]})\n   Args Passed: $*"
+    local usedsurplus=0
+    local share=0
+    local extents=0
+    while read -r tag lvname lvuuid lvsize lvminsize lvfstype lvimage swapuuid; do
+        [[ $tag != LV ]] && continue
+        if [[ $lvfstype == swap ]]; then
+            extents=$(( (lvsize + extentsize - 1) / extentsize ))
+        else
+            if [[ $lvname == $lastlv ]]; then
+                share=$(( surplus - usedsurplus ))
+            else
+                share=$(( surplus * lvsize / totalorig ))
+            fi
+            usedsurplus=$(( usedsurplus + share ))
+            extents=$(( (lvminsize + extentsize - 1) / extentsize + share ))
+        fi
+        dots "Recreating logical volume ($lvname)"
+        lvcreate -y -Wn -Zn -l "$extents" -n "$lvname" "$vggroup" >/dev/null 2>&1
+        checkStatus $? "done" "Could not recreate logical volume $lvname (${FUNCNAME[0]})\n   Args Passed: $*"
+        debugPause
+    done < "$lvmfilename"
+    dots "Activating volume group ($vggroup)"
+    vgchange -ay "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    udevadm settle >/dev/null 2>&1
+    debugPause
+}
+# Recreates and restores an LVM2 stack captured by saveLVMPartition,
+# dispatching on the target partition's size. Same size or larger runs
 # LVM's own disaster-recovery procedure — pvcreate --restorefile plus
 # vgcfgrestore — so the PV, VG, and every LV come back with their original
-# UUIDs and exact segment layout. Failures are fatal (docs/adr/0003).
+# UUIDs and exact segment layout; a larger target then grows the stack
+# (growLVMPartition). A smaller target rebuilds the stack at the recorded
+# minimums (rebuildLVMPartition) or refuses if it cannot fit. Failures are
+# fatal (docs/adr/0003).
 #
 # $1 = partition device to hold the PV
 # $2 = disk number
@@ -2847,10 +3216,27 @@ restoreLVMPartition() {
     lvmVgcfgFileName "$imagePath" "$disk_number" "$part_number"
     [[ ! -r $lvmvgcfgfilename ]] && handleError "LVM metadata backup missing: $lvmvgcfgfilename (${FUNCNAME[0]})\n   Args Passed: $*"
     local lvmformat=$(head -n 1 "$lvmfilename")
-    [[ $lvmformat != "LVMFORMAT 1" ]] && handleError "Image was captured with a newer LVM format ($lvmformat), update FOS (${FUNCNAME[0]})\n   Args Passed: $*"
+    case $lvmformat in
+        "LVMFORMAT 1"|"LVMFORMAT 2")
+            ;;
+        *)
+            handleError "Image was captured with a newer LVM format ($lvmformat), update FOS (${FUNCNAME[0]})\n   Args Passed: $*"
+            ;;
+    esac
     local pvuuid=$(awk '$1=="PV"{print $2; exit}' "$lvmfilename")
+    local pvsize=$(awk '$1=="PV"{print $4; exit}' "$lvmfilename")
+    local pvminsize=$(awk '$1=="PV"{print $5; exit}' "$lvmfilename")
+    [[ -z $pvminsize ]] && pvminsize=$pvsize
     local vggroup=$(awk '$1=="VG"{print $2; exit}' "$lvmfilename")
-    [[ -z $pvuuid || -z $vggroup ]] && handleError "Incomplete LVM sidecar: $lvmfilename (${FUNCNAME[0]})\n   Args Passed: $*"
+    local extentsize=$(awk '$1=="VG"{print $4; exit}' "$lvmfilename")
+    [[ -z $pvuuid || -z $vggroup || -z $pvsize ]] && handleError "Incomplete LVM sidecar: $lvmfilename (${FUNCNAME[0]})\n   Args Passed: $*"
+    local targetsize=$(blockdev --getsz "$part" 2>/dev/null)
+    [[ -z $targetsize || $targetsize -lt 1 ]] && handleError "Could not read the size of $part (${FUNCNAME[0]})\n   Args Passed: $*"
+    # Refuse before the target is touched.
+    if [[ $targetsize -lt $pvsize ]]; then
+        [[ $lvmformat == "LVMFORMAT 1" ]] && handleError "Target partition $part is smaller than the original physical volume and the image records no LVM minimum sizes; recapture with a current FOS or deploy to a same-size-or-larger disk (${FUNCNAME[0]})\n   Args Passed: $*"
+        [[ $targetsize -lt $pvminsize ]] && handleError "Target partition $part ($targetsize sectors) is smaller than the minimum this image can shrink to ($pvminsize sectors) (${FUNCNAME[0]})\n   Args Passed: $*"
+    fi
     local split=''
     if [[ $imgFormat -eq 6 || $imgFormat -eq 4 || $imgFormat -eq 2 ]]; then
         split='*'
@@ -2860,29 +3246,46 @@ restoreLVMPartition() {
     # A previous life of this target may have left volume groups active;
     # stale device mappings would collide with the names being restored.
     vgchange -an >/dev/null 2>&1
-    dots "Recreating physical volume"
     wipefs -a "$part" >/dev/null 2>&1
-    pvcreate -ff -y --uuid "$pvuuid" --restorefile "$lvmvgcfgfilename" "$part" >/dev/null 2>&1
-    checkStatus $? "done" "Could not recreate physical volume on $part (${FUNCNAME[0]})\n   Args Passed: $*"
-    debugPause
-    dots "Restoring volume group metadata"
-    vgcfgrestore -f "$lvmvgcfgfilename" "$vggroup" >/dev/null 2>&1
-    checkStatus $? "done" "Could not restore volume group metadata of $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
-    debugPause
-    dots "Activating volume group ($vggroup)"
-    vgchange -ay "$vggroup" >/dev/null 2>&1
-    checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
-    udevadm settle >/dev/null 2>&1
-    debugPause
+    if [[ $targetsize -ge $pvsize ]]; then
+        dots "Recreating physical volume"
+        pvcreate -ff -y --uuid "$pvuuid" --restorefile "$lvmvgcfgfilename" "$part" >/dev/null 2>&1
+        checkStatus $? "done" "Could not recreate physical volume on $part (${FUNCNAME[0]})\n   Args Passed: $*"
+        debugPause
+        dots "Restoring volume group metadata"
+        vgcfgrestore -f "$lvmvgcfgfilename" "$vggroup" >/dev/null 2>&1
+        checkStatus $? "done" "Could not restore volume group metadata of $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+        debugPause
+        dots "Activating volume group ($vggroup)"
+        vgchange -ay "$vggroup" >/dev/null 2>&1
+        checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+        udevadm settle >/dev/null 2>&1
+        debugPause
+        # format 1 recorded no per-LV originals to distribute by; its extra
+        # space stays unallocated in the VG, exactly as Phase 1 left it
+        if [[ $targetsize -gt $pvsize && $lvmformat == "LVMFORMAT 2" ]]; then
+            growLVMPartition "$part" "$vggroup" "$lvmfilename"
+        fi
+    else
+        rebuildLVMPartition "$part" "$pvuuid" "$vggroup" "$extentsize" "$lvmfilename"
+    fi
     local tag=""
     local lvname=""
     local lvuuid=""
     local lvsize=""
+    local lvminsize=""
     local lvfstype=""
     local lvimage=""
     local swapuuid=""
-    while read -r tag lvname lvuuid lvsize lvfstype lvimage swapuuid; do
+    while read -r tag lvname lvuuid lvsize lvminsize lvfstype lvimage swapuuid; do
         [[ $tag != LV ]] && continue
+        if [[ $lvmformat == "LVMFORMAT 1" ]]; then
+            # format 1 has no minimum-size column; shift the trailing fields
+            swapuuid=$lvimage
+            lvimage=$lvfstype
+            lvfstype=$lvminsize
+            lvminsize=$lvsize
+        fi
         local lvdev="/dev/${vggroup}/${lvname}"
         [[ ! -e $lvdev ]] && handleError "Logical volume missing after restore: $lvdev (${FUNCNAME[0]})\n   Args Passed: $*"
         if [[ $lvfstype == swap ]]; then

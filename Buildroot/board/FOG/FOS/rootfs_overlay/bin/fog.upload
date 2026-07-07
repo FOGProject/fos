@@ -46,7 +46,7 @@ beginUpload() {
                 fsTypeSetting "$part"
                 getPartitionNumber "$part"
                 case $fstype in
-                    ntfs|extfs|btrfs|f2fs|xfs)
+                    ntfs|extfs|btrfs|f2fs|xfs|lvm)
                         continue
                         ;;
                     *)
@@ -62,8 +62,9 @@ beginUpload() {
             countPartTypes "$hd" "btrfs" "btrfscnt"
             countPartTypes "$hd" "f2fs" "f2fscnt"
             countPartTypes "$hd" "xfs" "xfscnt"
+            countPartTypes "$hd" "lvm" "lvmcnt"
             countPartTypes "$hd" "*" "partscnt"
-            if [[ $ntfscnt -eq 0 && $extfscnt -eq 0 && $btrfscnt -eq 0 && $f2fscnt -eq 0 && $xfscnt -eq 0 ]]; then
+            if [[ $ntfscnt -eq 0 && $extfscnt -eq 0 && $btrfscnt -eq 0 && $f2fscnt -eq 0 && $xfscnt -eq 0 && $lvmcnt -eq 0 ]]; then
                 echo "Failed"
                 debugPause
                 handleError "No resizable partitions found ($0)\n   Args Passed: $*"
@@ -79,6 +80,8 @@ beginUpload() {
             echo " * F2FS Partition count of: $f2fscnt"
             debugPause
             echo " * XFS Partition count of: $xfscnt"
+            debugPause
+            echo " * LVM Partition count of: $lvmcnt"
             debugPause
             echo " * Total Partition count of: $partscnt"
             debugPause
@@ -170,6 +173,7 @@ beginUpload() {
                 debugPause
                 applySfdiskPartitions "$hd" "$imagePath/d1.shrunken.partitions"
             fi
+            applyLVMMinimumSizes "$hd" 1 "$imagePath"
             echo " * Processing Hard Disk: $hd"
             for part in $parts; do
                 savePartition "$part" 1 "$imagePath" "$imgPartitionType"
