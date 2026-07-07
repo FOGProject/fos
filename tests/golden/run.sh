@@ -97,6 +97,12 @@ generate() (
         echo "EBRFileName($ip,$dn,empty)=$ebrfilename"
         tmpEBRFileName "$dn" 5
         echo "tmpEBRFileName($dn,5)=$tmpebrfilename"
+        lvmFileName "$ip" "$dn" 3
+        echo "lvmFileName($ip,$dn,3)=$lvmfilename"
+        lvmVgcfgFileName "$ip" "$dn" 3
+        echo "lvmVgcfgFileName($ip,$dn,3)=$lvmvgcfgfilename"
+        lvmLVImageFileName "$ip" "$dn" 3 root
+        echo "lvmLVImageFileName($ip,$dn,3,root)=$lvmlvimagefilename"
         type=up; mbrout=""
         MBRFileName "$ip" "$dn" mbrout
         echo "MBRFileName.up($ip,$dn)=$mbrout"
