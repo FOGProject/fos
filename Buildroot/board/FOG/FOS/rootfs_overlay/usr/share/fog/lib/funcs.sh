@@ -2054,6 +2054,63 @@ clearPartitionTables() {
     runPartprobe "$disk"
     debugPause
 }
+# Low-level reformats an NVMe namespace to a target logical sector size when the
+# device exposes a matching LBA format, so an image captured at that sector size
+# can deploy to it. Returns 0 only after the reformat is confirmed to have taken
+# effect; returns non-zero (leaving the disk untouched) for a non-NVMe device, a
+# device with no matching metadata-free LBA format, or any reformat failure, so
+# the caller can fall back to refusing the deploy.
+#
+# $1 is the disk (e.g. /dev/nvme0n1)
+# $2 is the wanted logical sector size in bytes (the image's sector size)
+nvmeReformatToSectorSize() {
+    local disk="$1"
+    local wantsize="$2"
+    [[ $disk == *[Nn][Vv][Mm][Ee]* ]] || return 1
+    # `nvme id-ns` prints one line per LBA format, e.g.
+    #   lbaf  1 : ms:0   lbads:12 rp:0x2 (in use)
+    # where the logical block size is 2^lbads bytes. Pick the first metadata-free
+    # (ms:0) format whose size equals the image's sector size.
+    local lbaf=$(nvme id-ns "$disk" 2>/dev/null | awk -v want="$wantsize" '
+        $1 == "lbaf" {
+            idx = $2; sub(/:$/, "", idx); ms = ""; lbads = ""
+            for (i = 3; i <= NF; i++) {
+                if ($i ~ /^ms:/)    ms = substr($i, 4)
+                if ($i ~ /^lbads:/) lbads = substr($i, 7)
+            }
+            if (ms == 0 && lbads != "" && 2 ^ lbads == want) { print idx; exit }
+        }')
+    [[ -z $lbaf ]] && return 1
+    echo ""
+    echo " *** Logical sector-size mismatch on $disk ***"
+    echo "   This image was captured with ${wantsize}-byte logical sectors."
+    echo "   $disk is an NVMe device that exposes a matching ${wantsize}-byte LBA format (lbaf $lbaf)."
+    echo "   FOS will LOW-LEVEL REFORMAT this namespace to ${wantsize}-byte sectors so the image can deploy."
+    echo "   This ERASES the drive (the deploy would erase it regardless) and cannot be undone."
+    echo ""
+    echo " You have 60 seconds to power off this computer to cancel!"
+    local s=""
+    for ((s = 60; s > 0; s--)); do
+        printf "\r   Reformatting %s in %2d second(s)...  " "$disk" "$s"
+        usleep 1000000
+    done
+    printf "\n"
+    dots "Reformatting $disk to ${wantsize}-byte sectors"
+    nvme format "$disk" --lbaf="$lbaf" --force >/dev/null 2>&1
+    local fmtexit=$?
+    if [[ $fmtexit -ne 0 ]]; then
+        echo "Failed"
+        return 1
+    fi
+    runPartprobe "$disk"
+    local newsize=$(blockdev --getss "$disk" 2>/dev/null)
+    if [[ $newsize -ne $wantsize ]]; then
+        echo "Failed"
+        return 1
+    fi
+    echo "Done"
+    return 0
+}
 # Refuses a deploy when the target disk's logical sector size does not match the
 # sector size the image was captured with. Partition-table LBA units and
 # filesystem metadata bake in the source disk's logical sector size at capture
@@ -2065,6 +2122,11 @@ clearPartitionTables() {
 # records no source size; there we allow the deploy rather than guess 512 and
 # wrongly refuse a matching 4Kn->4Kn deploy that works today. See
 # docs/adr/0001-sector-size-geometry-match-or-refuse.md
+#
+# When both sizes are known and differ, we first try to make the target match by
+# low-level reformatting an NVMe namespace to the image's sector size
+# (nvmeReformatToSectorSize); only if that is impossible do we refuse. See
+# docs/adr/0002-nvme-reformat-target-to-match-image.md
 #
 # $1 is the disk (e.g. /dev/sda)
 # $2 is the disk number
@@ -2097,6 +2159,7 @@ validateImageSectorSize() {
     [[ -n $sfdiskfilename ]] && imagesectorsize=$(awk '/^sector-size:/{print $2; exit}' "$sfdiskfilename")
     [[ -z $imagesectorsize ]] && return 0
     if [[ $imagesectorsize -ne $targetsectorsize ]]; then
+        nvmeReformatToSectorSize "$disk" "$imagesectorsize" && return 0
         handleError "Sector size mismatch (${FUNCNAME[0]})\n   Image was captured on a disk with ${imagesectorsize}-byte logical sectors, but $disk uses ${targetsectorsize}-byte logical sectors.\n   Partition-table and filesystem geometry cannot be translated between logical sector sizes, so this image cannot be deployed to this disk.\n   Deploy this image only to a disk with ${imagesectorsize}-byte logical sectors, or capture a new image on a disk with ${targetsectorsize}-byte logical sectors."
     fi
 }

@@ -34,7 +34,15 @@ cases and exits non-zero if any fail.
 
 ```sh
 tests/checks/sector-size.sh   # validateImageSectorSize() refuses on a
-                              # logical-sector-size mismatch, allows on match
+                              # logical-sector-size mismatch, allows on match,
+                              # and reformats an NVMe target to the image's
+                              # sector size when it exposes a matching LBA format
+tests/checks/fill-engine.sh   # the whole-disk fill engine (processSfdisk +
+                              # fillSfdiskWithPartitions + fill_disk in the awk):
+                              # 4Kn sector-size rescaling keeps a small partition
+                              # alive, the GPT backup-header clamp holds, and an
+                              # unusable computed table aborts instead of being
+                              # written
 ```
 
 Like the golden harness, these source a sandbox copy of the library with its

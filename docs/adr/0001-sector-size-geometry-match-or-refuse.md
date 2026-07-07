@@ -20,11 +20,12 @@ does or that we can do reliably for an arbitrary captured image. A deploy that
 "succeeds" but silently produces an unbootable disk is worse than a clean
 refusal, so we refuse.
 
-The eventual answer for the tractable case (NVMe drives that expose both a 512-
-and a 4096-byte LBA format) is to reformat the *target* to match the image's
-sector size with `nvme format` before deploying — matching geometry rather than
-translating it. That is deliberately **out of scope here** and left to a later
-branch; this change is the safety net that must land first.
+The answer for the tractable case (NVMe drives that expose both a 512- and a
+4096-byte LBA format) is to reformat the *target* to match the image's sector
+size with `nvme format` before deploying — matching geometry rather than
+translating it. This change is the safety net that landed first; the reformat
+was added on top of it and is documented in
+[ADR-0002](0002-nvme-reformat-target-to-match-image.md).
 
 ## How it works
 
@@ -33,11 +34,14 @@ branch; this change is the safety net that must land first.
 first destructive write (`clearPartitionTables`). It compares the target's
 logical sector size (`blockdev --getss`) against the size recorded in the stored
 sfdisk dump's `sector-size:` line (checked in the same
-minimum → original → legacy precedence the restore path uses). It refuses **only
-when both sizes are known and differ**, calling the existing fatal
-`handleError`. If either side is unknown — `blockdev` can't read the target, or
-the dump records no source size — it returns without erroring, so it never
-introduces a new failure on a path that works today.
+minimum → original → legacy precedence the restore path uses). It acts **only
+when both sizes are known and differ**: it first tries to make the target match
+by reformatting an NVMe namespace to the image's sector size (see
+[ADR-0002](0002-nvme-reformat-target-to-match-image.md)), and only refuses —
+calling the existing fatal `handleError` — when that isn't possible. If either
+side is unknown — `blockdev` can't read the target, or the dump records no
+source size — it returns without erroring, so it never introduces a new failure
+on a path that works today.
 
 ## Known gaps (deliberate)
 
