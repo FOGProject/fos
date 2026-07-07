@@ -2150,6 +2150,41 @@ nvmeReformatToSectorSize() {
     echo "Done"
     return 0
 }
+# Emits (on stdout) one device-class-specific line for the sector-size-mismatch
+# refusal, telling the operator whether this class of target could ever match the
+# image's sector size and where the fix lives if so. Emits nothing for classes
+# with no useful class-specific advice (plain SATA/SAS/USB targets); the generic
+# remedy in the refusal message covers those. The per-class reasoning — why only
+# NVMe gets an automatic reformat — is docs/adr/0005-non-nvme-sector-size-mismatch-stays-refusal-only.md
+#
+# $1 is the disk (e.g. /dev/mmcblk0)
+# $2 is the image's sector size in bytes
+# $3 is the target disk's sector size in bytes
+sectorSizeMismatchHint() {
+    local disk="$1"
+    local wantsize="$2"
+    local havesize="$3"
+    local name="${disk##*/}"
+    case "$name" in
+        mmcblk*)
+            echo "$disk is an eMMC/SD device; its ${havesize}-byte logical sector size is fixed by the MMC/SD specification and cannot be changed. Only an image captured on ${havesize}-byte-sector hardware can deploy to it."
+            ;;
+        nvme*)
+            echo "$disk is an NVMe device but exposes no metadata-free ${wantsize}-byte LBA format, so it cannot be low-level reformatted to match this image."
+            ;;
+        vd*|xvd*)
+            echo "$disk is a virtual disk; its logical sector size is set by the hypervisor (e.g. the disk's logical_block_size property in QEMU/libvirt) and can only be changed in the VM configuration."
+            ;;
+        sd*)
+            # UFS modules surface as plain SCSI disks; the transport only shows in
+            # the SCSI host driver's name (ufshcd), so classify via sysfs.
+            local host=$(readlink -f "/sys/block/$name/device" 2>/dev/null | grep -o 'host[0-9][0-9]*' | head -1)
+            local hostdriver=""
+            [[ -n $host ]] && hostdriver=$(cat "/sys/class/scsi_host/$host/proc_name" 2>/dev/null)
+            [[ $hostdriver == ufshcd* ]] && echo "$disk is a UFS device; its ${havesize}-byte logical sector size is fixed when the module is provisioned at the factory and cannot be changed in the field. Only an image captured on ${havesize}-byte-sector hardware can deploy to it."
+            ;;
+    esac
+}
 # Refuses a deploy when the target disk's logical sector size does not match the
 # sector size the image was captured with. Partition-table LBA units and
 # filesystem metadata bake in the source disk's logical sector size at capture
@@ -2199,7 +2234,9 @@ validateImageSectorSize() {
     [[ -z $imagesectorsize ]] && return 0
     if [[ $imagesectorsize -ne $targetsectorsize ]]; then
         nvmeReformatToSectorSize "$disk" "$imagesectorsize" && return 0
-        handleError "Sector size mismatch (${FUNCNAME[0]})\n   Image was captured on a disk with ${imagesectorsize}-byte logical sectors, but $disk uses ${targetsectorsize}-byte logical sectors.\n   Partition-table and filesystem geometry cannot be translated between logical sector sizes, so this image cannot be deployed to this disk.\n   Deploy this image only to a disk with ${imagesectorsize}-byte logical sectors, or capture a new image on a disk with ${targetsectorsize}-byte logical sectors."
+        local hint=$(sectorSizeMismatchHint "$disk" "$imagesectorsize" "$targetsectorsize")
+        [[ -n $hint ]] && hint="\n   ${hint}"
+        handleError "Sector size mismatch (${FUNCNAME[0]})\n   Image was captured on a disk with ${imagesectorsize}-byte logical sectors, but $disk uses ${targetsectorsize}-byte logical sectors.\n   Partition-table and filesystem geometry cannot be translated between logical sector sizes, so this image cannot be deployed to this disk.${hint}\n   Deploy this image only to a disk with ${imagesectorsize}-byte logical sectors, or capture a new image on a disk with ${targetsectorsize}-byte logical sectors."
     fi
 }
 # Restores the partition tables and boot loaders
