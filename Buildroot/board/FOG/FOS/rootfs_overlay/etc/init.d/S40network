@@ -88,6 +88,16 @@ else
     echo "Failed to get an IP via DHCP! Tried on interface(s): $ifaces"
 fi
 echo "Please check your network setup and try again!"
+initversion=$(awk -F= '/^export initversion=/{print $2}' /usr/share/fog/lib/funcs.sh)
+netpci=$(lspci -nn 2>/dev/null | grep -iE '(ethernet|network) controller')
+[[ -z $netpci ]] && netpci="(no PCI network hardware detected)"
+echo "Debug information (please include this when reporting network issues):"
+echo "   Kernel version: $(uname -r)"
+echo "   Init version: $initversion"
+echo "   Network hardware on the PCI bus:"
+echo "$netpci" | sed 's/^/      /'
+echo "   Network hardware seen by lshw:"
+lshw -c network -businfo 2>/dev/null | sed 's/^/      /'
 [[ -z $isdebug ]] && sleep 60 && reboot
 echo "Press enter to continue"
 read -t 60
