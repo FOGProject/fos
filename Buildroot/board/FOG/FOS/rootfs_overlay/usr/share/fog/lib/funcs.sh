@@ -3207,7 +3207,13 @@ restoreLVMPartition() {
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ $mc == yes ]] && handleError "Multicast deploy of LVM images is not supported yet, deploy unicast (${FUNCNAME[0]})\n   Args Passed: $*"
+    if [[ $mc == yes ]]; then
+        # The sender must emit this partition's LV files in sidecar order
+        # (docs/adr/0007); against an older server the receivers would join
+        # the wrong file's session, so refuse before the target is touched.
+        local servercaps=$(curl -Lks "${web}service/getversion.php?caps=1" 2>/dev/null)
+        [[ $servercaps != *mclvm* ]] && handleError "The FOG server does not support multicast deploy of LVM images; update the server or deploy unicast (${FUNCNAME[0]})\n   Args Passed: $*"
+    fi
     local part_number=0
     getPartitionNumber "$part"
     local lvmfilename=""
@@ -3303,7 +3309,7 @@ restoreLVMPartition() {
         [[ ! $? -eq 0 ]] && handleError "Logical volume image missing: $imgfile (${FUNCNAME[0]})\n   Args Passed: $*"
         echo " * Processing Logical Volume: $lvdev"
         debugPause
-        writeImage "$imgfile" "$lvdev"
+        writeImage "$imgfile" "$lvdev" "$mc"
     done < "$lvmfilename"
     # Leave the stack inactive so the deployed OS boots from a clean state.
     vgchange -an "$vggroup" >/dev/null 2>&1 || echo " * Warning: could not deactivate volume group $vggroup"
