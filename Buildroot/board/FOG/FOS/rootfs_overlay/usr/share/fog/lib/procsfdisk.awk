@@ -559,6 +559,16 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
     curr_start = int(MIN_START);
     # Prior size should start as 0
     prior_size = 0;
+    # The exclusive upper bound for a partition's end. On GPT the tail of the
+    # disk holds the backup GPT header and partition-entry array (the same span
+    # firstlba reserves at the front), so nothing may run past diskSize -
+    # firstlba -- which is exactly the last-lba this function emits below, so the
+    # clamp and the emitted last-lba can never disagree. On non-GPT labels
+    # firstlba is unset and the whole disk is usable.
+    disk_end = int(diskSize);
+    if (firstlba) {
+        disk_end = int(diskSize) - int(firstlba);
+    }
     # Iterate the ordered start positions.
     for (i in ordered_starts) {
         # pName will be the ordered start position.
@@ -601,9 +611,11 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         curr_start += p_size;
         # Set the partitions start to our adjusted start.
         partitions[pName, "start"] = p_start;
-        # Set the last boundary properly
-        if (p_start + p_size > int(diskSize)) {
-            p_size -= (p_start + p_size - int(diskSize));
+        # Set the last boundary properly, keeping GPT's reserved backup area
+        # (everything past disk_end) clear so the final partition can't overwrite
+        # the backup GPT header/entries.
+        if (p_start + p_size > disk_end) {
+            p_size -= (p_start + p_size - disk_end);
             p_size -= (p_size % int(SECTOR_SIZE));
             partitions[pName, "size"] = p_size;
         }
@@ -738,13 +750,13 @@ BEGIN {
     # If the action value is neither of the above fail out.
     switch (action) {
         case "resize":
-            resize_partition(partition_names, partitions, args);
+            rc = resize_partition(partition_names, partitions, args);
             break;
         case "move":
-            move_partition(partition_names, partitions, args);
+            rc = move_partition(partition_names, partitions, args);
             break;
         case "filldisk":
-            fill_disk(partition_names, partitions, args);
+            rc = fill_disk(partition_names, partitions, args);
             break;
         default:
             printf("Please enter a proper action.\n");
@@ -752,4 +764,9 @@ BEGIN {
     }
     # Display output.
     display_output(partition_names, partitions);
+    # A nonzero return means the computed table is inconsistent (e.g. fill_disk
+    # detected overlapping partitions). Exit non-zero so the caller refuses to
+    # apply a corrupt table instead of silently writing it to disk.
+    if (rc != 0)
+        exit(1);
 }

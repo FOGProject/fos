@@ -80,8 +80,9 @@ applySfdiskPartitions() {
     local file="$2"
     [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $file ]] && handleError "No file to receive from passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    flock $disk sfdisk $disk < $file >/dev/null 2>&1
-    [[ ! $? -eq 0 ]] && majorDebugEcho "sfdisk failed in (${FUNCNAME[0]})"
+    local sfdiskout
+    sfdiskout=$(flock $disk sfdisk $disk < $file 2>&1)
+    [[ ! $? -eq 0 ]] && handleError "sfdisk failed to apply the partition table to $disk (${FUNCNAME[0]})\n$sfdiskout"
 }
 # $1 is the name of the disk drive
 # $2 is name of file to load from.
@@ -385,7 +386,8 @@ fillSfdiskWithPartitions() {
         cat $tmp_file2
         majorDebugPause
     fi
-    [[ $status -eq 0 ]] && applySfdiskPartitions "$disk" "$tmp_file2"
+    [[ $status -ne 0 ]] && handleError "Could not compute a valid partition layout for $disk; the image may not fit the target disk (${FUNCNAME[0]})"
+    applySfdiskPartitions "$disk" "$tmp_file2"
     runPartprobe "$disk"
     rm -f $tmp_file2
     majorDebugEcho "Applied the preceding table."
@@ -447,6 +449,27 @@ processSfdisk() {
     [[ -z $target ]] && handleError "Device (disk or partition) not passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $size ]] && handleError "No desired size passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local disk_size=$(blockdev --getsz ${disk})
+    # A whole-disk fill restores an image whose partition offsets/sizes were captured
+    # in the image's logical sector unit. Two awk inputs must track that unit or the
+    # fill math misbehaves on non-512 (e.g. 4Kn) targets:
+    #   diskSize    - blockdev --getsz always reports 512-byte units; convert it into
+    #                 the target's logical-sector unit, else every resizable partition
+    #                 inflates (~8x on 4Kn) and runs off the end of the disk.
+    #   SECTOR_SIZE - the fill engine uses this ONLY as a size-alignment quantum
+    #                 (p_size -= p_size % SECTOR_SIZE). 512 sectors = 256 KiB at
+    #                 512-byte sectors; feed that same 256 KiB granularity in the
+    #                 target's unit so a small resizable partition isn't rounded to 0
+    #                 (a 1 MiB bios_grub is 256 sectors on 4Kn; a 4096-sector quantum
+    #                 would zero it and corrupt the table).
+    # No-op on 512-byte-sector disks: getss=512 makes both identities
+    # (disk_size*512/512 = disk_size; 512*512/512 = 512).
+    if [[ $action == filldisk ]]; then
+        local logsectorsize=$(blockdev --getss ${disk} 2>/dev/null)
+        if [[ -n $logsectorsize && $logsectorsize -gt 0 ]]; then
+            disk_size=$(( disk_size * 512 / logsectorsize ))
+            sectorsize=$(( 512 * 512 / logsectorsize ))
+        fi
+    fi
     local minstart=$(awk -F'[ ,]+' '/start/{if ($4) print $4}' $data | sort -n | head -1)
     local chunksize=""
     getPartBlockSize "$disk" "chunksize"
