@@ -25,3 +25,18 @@ tools stubbed deterministically. The fixture is therefore machine-independent.
 
 Workflow for a refactor: run `check` on a clean tree (should pass against the
 committed fixture), make the change, run `check` again — it must still pass.
+
+## checks/ — assertion harnesses
+
+Pass/fail assertions for behaviour that a single golden output stream can't
+express (e.g. "does this function abort or not?"). Each script runs a battery of
+cases and exits non-zero if any fail.
+
+```sh
+tests/checks/sector-size.sh   # validateImageSectorSize() refuses on a
+                              # logical-sector-size mismatch, allows on match
+```
+
+Like the golden harness, these source a sandbox copy of the library with its
+hardcoded paths rewritten and the external tools stubbed, so they run on any
+host without hardware.

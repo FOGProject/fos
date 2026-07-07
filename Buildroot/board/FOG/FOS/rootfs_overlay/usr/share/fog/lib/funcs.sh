@@ -2054,6 +2054,52 @@ clearPartitionTables() {
     runPartprobe "$disk"
     debugPause
 }
+# Refuses a deploy when the target disk's logical sector size does not match the
+# sector size the image was captured with. Partition-table LBA units and
+# filesystem metadata bake in the source disk's logical sector size at capture
+# and are not rewritten on restore, so a mismatch yields an unmountable/
+# unbootable result. The source size is read from the stored sfdisk dump's
+# "sector-size:" line and the target size comes from `blockdev --getss`; we only
+# refuse when both are known and differ. sfdisk did not emit "sector-size:"
+# until util-linux 2.35 (~2020), so an older dump (including a genuine 4Kn one)
+# records no source size; there we allow the deploy rather than guess 512 and
+# wrongly refuse a matching 4Kn->4Kn deploy that works today. See
+# docs/adr/0001-sector-size-geometry-match-or-refuse.md
+#
+# $1 is the disk (e.g. /dev/sda)
+# $2 is the disk number
+# $3 is the image path
+validateImageSectorSize() {
+    local disk="$1"
+    local disk_number="$2"
+    local imagePath="$3"
+    [[ -z $disk ]] && handleError "No disk passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local targetsectorsize=$(blockdev --getss $disk 2>/dev/null)
+    # If the target size can't be read, don't introduce a new failure.
+    [[ -z $targetsectorsize ]] && return 0
+    local sfdiskminimumpartitionfilename=""
+    local sfdiskoriginalpartitionfilename=""
+    local sfdisklegacyoriginalpartitionfilename=""
+    sfdiskMinimumPartitionFileName "$imagePath" "$disk_number"
+    sfdiskPartitionFileName "$imagePath" "$disk_number"
+    sfdiskLegacyOriginalPartitionFileName "$imagePath" "$disk_number"
+    local sfdiskfilename=""
+    local candidate=""
+    for candidate in "$sfdiskminimumpartitionfilename" "$sfdiskoriginalpartitionfilename" "$sfdisklegacyoriginalpartitionfilename"; do
+        [[ -r $candidate ]] && sfdiskfilename="$candidate" && break
+    done
+    # The source size is only known if the dump recorded it. With no dump, or a
+    # pre-util-linux-2.35 dump that has no "sector-size:" line, the source size
+    # is unknown; allow the deploy rather than guess and risk a wrong refusal.
+    local imagesectorsize=""
+    [[ -n $sfdiskfilename ]] && imagesectorsize=$(awk '/^sector-size:/{print $2; exit}' "$sfdiskfilename")
+    [[ -z $imagesectorsize ]] && return 0
+    if [[ $imagesectorsize -ne $targetsectorsize ]]; then
+        handleError "Sector size mismatch (${FUNCNAME[0]})\n   Image was captured on a disk with ${imagesectorsize}-byte logical sectors, but $disk uses ${targetsectorsize}-byte logical sectors.\n   Partition-table and filesystem geometry cannot be translated between logical sector sizes, so this image cannot be deployed to this disk.\n   Deploy this image only to a disk with ${imagesectorsize}-byte logical sectors, or capture a new image on a disk with ${targetsectorsize}-byte logical sectors."
+    fi
+}
 # Restores the partition tables and boot loaders
 #
 # $1 is the disk
@@ -2079,6 +2125,7 @@ restorePartitionTablesAndBootLoaders() {
         debugPause
         return
     fi
+    validateImageSectorSize "$disk" "$disk_number" "$imagePath"
     clearPartitionTables "$disk"
     majorDebugEcho "Partition table should be empty now."
     majorDebugShowCurrentPartitionTable "$disk" "$disk_number"
