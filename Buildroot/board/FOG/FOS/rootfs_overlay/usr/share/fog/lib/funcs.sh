@@ -389,6 +389,11 @@ fsTypeSetting() {
         hfsplus)
             fstype="hfsp"
             ;;
+        LVM2_member)
+            # An LVM2 physical volume; captured per-LV (see docs/adr/0004).
+            # skiplvm=1 on the kernel command line reverts to the raw blob.
+            [[ $skiplvm -eq 1 ]] && fstype="imager" || fstype="lvm"
+            ;;
         ntfs)
             fstype="ntfs"
             ;;
@@ -878,6 +883,7 @@ getValidRestorePartitions() {
     local part=""
     local imgpart=""
     local part_number=0
+    local lvmfilename=""
     local split=''
     if [[ $imgFormat -eq 6 || $imgFormat -eq 4 || $imgFormat -eq 2 ]]; then
         split='*'
@@ -886,6 +892,14 @@ getValidRestorePartitions() {
     for part in $parts; do
         getPartitionNumber "$part"
         [[ $imgPartitionType != all && $imgPartitionType != $part_number ]] && continue
+        # A partition captured as LVM has a sidecar instead of a dNpM.img.
+        if [[ -d $imagePath ]]; then
+            lvmFileName "$imagePath" "$disk_number" "$part_number"
+            if [[ -r $lvmfilename ]]; then
+                valid_parts="$valid_parts $part"
+                continue
+            fi
+        fi
         case $osid in
             [1-2])
                 [[ ! -f $imagePath ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}" || imgpart="$imagePath"
@@ -1966,6 +1980,31 @@ tmpEBRFileName() {
     EBRFileName "/tmp" "$disk_number" "$part_number"
     tmpebrfilename="$ebrfilename"
 }
+lvmFileName() {
+    local imagePath="$1"  # e.g. /net/dev/foo
+    local disk_number="$2"    # e.g. 1
+    local part_number="$3"    # e.g. 2
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $part_number ]] && handleError "No partition number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    lvmfilename="$imagePath/d${disk_number}p${part_number}.lvm"
+}
+lvmVgcfgFileName() {
+    local lvmfilename=""
+    lvmFileName "$1" "$2" "$3"
+    lvmvgcfgfilename="${lvmfilename}.vgcfg"
+}
+lvmLVImageFileName() {
+    local imagePath="$1"  # e.g. /net/dev/foo
+    local disk_number="$2"    # e.g. 1
+    local part_number="$3"    # e.g. 2
+    local lv_name="$4"    # e.g. root
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $part_number ]] && handleError "No partition number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $lv_name ]] && handleError "No logical volume name passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    lvmlvimagefilename="$imagePath/d${disk_number}p${part_number}.${lv_name}.img"
+}
 #
 # Works for MBR/DOS or GPT style partition tables
 # Only saves PT information if the type is "all" or "mbr"
@@ -2296,6 +2335,9 @@ savePartition() {
             swapUUIDFileName "$imagePath" "$disk_number"
             saveSwapUUID "$swapuuidfilename" "$part"
             ;;
+        lvm)
+            saveLVMPartition "$part" "$disk_number" "$imagePath"
+            ;;
         imager)
             echo " * Using partclone.$fstype"
             debugPause
@@ -2436,6 +2478,14 @@ restorePartition() {
             handleError "Invalid Image Type $imgType (${FUNCNAME[0]})\n   Args Passed: $*"
             ;;
     esac
+    # A partition captured as LVM has a sidecar instead of a dNpM.img.
+    local lvmfilename=""
+    [[ -d $imagePath ]] && lvmFileName "$imagePath" "$disk_number" "$part_number"
+    if [[ -n $lvmfilename && -r $lvmfilename ]]; then
+        restoreLVMPartition "$part" "$disk_number" "$imagePath" "$mc"
+        runPartprobe "$disk"
+        return
+    fi
     ls $imgpart >/dev/null 2>&1
     if [[ ! $? -eq 0 ]]; then
         EBRFileName "$imagePath" "$disk_number" "$part_number"
@@ -2600,6 +2650,223 @@ getLGDevice() {
     [[ -z $lggroup ]] && handleError "No volume group passed (${FUNCNAME[0]})\n   Args Passed: $*"
     lgdev="/dev/mapper/${lggroup}-${lgvol}"
     read lgvUUID lgvSIZE <<< $(lvs --noheadings -v ${lggroup} --units s 2>/dev/null | awk '/'${lgvol}'/ {printf("%s %s", $5, gensub(/[Ss]/,"","g",$10))}')
+}
+# --- LVM per-LV capture and deploy (Phase 1, docs/adr/0004) -----------------
+#
+# A partition holding an LVM2 physical volume is not sector-imaged. Capture
+# writes sidecar files next to the usual dNpM ones plus one partclone image
+# per logical volume:
+#   dNpM.lvm        versioned schema: PV/VG identity and one line per LV
+#   dNpM.lvm.vgcfg  vgcfgbackup output (complete LVM metadata, all UUIDs)
+#   dNpM.<lv>.img   partclone image per non-swap LV
+# Deploy recreates the stack with pvcreate --restorefile + vgcfgrestore (the
+# partition is recreated at its original size, so the extent geometry in the
+# backup still fits) and restores each LV. LV devices are addressed as
+# /dev/<vg>/<lv> and never enter the partition-name machinery.
+#
+# Streams one block device through partclone into the image store, the same
+# way savePartition's inline capture does for a plain partition.
+#
+# $1 = source block device
+# $2 = destination image file
+# $3 = partclone type (extfs, ntfs, imager, ...)
+savePartclone() {
+    local src="$1"
+    local imgfile="$2"
+    local pctype="$3"
+    [[ -z $src ]] && handleError "No source device passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $imgfile ]] && handleError "No image file passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $pctype ]] && handleError "No partclone type passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local fifoname="/tmp/pigz1"
+    local checksum="-a0"
+    [[ $pctype == imager ]] && checksum=""
+    echo " * Using partclone.$pctype"
+    debugPause
+    uploadFormat "$fifoname" "$imgfile"
+    partclone.$pctype -n "Storage Location $storage, Image name $img" -cs $src -O $fifoname -Nf 1 $checksum
+    exitcode=$?
+    wait $formatPID 2>/dev/null
+    formatexit=$?
+    [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
+    case $exitcode in
+        0)
+            mv ${imgfile}.000 $imgfile >/dev/null 2>&1
+            echo " * Image Captured"
+            debugPause
+            ;;
+        *)
+            local spaceAvailable=$(getServerDiskSpaceAvailable)
+            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$pctype -n \"Storage Location $storage, Image name $img\" -cs $src -O $fifoname -Nf 1 $checksum\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
+            ;;
+    esac
+    rm -rf $fifoname >/dev/null 2>&1
+}
+# Captures an LVM2 PV partition: sidecar metadata plus one image per LV.
+# Unsupported topologies (multi-PV VG, non-linear LVs) fall back to the
+# raw partclone.imager blob — the pre-LVM behavior — with a loud notice.
+# Capture never writes to the source: the VG is only activated read-visible
+# and deactivated again.
+#
+# $1 = partition device holding the PV
+# $2 = disk number
+# $3 = image path
+saveLVMPartition() {
+    local part="$1"
+    local disk_number="$2"
+    local imagePath="$3"
+    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No drive number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local part_number=0
+    getPartitionNumber "$part"
+    vgscan >/dev/null 2>&1
+    local vggroup=$(trim "$(pvs --noheadings -o vg_name "$part" 2>/dev/null)")
+    local pvuuid=$(trim "$(pvs --noheadings -o pv_uuid "$part" 2>/dev/null)")
+    local pvsize=$(pvs --noheadings --units s --nosuffix -o pv_size "$part" 2>/dev/null | awk '{printf("%d",$1)}')
+    local pvcount=$(vgs --noheadings -o pv_count "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
+    local unsupported=""
+    if [[ -z $vggroup ]]; then
+        unsupported="no volume group found on the physical volume"
+    elif [[ $pvcount -ne 1 ]]; then
+        unsupported="volume group $vggroup spans $pvcount physical volumes"
+    elif lvs --noheadings -o lv_layout "$vggroup" 2>/dev/null | grep -qv '^[[:space:]]*linear[[:space:]]*$'; then
+        unsupported="volume group $vggroup contains non-linear volumes (thin/RAID/cache/snapshot)"
+    fi
+    if [[ -n $unsupported ]]; then
+        echo " * LVM layout is not supported for per-LV capture: $unsupported"
+        echo " * Falling back to raw capture of the whole physical volume"
+        debugPause
+        savePartclone "$part" "$imagePath/d${disk_number}p${part_number}.img" "imager"
+        return
+    fi
+    dots "Activating volume group ($vggroup)"
+    vgchange -ay "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    udevadm settle >/dev/null 2>&1
+    debugPause
+    local lvmfilename=""
+    local lvmvgcfgfilename=""
+    lvmFileName "$imagePath" "$disk_number" "$part_number"
+    lvmVgcfgFileName "$imagePath" "$disk_number" "$part_number"
+    dots "Saving LVM metadata"
+    vgcfgbackup -f "$lvmvgcfgfilename" "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not back up LVM metadata of $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    debugPause
+    local vguuid=$(trim "$(vgs --noheadings -o vg_uuid "$vggroup" 2>/dev/null)")
+    local extentsize=$(vgs --noheadings --units s --nosuffix -o vg_extent_size "$vggroup" 2>/dev/null | awk '{printf("%d",$1)}')
+    echo "LVMFORMAT 1" > "$lvmfilename"
+    echo "PV $pvuuid $part $pvsize" >> "$lvmfilename"
+    echo "VG $vggroup $vguuid $extentsize" >> "$lvmfilename"
+    local lvname=""
+    local lvuuid=""
+    local lvsize=""
+    while read -r lvname lvuuid lvsize; do
+        [[ -z $lvname ]] && continue
+        local lvdev="/dev/${vggroup}/${lvname}"
+        [[ ! -e $lvdev ]] && handleError "Logical volume device missing: $lvdev (${FUNCNAME[0]})\n   Args Passed: $*"
+        local fstype=""
+        fsTypeSetting "$lvdev"
+        # A PV nested inside an LV is out of scope; capture that LV raw.
+        [[ $fstype == lvm ]] && fstype="imager"
+        if [[ $fstype == swap ]]; then
+            local swapuuid=$(blkid -po udev "$lvdev" | awk -F= '/FS_UUID=/{print $2}')
+            echo "LV $lvname $lvuuid ${lvsize%.*} $fstype - ${swapuuid:--}" >> "$lvmfilename"
+            echo " * Saving swap volume UUID ($lvdev)"
+            debugPause
+            continue
+        fi
+        local lvmlvimagefilename=""
+        lvmLVImageFileName "$imagePath" "$disk_number" "$part_number" "$lvname"
+        echo "LV $lvname $lvuuid ${lvsize%.*} $fstype ${lvmlvimagefilename##*/} -" >> "$lvmfilename"
+        echo " * Processing Logical Volume: $lvdev ($fstype)"
+        debugPause
+        savePartclone "$lvdev" "$lvmlvimagefilename" "$fstype"
+    done < <(lvs --noheadings --units s --nosuffix -o lv_name,lv_uuid,lv_size "$vggroup" 2>/dev/null)
+    vgchange -an "$vggroup" >/dev/null 2>&1 || echo " * Warning: could not deactivate volume group $vggroup"
+}
+# Recreates and restores an LVM2 stack captured by saveLVMPartition. Runs
+# LVM's own disaster-recovery procedure — pvcreate --restorefile plus
+# vgcfgrestore — so the PV, VG, and every LV come back with their original
+# UUIDs and exact segment layout. Failures are fatal (docs/adr/0003).
+#
+# $1 = partition device to hold the PV
+# $2 = disk number
+# $3 = image path
+# $4 = multicast flag
+restoreLVMPartition() {
+    local part="$1"
+    local disk_number="$2"
+    local imagePath="$3"
+    local mc="$4"
+    [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $disk_number ]] && handleError "No disk number passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $imagePath ]] && handleError "No image path passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ $mc == yes ]] && handleError "Multicast deploy of LVM images is not supported yet, deploy unicast (${FUNCNAME[0]})\n   Args Passed: $*"
+    local part_number=0
+    getPartitionNumber "$part"
+    local lvmfilename=""
+    local lvmvgcfgfilename=""
+    lvmFileName "$imagePath" "$disk_number" "$part_number"
+    lvmVgcfgFileName "$imagePath" "$disk_number" "$part_number"
+    [[ ! -r $lvmvgcfgfilename ]] && handleError "LVM metadata backup missing: $lvmvgcfgfilename (${FUNCNAME[0]})\n   Args Passed: $*"
+    local lvmformat=$(head -n 1 "$lvmfilename")
+    [[ $lvmformat != "LVMFORMAT 1" ]] && handleError "Image was captured with a newer LVM format ($lvmformat), update FOS (${FUNCNAME[0]})\n   Args Passed: $*"
+    local pvuuid=$(awk '$1=="PV"{print $2; exit}' "$lvmfilename")
+    local vggroup=$(awk '$1=="VG"{print $2; exit}' "$lvmfilename")
+    [[ -z $pvuuid || -z $vggroup ]] && handleError "Incomplete LVM sidecar: $lvmfilename (${FUNCNAME[0]})\n   Args Passed: $*"
+    local split=''
+    if [[ $imgFormat -eq 6 || $imgFormat -eq 4 || $imgFormat -eq 2 ]]; then
+        split='*'
+    fi
+    echo " * Restoring LVM volume group ($vggroup) to $part"
+    debugPause
+    # A previous life of this target may have left volume groups active;
+    # stale device mappings would collide with the names being restored.
+    vgchange -an >/dev/null 2>&1
+    dots "Recreating physical volume"
+    wipefs -a "$part" >/dev/null 2>&1
+    pvcreate -ff -y --uuid "$pvuuid" --restorefile "$lvmvgcfgfilename" "$part" >/dev/null 2>&1
+    checkStatus $? "done" "Could not recreate physical volume on $part (${FUNCNAME[0]})\n   Args Passed: $*"
+    debugPause
+    dots "Restoring volume group metadata"
+    vgcfgrestore -f "$lvmvgcfgfilename" "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not restore volume group metadata of $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    debugPause
+    dots "Activating volume group ($vggroup)"
+    vgchange -ay "$vggroup" >/dev/null 2>&1
+    checkStatus $? "done" "Could not activate volume group $vggroup (${FUNCNAME[0]})\n   Args Passed: $*"
+    udevadm settle >/dev/null 2>&1
+    debugPause
+    local tag=""
+    local lvname=""
+    local lvuuid=""
+    local lvsize=""
+    local lvfstype=""
+    local lvimage=""
+    local swapuuid=""
+    while read -r tag lvname lvuuid lvsize lvfstype lvimage swapuuid; do
+        [[ $tag != LV ]] && continue
+        local lvdev="/dev/${vggroup}/${lvname}"
+        [[ ! -e $lvdev ]] && handleError "Logical volume missing after restore: $lvdev (${FUNCNAME[0]})\n   Args Passed: $*"
+        if [[ $lvfstype == swap ]]; then
+            dots "Recreating swap volume ($lvname)"
+            local option=""
+            [[ -n $swapuuid && $swapuuid != - ]] && option="-U $swapuuid"
+            mkswap $option "$lvdev" >/dev/null 2>&1
+            checkStatus $? "done" "Could not create swap on $lvdev (${FUNCNAME[0]})\n   Args Passed: $*"
+            debugPause
+            continue
+        fi
+        [[ -z $lvimage || $lvimage == - ]] && continue
+        local imgfile="$imagePath/${lvimage}${split}"
+        ls $imgfile >/dev/null 2>&1
+        [[ ! $? -eq 0 ]] && handleError "Logical volume image missing: $imgfile (${FUNCNAME[0]})\n   Args Passed: $*"
+        echo " * Processing Logical Volume: $lvdev"
+        debugPause
+        writeImage "$imgfile" "$lvdev"
+    done < "$lvmfilename"
+    # Leave the stack inactive so the deployed OS boots from a clean state.
+    vgchange -an "$vggroup" >/dev/null 2>&1 || echo " * Warning: could not deactivate volume group $vggroup"
 }
 # Trims character from string
 # $1 The variable to trim
