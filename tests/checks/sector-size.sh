@@ -25,9 +25,26 @@ SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
 # --- sandbox copy of the library with host-absolute paths rewritten ---
+# /sys/block and /sys/class/scsi_host are rewritten into the sandbox so the
+# device classifier (sectorSizeMismatchHint) reads a fake sysfs we control
+# instead of whatever disks the dev machine happens to have.
 cp "$REPO_LIB/partition-funcs.sh" "$SANDBOX/partition-funcs.sh"
 sed -e "s#^\. /usr/share/fog/lib/partition-funcs\.sh#. $SANDBOX/partition-funcs.sh#" \
+    -e "s#/sys/block#$SANDBOX/sys/block#g" \
+    -e "s#/sys/class/scsi_host#$SANDBOX/sys/class/scsi_host#g" \
     "$REPO_LIB/funcs.sh" > "$SANDBOX/funcs.sh"
+
+# Fake sysfs: sdu is a UFS disk (SCSI host driver ufshcd), sdb is plain SATA
+# (ahci). Any device with no sysfs entry at all (e.g. sdz) exercises the
+# classifier's it-can't-tell path.
+for dev_host_driver in "sdu 0 ufshcd" "sdb 1 ahci"; do
+    set -- $dev_host_driver
+    mkdir -p "$SANDBOX/sys/devices/pci0/host$2/target$2:0:0/$2:0:0:0" \
+             "$SANDBOX/sys/block/$1" \
+             "$SANDBOX/sys/class/scsi_host/host$2"
+    ln -s "$SANDBOX/sys/devices/pci0/host$2/target$2:0:0/$2:0:0:0" "$SANDBOX/sys/block/$1/device"
+    echo "$3" > "$SANDBOX/sys/class/scsi_host/host$2/proc_name"
+done
 
 # --- deterministic stubs for the external tools the function shells out to ---
 STUBBIN="$SANDBOX/bin"
@@ -89,13 +106,15 @@ write_dump() {
 PASS=0
 FAIL=0
 
-# run_case <name> <target_ss> <expect: abort|noabort> [disk] -- then the caller
-# has already populated $IMGDIR with the dump file(s) for this case. The optional
-# disk defaults to a non-NVMe /dev/sdb; pass /dev/nvme0n1 to exercise the reformat
-# path. The FAKE_LBAFS / FAKE_FMT_FAIL / FAKE_SS_AFTER globals (cleared by
-# new_imgdir) drive the nvme stub for reformat cases.
+# run_case <name> <target_ss> <expect: abort|noabort> [disk] [want_sub] [forbid_sub]
+# -- the caller has already populated $IMGDIR with the dump file(s) for this case.
+# The optional disk defaults to a non-NVMe /dev/sdb; pass /dev/nvme0n1 to exercise
+# the reformat path. The FAKE_LBAFS / FAKE_FMT_FAIL / FAKE_SS_AFTER globals
+# (cleared by new_imgdir) drive the nvme stub for reformat cases. want_sub, if
+# given, must appear in the output (asserts a device-class hint was emitted);
+# forbid_sub must NOT appear (asserts one wasn't).
 run_case() {
-    local name="$1" target_ss="$2" expect="$3" disk="${4:-/dev/sdb}"
+    local name="$1" target_ss="$2" expect="$3" disk="${4:-/dev/sdb}" want_sub="$5" forbid_sub="$6"
     local out got
     rm -f "$SANDBOX/formatted"
     out="$(
@@ -111,11 +130,15 @@ run_case() {
         echo "RETURNED"
     )"
     if [[ $out == *"ABORT:"* ]]; then got="abort"; else got="noabort"; fi
-    if [[ $got == "$expect" ]]; then
+    local why=""
+    [[ $got != "$expect" ]] && why="expected $expect, got $got"
+    [[ -n $want_sub && $out != *"$want_sub"* ]] && why="${why:+$why; }missing \"$want_sub\""
+    [[ -n $forbid_sub && $out == *"$forbid_sub"* ]] && why="${why:+$why; }contains forbidden \"$forbid_sub\""
+    if [[ -z $why ]]; then
         echo "PASS: $name (expected $expect)"
         PASS=$((PASS + 1))
     else
-        echo "FAIL: $name (expected $expect, got $got)"
+        echo "FAIL: $name ($why)"
         echo "      output: $(printf '%s' "$out" | tr '\n' '|')"
         FAIL=$((FAIL + 1))
     fi
@@ -219,6 +242,38 @@ new_imgdir 16; write_dump "$IMGDIR/d1.minimum.partitions" 4096
 FAKE_LBAFS=$'lbaf  0 : ms:0   lbads:9  rp:0x1 (in use)\nlbaf  1 : ms:0   lbads:12 rp:0x2 '
 FAKE_SS_AFTER=512
 run_case "nvme format did not change sector size -> refuse" 512 abort /dev/nvme0n1
+
+# --- Device-class hints: the refusal names the device class and says whether its
+# --- sector size could ever be changed (sectorSizeMismatchHint, ADR-0005). ---
+
+# 17. eMMC/SD target: refuse and say the 512-byte size is fixed by the spec.
+new_imgdir 17; write_dump "$IMGDIR/d1.minimum.partitions" 4096
+run_case "emmc mismatch -> refuse with fixed-size hint" 512 abort /dev/mmcblk0 "eMMC/SD"
+
+# 18. NVMe target with no matching LBA format: the refusal explains why the
+# reformat path could not help this particular drive.
+new_imgdir 18; write_dump "$IMGDIR/d1.minimum.partitions" 4096
+FAKE_LBAFS=$'lbaf  0 : ms:0   lbads:9  rp:0x1 (in use)'
+run_case "nvme refusal names the missing lbaf" 512 abort /dev/nvme0n1 "no metadata-free 4096-byte LBA format"
+
+# 19. Virtual disk target: refuse and point at the hypervisor's disk config.
+new_imgdir 19; write_dump "$IMGDIR/d1.minimum.partitions" 4096
+run_case "virtio mismatch -> refuse with hypervisor hint" 512 abort /dev/vda "hypervisor"
+
+# 20. UFS target (a SCSI disk whose host driver is ufshcd in the fake sysfs):
+# refuse and say the size was fixed at factory provisioning.
+new_imgdir 20; write_dump "$IMGDIR/d1.minimum.partitions" 512
+run_case "ufs mismatch -> refuse with provisioning hint" 4096 abort /dev/sdu "UFS device"
+
+# 21. Plain SATA target (host driver ahci in the fake sysfs): refuse with the
+# generic message only -- no class hint applies.
+new_imgdir 21; write_dump "$IMGDIR/d1.minimum.partitions" 4096
+run_case "sata mismatch -> refuse without class hint" 512 abort /dev/sdb "" "UFS device"
+
+# 22. SCSI disk with no sysfs entry at all: the classifier can't tell, so the
+# refusal must still fire cleanly with the generic message.
+new_imgdir 22; write_dump "$IMGDIR/d1.minimum.partitions" 4096
+run_case "unclassifiable sd disk -> plain refuse" 512 abort /dev/sdz "" "UFS device"
 
 echo "----"
 echo "$PASS passed, $FAIL failed"

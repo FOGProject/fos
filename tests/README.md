@@ -35,8 +35,10 @@ cases and exits non-zero if any fail.
 ```sh
 tests/checks/sector-size.sh   # validateImageSectorSize() refuses on a
                               # logical-sector-size mismatch, allows on match,
-                              # and reformats an NVMe target to the image's
-                              # sector size when it exposes a matching LBA format
+                              # reformats an NVMe target to the image's sector
+                              # size when it exposes a matching LBA format, and
+                              # names the device class (eMMC/UFS/virtual/NVMe)
+                              # in the refusal when the target's size is fixed
 tests/checks/fill-engine.sh   # the whole-disk fill engine (processSfdisk +
                               # fillSfdiskWithPartitions + fill_disk in the awk):
                               # 4Kn sector-size rescaling keeps a small partition
