@@ -164,6 +164,25 @@ echo "blockdev $*" >> "$CALLS"
 exit 0
 EOF
 
+# curl answers the multicast capability probe with the fake server's
+# response (a version string for an old server, a token list for a new one).
+cat > "$STUBBIN/curl" <<'EOF'
+#!/bin/bash
+echo "curl $*" >> "$CALLS"
+printf '%s' "$FAKE_SERVERCAPS"
+exit 0
+EOF
+
+# udp-receiver stands in for the multicast session: writeImage backgrounds it
+# with stdout on the /tmp/pigz1 fifo, so emitting the marker feeds the same
+# decompress-and-restore pipeline the unicast cat path uses.
+cat > "$STUBBIN/udp-receiver" <<'EOF'
+#!/bin/bash
+echo "udp-receiver $*" >> "$CALLS"
+echo "IMGDATA"
+exit 0
+EOF
+
 # lvcreate creates the LV device node like the real tool would, so the
 # restore loop's -e existence check only passes if the rebuild ran first.
 cat > "$STUBBIN/lvcreate" <<'EOF'
@@ -236,6 +255,7 @@ new_case() {
     FAKE_FREE="0"
     FAKE_EXTMIN="262144"
     FAKE_BLOCKSIZE="4096"
+    FAKE_SERVERCAPS="1.6.0"
 }
 
 # Standard supported-source fixtures on top of new_case.
@@ -289,6 +309,7 @@ run() {
         export FAKE_VG FAKE_PVUUID FAKE_PVSIZE FAKE_PVCOUNT FAKE_VGUUID FAKE_EXTENT
         export FAKE_LAYOUTS FAKE_LVS FAKE_SWAPUUID
         export FAKE_PESTART FAKE_PARTSIZE FAKE_FREE FAKE_EXTMIN FAKE_BLOCKSIZE
+        export FAKE_SERVERCAPS
         . "$SANDBOX/funcs.sh"
         handleError() { echo "ABORT: $*"; exit 1; }
         imgFormat=5
@@ -298,6 +319,9 @@ run() {
         storage="STUBSTORE"
         img="STUBIMG"
         percent=25
+        web="http://fogserver/fog/"
+        port=9000
+        storageip="10.0.0.1"
         eval "$1"
         echo "RETURNED"
     )"
@@ -531,13 +555,43 @@ assert_call "root LV restored with partclone" "partclone.restore"
 assert_call "swap LV regenerated with original UUID" "mkswap" "-U SWAPUUID-test" "$SANDBOX/dev/fakevg/swap_1"
 assert_call "VG deactivated after restore" "vgchange -an fakevg"
 
-# 9. Multicast deploy refuses instead of hanging the whole session.
+# 9. Multicast deploy against a server that does not report the mclvm
+# capability (an old server answers the caps probe with its version string):
+# refuse before the target is touched (docs/adr/0007). Without the refusal
+# the LV receivers would join the wrong files' sessions.
 new_case 9
 lvm_image
 run 'restoreLVMPartition /dev/sdb3 1 "$IMGDIR" yes'
-assert_out "multicast LVM deploy refuses" "ABORT:"
-assert_out "multicast refusal names the cause" "Multicast"
-assert_no_call "multicast refusal touches nothing" "pvcreate"
+assert_out "multicast against old server refuses" "ABORT:"
+assert_out "multicast refusal names the cause" "does not support multicast deploy of LVM images"
+assert_call "server capability was probed" "curl" "getversion.php?caps=1"
+assert_no_call "multicast refusal wipes nothing" "wipefs"
+assert_no_call "multicast refusal creates nothing" "pvcreate"
+assert_no_call "multicast refusal opens no receiver" "udp-receiver"
+
+# 29. Multicast deploy against a server reporting mclvm: the metadata work is
+# unchanged (it rides NFS), and the LV loop opens one udp-receiver per
+# non-swap LV — in sidecar line order, the ordering contract of
+# docs/adr/0007 — instead of reading the image files.
+new_case 29
+lvm_image2
+FAKE_SERVERCAPS="mclvm"
+run 'restoreLVMPartition /dev/sdb3 1 "$IMGDIR" yes'
+assert_out "capable-server multicast deploy completes" "RETURNED"
+assert_call "server capability was probed" "curl" "getversion.php?caps=1"
+assert_call "PV still recreated from NFS metadata" "pvcreate" "--uuid PVUUID-test" "--restorefile"
+assert_call "VG metadata still restored over NFS" "vgcfgrestore" "fakevg"
+assert_call "receiver joins the session on the task's portbase" \
+    "udp-receiver" "--portbase 9000" "--mcast-rdv-address 10.0.0.1"
+rcv=$(grep -c '^udp-receiver' "$CALLS")
+[[ $rcv -eq 2 ]] \
+    && ok "one receiver per non-swap LV, none for swap" \
+    || ko "expected 2 udp-receiver calls, got $rcv"
+restored=$(grep '^partclone.restore' "$CALLS" | sed -n 's#.*fakevg/\([a-z_0-9]*\).*#\1#p' | tr '\n' ' ')
+[[ $restored == "root home " ]] \
+    && ok "LVs restored in sidecar line order" \
+    || ko "restore order wrong: '$restored' (want 'root home ')"
+assert_call "swap still regenerated locally, not multicast" "mkswap" "-U SWAPUUID-test"
 
 # 10. A sidecar from a newer FOS (unknown format version) refuses.
 new_case 10
