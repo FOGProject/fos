@@ -25,8 +25,8 @@ declare -ar common_dependencies=(
     "bzip2"
     "findutils"
     "autoconf"
+    "automake"
     "libtool"
-    "autopoint"
 )
 
 declare -ar deb_dependencies=(
@@ -34,6 +34,7 @@ declare -ar deb_dependencies=(
     "xz-utils"
     "g++"
     "libncurses-dev"
+    "autopoint"
 )
 
 declare -ar rhel_dependencies=(
@@ -42,6 +43,7 @@ declare -ar rhel_dependencies=(
     "xz"
     "gcc-c++"
     "ncurses-devel"
+    "gettext-devel"
 )
 
 
@@ -62,15 +64,15 @@ function checkDependencies() {
         "debian" | "ubuntu")
             dependencies=("${common_dependencies[@]}" "${deb_dependencies[@]}")
             package_manager="sudo apt install -y"
-            pkgmgr() {
-                dpkg -l
+            pkginstalled() {
+                dpkg -s "$1" 2> /dev/null | grep -q "^Status:.*ok installed"
             }
             ;;
         "rhel" | "rocky" | "fedora")
             dependencies=("${common_dependencies[@]}" "${rhel_dependencies[@]}")
             package_manager="sudo dnf install -y"
-            pkgmgr() {
-                rpm -qa --qf "ii %{NAME}\n"
+            pkginstalled() {
+                rpm -q --whatprovides "$1" > /dev/null 2>&1
             }
             if [[ $running_os == "rhel" || $running_os == "rocky" ]]; then
                 __epel_repo_message
@@ -85,8 +87,7 @@ function checkDependencies() {
 
     missing_packages=""
     for package in "${dependencies[@]}"; do
-        pkgmgr | awk '{print $2}' | cut -d':' -f1 | grep -qe "${package}"
-        if [[ $? -ne 0 ]]; then
+        if ! pkginstalled "${package}"; then
             missing_packages="${missing_packages} ${package}"
         fi
     done
