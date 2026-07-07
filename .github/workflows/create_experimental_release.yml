@@ -330,11 +330,11 @@ jobs:
 
       - name: Set release name variable
         run: |
-          echo "RELEASE_NAME=Experimental release from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Experimental release from $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_ENV
 
       - name: Set tag name variable
         run: |
-          echo "TAG_NAME=EXP_$(date '+%Y%m%d')" >> $GITHUB_ENV
+          echo "TAG_NAME=EXP_$(date -u '+%Y%m%d-%H%M%S')" >> $GITHUB_ENV
 
       - name: Get Linux Kernel version from build.sh
         run: |
