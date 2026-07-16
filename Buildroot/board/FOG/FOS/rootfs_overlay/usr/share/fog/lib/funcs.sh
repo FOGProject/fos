@@ -2156,6 +2156,280 @@ nvmeReformatToSectorSize() {
     echo "Done"
     return 0
 }
+# Reports (on stdout) the wipe-relevant class of the disk passed: "nvme" for an
+# NVMe namespace, "ssd" for a non-rotational (flash) device, "hdd" for a
+# rotational one, or "unknown" when the kernel does not say. The class selects
+# the wipe primitive in wipeDisk(); overwriting is only a real erase on "hdd".
+# See docs/adr/0008-secure-wipe-by-device-class.md
+#
+# $1 is the disk (e.g. /dev/nvme0n1)
+diskClass() {
+    local disk="$1"
+    local name="${disk##*/}"
+    [[ $disk == *[Nn][Vv][Mm][Ee]* ]] && { echo "nvme"; return 0; }
+    local rotational=$(cat "/sys/block/$name/queue/rotational" 2>/dev/null)
+    case "$rotational" in
+        0) echo "ssd" ;;
+        1) echo "hdd" ;;
+        *) echo "unknown" ;;
+    esac
+    return 0
+}
+# Reports (on stdout) the NVMe controller device for the namespace passed, e.g.
+# /dev/nvme0n1 -> /dev/nvme0. Sanitize and id-ctrl act on the controller, not on
+# a namespace.
+#
+# $1 is the disk (e.g. /dev/nvme0n1)
+nvmeCtrlOf() {
+    local name="${1##*/}"
+    echo "/dev/${name%%n[0-9]*}"
+}
+# Returns 0 if the NVMe controller behind the namespace passed advertises the
+# sanitize action given, non-zero otherwise (including when SANICAP cannot be
+# read, so the caller falls back to a format-based erase rather than issuing a
+# sanitize the drive may not support).
+#
+# SANICAP (id-ctrl) bit 0 is crypto erase, bit 1 is block erase, bit 2 is
+# overwrite. sanact 2 is block erase, 4 is crypto erase.
+#
+# $1 is the disk (e.g. /dev/nvme0n1)
+# $2 is the sanact value (2 or 4)
+nvmeSanitizeSupported() {
+    local disk="$1" sanact="$2"
+    local bit=""
+    case "$sanact" in
+        2) bit=2 ;;
+        4) bit=1 ;;
+        *) return 1 ;;
+    esac
+    local sanicap=$(nvme id-ctrl "$(nvmeCtrlOf "$disk")" -o json 2>/dev/null | jq -r '.sanicap // empty' 2>/dev/null)
+    [[ -z $sanicap || $sanicap != +([0-9]) ]] && return 1
+    [[ $((sanicap & bit)) -ne 0 ]]
+}
+# Reports (on stdout) the SSTAT status code of the most recent sanitize on the
+# controller passed, or nothing if the log cannot be read or parsed.
+#
+# The sanitize log JSON is NOT flat. nvme-cli nests the whole payload under a
+# device-name key, makes sstat an object, and renders its status as a string with
+# the code in parentheses:
+#
+#   {"/dev/nvme0":{"sprog":32768,"sstat":{"global_erased":0,"no_cmplted_passes":0,
+#                                         "status":"(2) Sanitize in Progress."}}}
+#
+# Hence the `.[]` (the device key is not knowable up front) and the leading-int
+# extraction. The status value is already masked to SSTAT bits 2:0 by nvme-cli, so
+# it needs no further masking here.
+#
+# $1 is the sanitize log JSON
+nvmeSanitizeStatus() {
+    local status=$(echo "$1" | jq -r '.[] | .sstat.status // empty' 2>/dev/null)
+    [[ $status =~ ^\(([0-9]+)\) ]] && echo "${BASH_REMATCH[1]}"
+}
+# Runs an NVMe sanitize of the action given against the controller behind the
+# namespace passed and blocks until it finishes.
+#
+# Returns:
+#   0 - the sanitize log confirms the erase completed
+#   1 - the sanitize is NOT running and the drive accepts other commands, so the
+#       caller may safely fall back to a format-based erase. Either the controller
+#       rejected the sanitize outright, or it failed and was recovered below.
+#   2 - the sanitize STARTED but its outcome cannot be confirmed. The caller must
+#       NOT fall back to format and must NOT tell the operator the data survived.
+#       Neither claim is safe: see nvmeSecureErase().
+#
+# Sanitize is asynchronous and, unlike format, is NOT cancelable: once started it
+# persists across power cycles and the drive stays busy until it completes. The
+# caller must therefore do its power-off-to-cancel countdown BEFORE calling this.
+# SSTAT status: 0 = never sanitized, 1 = completed, 2 = in progress, 3 = failed,
+# 4 = completed with forced deallocation. SPROG is progress out of 65536.
+#
+# $1 is the disk (e.g. /dev/nvme0n1)
+# $2 is the sanact value (2 = block erase, 4 = crypto erase)
+nvmeSanitize() {
+    local disk="$1" sanact="$2"
+    local ctrl=$(nvmeCtrlOf "$disk")
+    local err=""
+    if ! err=$(nvme sanitize "$ctrl" --sanact="$sanact" 2>&1 >/dev/null); then
+        echo " * $ctrl rejected the sanitize command: ${err:-no error reported}"
+        return 1
+    fi
+    local log="" code="" sprog="" zeros=0
+    while :; do
+        log=$(nvme sanitize-log "$ctrl" -o json 2>/dev/null)
+        code=$(nvmeSanitizeStatus "$log")
+        if [[ -z $code ]]; then
+            printf "\n"
+            echo " * Could not read the sanitize log of $ctrl; the sanitize is still running."
+            return 2
+        fi
+        case $code in
+            1|4)
+                printf "\r * Sanitizing %s ... 100%%%-10s\n" "$disk" " "
+                return 0
+                ;;
+            0|2)
+                # 0 is "never sanitized". The log can still read that way in the
+                # gap between the controller accepting the command and starting
+                # work, so tolerate it briefly -- but not forever, which would
+                # spin for good on a drive that took the command and did nothing.
+                if [[ $code -eq 0 ]]; then
+                    zeros=$((zeros + 1))
+                    if [[ $zeros -gt 12 ]]; then
+                        printf "\n"
+                        echo " * $ctrl accepted the sanitize but never started it"
+                        return 2
+                    fi
+                else
+                    zeros=0
+                fi
+                sprog=$(echo "$log" | jq -r '.[] | .sprog // 0' 2>/dev/null)
+                [[ $sprog != +([0-9]) ]] && sprog=0
+                printf "\r * Sanitizing %s ... %3d%%" "$disk" $((sprog * 100 / 65536))
+                usleep 5000000
+                ;;
+            3)
+                # A failed sanitize leaves the controller aborting commands with
+                # "Sanitize Failed" (0x1c) until a recovery action completes, so a
+                # format fallback would be rejected too. Exit Failure Mode
+                # (sanact=1) is that recovery; it is not itself an erase.
+                printf "\n"
+                echo " * The sanitize of $disk failed; clearing the drive's failure mode"
+                if ! err=$(nvme sanitize "$ctrl" --sanact=1 2>&1 >/dev/null); then
+                    echo " * Could not clear the failure mode of $ctrl: ${err:-no error reported}"
+                    return 2
+                fi
+                return 1
+                ;;
+            *)
+                printf "\n"
+                echo " * $ctrl reported an unknown sanitize status ($code)"
+                return 2
+                ;;
+        esac
+    done
+}
+# Securely erases an NVMe namespace using the drive's own erase engine, which is
+# the only way to reach the over-provisioned and remapped blocks that an
+# LBA-level overwrite can never touch. Returns 0 only when the erase is confirmed,
+# non-zero otherwise, so the caller can fail loudly instead of reporting a wipe
+# that did not happen.
+#
+# Preference order, strongest first, per the mode passed:
+#   full   - sanitize block erase (sanact 2), covering unmapped/spare blocks too
+#   fast   - format with a cryptographic erase (--ses=2), near-instant, but only
+#            meaningful on a drive that advertises crypto erase in FNA bit 2
+#   normal - format with a user data erase (--ses=1)
+# Each falls back to `format --ses=1`, which every compliant drive supports and
+# which NIST SP 800-88r1 counts as Purge for NVMe. A bare `nvme format` with no
+# --ses is NOT an erase (SES defaults to 0, "no secure erase requested") and is
+# never used here. See docs/adr/0008-secure-wipe-by-device-class.md
+#
+# $1 is the disk (e.g. /dev/nvme0n1)
+# $2 is the wipe mode (fast|normal|full)
+nvmeSecureErase() {
+    local disk="$1" mode="$2"
+    if [[ $mode == "full" ]] && nvmeSanitizeSupported "$disk" 2; then
+        echo " * Erasing $disk with an NVMe sanitize block erase (sanact 2)"
+        echo "   Sanitize cannot be canceled once started; it will resume after a power cycle."
+        nvmeSanitize "$disk" 2
+        local rc=$?
+        [[ $rc -eq 0 ]] && return 0
+        if [[ $rc -eq 2 ]]; then
+            # The sanitize started and we cannot see how it ended. Falling back to
+            # format here is pointless -- the controller prohibits it while a
+            # sanitize runs ("Sanitize In Progress", 0x1d) -- and reporting "the
+            # data is still there" would be a lie: the erase is most likely still
+            # going. Report the one honest thing, which is that we do not know.
+            echo ""
+            echo " *** The sanitize of $disk started but could not be confirmed ***"
+            echo "   Do NOT assume this disk is erased. Do NOT assume it still holds its"
+            echo "   data either. A sanitize cannot be canceled and resumes across power"
+            echo "   cycles, so it may still be running, or may already have finished."
+            echo "   Check the drive itself before trusting or reusing it:"
+            echo "       nvme sanitize-log $(nvmeCtrlOf "$disk")"
+            echo "   Status 1 or 4 means it completed and the disk is erased."
+            echo ""
+            return 1
+        fi
+        echo " * Falling back to a format user data erase"
+    fi
+    local ses=1 what="user data erase"
+    # FNA (id-ctrl) bit 2 set means the controller supports cryptographic erase.
+    if [[ $mode == "fast" ]]; then
+        local fna=$(nvme id-ctrl "$(nvmeCtrlOf "$disk")" -o json 2>/dev/null | jq -r '.fna // empty' 2>/dev/null)
+        if [[ -n $fna && $fna == +([0-9]) && $((fna & 4)) -ne 0 ]]; then
+            ses=2
+            what="cryptographic erase"
+        else
+            echo " * $disk does not advertise cryptographic erase; using a user data erase instead"
+        fi
+    fi
+    dots "Erasing $disk (nvme format --ses=$ses, $what)"
+    local err=""
+    if ! err=$(nvme format "$disk" --ses="$ses" --force 2>&1 >/dev/null); then
+        echo "Failed"
+        echo " * nvme format failed: ${err:-no error reported}"
+        return 1
+    fi
+    echo "Done"
+    return 0
+}
+# Wipes the disk passed according to the wipe mode passed, choosing the primitive
+# that actually erases that class of device. Returns 0 only when the wipe is
+# confirmed to have run; non-zero otherwise, so the caller must never report
+# success without checking. See docs/adr/0008-secure-wipe-by-device-class.md
+#
+#   nvme        - always the drive's own erase engine (nvmeSecureErase)
+#   ssd/unknown - overwrite, with a loud warning that wear levelling and
+#                 over-provisioning make this NOT a guaranteed erase
+#   hdd         - overwrite, which is a real erase on rotational media
+#
+# fast is a metadata-only wipe on every non-NVMe class: it destroys the partition
+# table so the disk looks blank, and does not pretend to be a secure erase.
+#
+# $1 is the disk (e.g. /dev/sda)
+# $2 is the wipe mode (fast|normal|full)
+wipeDisk() {
+    local disk="$1" mode="$2"
+    # Validate the mode before dispatching anywhere: an unknown or empty mode is
+    # a malformed task, and guessing a destructive action on one is its own
+    # hazard. Must stay ahead of the nvme branch below, which would otherwise
+    # erase on any mode it doesn't recognise.
+    case $mode in
+        fast|normal|full) ;;
+        *)
+            echo " * Refusing to wipe $disk: unknown wipe mode \"$mode\""
+            return 1
+            ;;
+    esac
+    local class=$(diskClass "$disk")
+    [[ $class == "nvme" ]] && { nvmeSecureErase "$disk" "$mode"; return $?; }
+    if [[ $class != "hdd" && $mode != "fast" ]]; then
+        echo ""
+        echo " *** WARNING: $disk is a solid-state device (class: $class) ***"
+        echo "   Overwriting an SSD is NOT a guaranteed erase: wear levelling and"
+        echo "   over-provisioning keep copies of your data in blocks that no"
+        echo "   overwrite can address. Data may remain recoverable afterwards."
+        echo "   Use the drive's own secure erase (ATA sanitize/secure erase) for a"
+        echo "   guaranteed wipe of this device."
+        echo ""
+    fi
+    case $mode in
+        full)
+            echo " * Starting full disk wipe of $disk using shred (3 passes, then zeros)"
+            shred -f -v -z -n 3 "$disk" || return 1
+            ;;
+        normal)
+            echo " * Starting normal disk wipe of $disk using shred (1 pass)"
+            shred -f -v -n 1 "$disk" || return 1
+            ;;
+        fast)
+            echo " * Writing zeros to the start of $disk (metadata only, NOT a secure erase)"
+            dd if=/dev/zero of="$disk" bs=512 count=100000 || return 1
+            ;;
+    esac
+    return 0
+}
 # Emits (on stdout) one device-class-specific line for the sector-size-mismatch
 # refusal, telling the operator whether this class of target could ever match the
 # image's sector size and where the fix lives if so. Emits nothing for classes

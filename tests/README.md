@@ -45,6 +45,12 @@ tests/checks/fill-engine.sh   # the whole-disk fill engine (processSfdisk +
                               # alive, the GPT backup-header clamp holds, and an
                               # unusable computed table aborts instead of being
                               # written
+tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
+                              # device class (NVMe/SSD/HDD) and mode
+                              # (fast/normal/full), never issues an `nvme format`
+                              # without an explicit --ses, warns that overwriting
+                              # an SSD is not a guaranteed erase, and refuses
+                              # instead of reporting a wipe that did not run
 ```
 
 Like the golden harness, these source a sandbox copy of the library with its
