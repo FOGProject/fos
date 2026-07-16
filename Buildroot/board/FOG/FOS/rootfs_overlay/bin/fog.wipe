@@ -12,28 +12,14 @@ echo -e "      $hd\n"
 echo -e " You have $seconds seconds to turn off this computer to cancel!\n"
 usleep $((seconds * 1000000))
 
-[[ $hd == *[Nn][Vv][Mm][Ee]* ]] && wipemode="nvme"
+# fastwipe is a legacy alias for fast. An empty or unknown mode is not defaulted:
+# wipeDisk refuses it, so a malformed task fails loudly instead of either wiping
+# a disk nobody asked to wipe or reporting a wipe that never ran.
+[[ $wipemode == "fastwipe" ]] && wipemode="fast"
 
-case $wipemode in
-    nvme)
-        echo -e " Starting disk wipe of $hd using nvme format...\n"
-        usleep 10000000
-        nvme format $hd --force
-        ;;
-    full)
-        echo -e " Starting full disk wipe of $hd using shred...\n"
-        usleep 10000000
-        shred -f -v -z -n 3 "$hd"
-        ;;
-    normal)
-        echo -e " Starting normal disk wipe of $hd using shred...\n"
-        usleep 10000000
-        shred -f -v -n 1 "$hd"
-        ;;
-    fast|fastwipe)
-        echo " Writing zeros to start of $hd"
-        dd if=/dev/zero of="$hd" bs=512 count=100000
-        ;;
-esac
+[[ $wipemode != "fast" ]] && usleep 10000000
+if ! wipeDisk "$hd" "$wipemode"; then
+    handleError "The wipe of $hd did NOT complete. ($0)\n   Mode: $wipemode\n   This disk still holds its data; do not treat it as erased."
+fi
 echo -e "\n Wiping complete.\n"
 . /bin/fog.nonimgcomplete
