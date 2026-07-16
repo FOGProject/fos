@@ -51,18 +51,35 @@ mkdir -p "$STUBBIN"
 # $FAKE_FMT_FAIL. sanitize fails to start if $FAKE_SAN_START_FAIL. sanitize-log
 # replays whitespace-separated $FAKE_SSTAT_SEQ values, one per poll, so a test can
 # model in-progress -> completed, or a mid-sanitize failure.
+#
+# The JSON below is the REAL nvme-cli 2.x shape, transcribed from the source that
+# emits it (nvme-print-json.c:json_sanitize_log, unchanged between 2.15 -- what
+# Buildroot pins -- and 2.16). Getting this wrong is not hypothetical: this stub
+# used to emit an invented flat {"sstat":2,"sprog":N}, every case here passed
+# against it, and the real parse failed on the first poll of a real drive, because
+# the payload is nested under a device key and sstat is an object whose status is
+# a string. A stub that encodes our assumption tests nothing. If these fields ever
+# need to change, change them to match captured output from a real drive.
 cat > "$STUBBIN/nvme" <<'EOF'
 #!/bin/bash
 echo "nvme $*" >> "$SANDBOX/calls"
 case "$1" in
     id-ctrl)
+        # id-ctrl really is flat at the root, unlike sanitize-log.
         printf '{"sanicap":%s,"fna":%s}\n' "${FAKE_SANICAP:-0}" "${FAKE_FNA:-0}"
         ;;
     format)
-        [[ -n $FAKE_FMT_FAIL ]] && exit 1
+        [[ -n $FAKE_FMT_FAIL ]] && { echo "NVMe status: SANITIZE_IN_PROGRESS(1d)" >&2; exit 1; }
         ;;
     sanitize)
-        [[ -n $FAKE_SAN_START_FAIL ]] && exit 1
+        # --sanact=1 is Exit Failure Mode (recovery), not an erase; it must still
+        # work when $FAKE_SAN_START_FAIL models an erase being refused. It fails
+        # only under its own knob, $FAKE_SAN_EXIT_FAIL.
+        if [[ $* == *"--sanact=1"* ]]; then
+            [[ -n $FAKE_SAN_EXIT_FAIL ]] && { echo "NVMe status: INTERNAL(6)" >&2; exit 1; }
+            exit 0
+        fi
+        [[ -n $FAKE_SAN_START_FAIL ]] && { echo "NVMe status: INVALID_FIELD(2)" >&2; exit 1; }
         : > "$SANDBOX/san_started"
         ;;
     sanitize-log)
@@ -73,26 +90,18 @@ case "$1" in
         eval "val=\${$idx}"
         [[ -z $val ]] && val="${@: -1}"
         [[ $val == "BADLOG" ]] && { echo '{}'; exit 0; }
-        printf '{"sstat":%s,"sprog":32768}\n' "$val"
+        printf '{"/dev/nvme0":{"sprog":32768,"sstat":{"media_verification_canceled":0,"global_erased":0,"no_cmplted_passes":0,"status":"(%s) stub status."},"cdw10_info":2}}\n' "$val"
         ;;
 esac
 exit 0
 EOF
 chmod +x "$STUBBIN/nvme"
 
-# jq is used to parse the nvme JSON; the dev host has a real one. Fall back to a
-# minimal shim only if it's absent, so the harness runs on a bare box too.
-if ! command -v jq >/dev/null 2>&1; then
-    cat > "$STUBBIN/jq" <<'EOF'
-#!/bin/bash
-field="${2##*.}"; field="${field%% *}"
-input=$(cat)
-val=$(printf '%s' "$input" | sed -n "s/.*\"$field\":\([0-9]*\).*/\1/p")
-[[ -z $val ]] && exit 0
-printf '%s\n' "$val"
-EOF
-    chmod +x "$STUBBIN/jq"
-fi
+# jq parses the nvme JSON, and the harness needs a real one: the sanitize log is
+# nested and its status is a string, which a sed-based shim cannot honestly
+# extract. A shim that half-parses would be the same trap as the flat-JSON stub
+# above -- it would pass while the real thing failed. Require the real tool.
+command -v jq >/dev/null 2>&1 || { echo "ERROR: this harness needs jq (FOS ships BR2_PACKAGE_JQ)" >&2; exit 2; }
 
 # shred/dd doubles: log argv, fail if the matching FAKE_*_FAIL knob is set.
 for tool in shred dd; do
@@ -124,7 +133,7 @@ run_case() {
         set +u
         export PATH="$STUBBIN:$PATH"
         export SANDBOX="$SANDBOX"
-        export FAKE_SANICAP FAKE_FNA FAKE_FMT_FAIL FAKE_SAN_START_FAIL FAKE_SSTAT_SEQ FAKE_SHRED_FAIL FAKE_DD_FAIL
+        export FAKE_SANICAP FAKE_FNA FAKE_FMT_FAIL FAKE_SAN_START_FAIL FAKE_SAN_EXIT_FAIL FAKE_SSTAT_SEQ FAKE_SHRED_FAIL FAKE_DD_FAIL
         . "$SANDBOX/funcs.sh"
         handleError() { echo "ABORT: $*"; }
         if wipeDisk "$disk" "$mode"; then echo "RC:ok"; else echo "RC:fail"; fi
@@ -145,7 +154,7 @@ run_case() {
     fi
 }
 
-new_case() { FAKE_SANICAP=0; FAKE_FNA=0; FAKE_FMT_FAIL=""; FAKE_SAN_START_FAIL=""; FAKE_SSTAT_SEQ="1"; FAKE_SHRED_FAIL=""; FAKE_DD_FAIL=""; }
+new_case() { FAKE_SANICAP=0; FAKE_FNA=0; FAKE_FMT_FAIL=""; FAKE_SAN_START_FAIL=""; FAKE_SAN_EXIT_FAIL=""; FAKE_SSTAT_SEQ="1"; FAKE_SHRED_FAIL=""; FAKE_DD_FAIL=""; }
 
 # --- device classification ---
 
@@ -204,19 +213,63 @@ new_case; FAKE_SANICAP=2; FAKE_SAN_START_FAIL=1
 run_case "nvme full, sanitize rejected -> falls back to format --ses=1" /dev/nvme0n1 full ok \
     "format /dev/nvme0n1 --ses=1"
 
-# 7. Sanitize starts then reports failure (sstat 3) -> fall back to format.
+# 7. Sanitize starts then reports failure (sstat 3). A failed sanitize leaves the
+# controller aborting commands with "Sanitize Failed" (0x1c) until a recovery
+# action completes, so the format fallback is only reachable after Exit Failure
+# Mode (--sanact=1) is issued.
+new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 3"
+run_case "nvme full, sanitize fails mid-run -> exits failure mode first" /dev/nvme0n1 full ok \
+    "sanitize /dev/nvme0 --sanact=1"
+
+# 7b. ...and then does fall back to a real erase.
 new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 3"
 run_case "nvme full, sanitize fails mid-run -> falls back to format --ses=1" /dev/nvme0n1 full ok \
     "format /dev/nvme0n1 --ses=1"
+
+# 7c. If the failure mode cannot be cleared, a format would just be rejected too,
+# so we must refuse rather than issue one and report its failure as the wipe's.
+new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 3"; FAKE_SAN_EXIT_FAIL=1
+run_case "nvme full, failure mode won't clear -> refuse, no format" /dev/nvme0n1 full fail "" "format"
 
 # 8. Sanitize completes with forced deallocation (sstat 4) -> success.
 new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 4"
 run_case "nvme full, sanitize completes with forced dealloc -> ok" /dev/nvme0n1 full ok \
     "sanitize /dev/nvme0 --sanact=2"
 
-# 9. Unreadable sanitize log -> must not claim success.
-new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 BADLOG"; FAKE_FMT_FAIL=1
-run_case "nvme full, unparseable sanitize log + failed format -> refuse" /dev/nvme0n1 full fail
+# 8b. A confirmed sanitize must never be followed by a format. The drive is
+# already erased; the only reason to issue one would be a misread log.
+new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 2 1"
+run_case "nvme full, sanitize completes -> no format afterwards" /dev/nvme0n1 full ok "" "format"
+
+# 9. Unreadable sanitize log AFTER the sanitize started. The regression this
+# harness missed: the log parse failed on the first poll, the code called that
+# "sanitize failed", and fell back to a format that the controller rejects with
+# "Sanitize In Progress" (0x1d) -- then told the operator the disk still held its
+# data while it was in fact being erased. Must refuse, and must NOT issue a
+# format: once a sanitize is running, no format can be meaningful.
+new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 BADLOG"
+run_case "nvme full, unreadable log mid-sanitize -> refuse, no format" /dev/nvme0n1 full fail "" "format"
+
+# 9b. The same, unreadable from the very first poll -- the exact shape of the
+# field-name mismatch that shipped.
+new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="BADLOG"
+run_case "nvme full, log unreadable from first poll -> refuse, no format" /dev/nvme0n1 full fail "" "format"
+
+# 9c. An unconfirmable sanitize must not tell the operator the data survived.
+# That claim was wrong precisely when it mattered most.
+new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="BADLOG"
+UNCONF_OUT="$(
+    set +u; export PATH="$STUBBIN:$PATH" SANDBOX="$SANDBOX"
+    export FAKE_SANICAP FAKE_SSTAT_SEQ
+    . "$SANDBOX/funcs.sh"; wipeDisk /dev/nvme0n1 full
+)"
+if [[ $UNCONF_OUT == *"could not be confirmed"* && $UNCONF_OUT == *"nvme sanitize-log /dev/nvme0"* ]]; then
+    echo "PASS: unconfirmable sanitize reports unknown, not \"data intact\""
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: unconfirmable sanitize did not tell the operator how to check the drive"
+    FAIL=$((FAIL + 1))
+fi
 
 # 10. The format itself fails -> refuse. This is the fail-loud case: the old code
 # ignored the exit status and printed "Wiping complete."

@@ -55,7 +55,7 @@ one call, and a `handleError` when it returns non-zero.
 
 | class | `fast` | `normal` | `full` |
 |---|---|---|---|
-| nvme | `format --ses=2` (crypto erase) if FNA bit 2, else `--ses=1` | `format --ses=1` | `sanitize --sanact=2` if SANICAP bit 1, else `format --ses=1` |
+| nvme | `format --ses=2` (crypto erase) if FNA bit 2, else `--ses=1` | `format --ses=1` | `sanitize --sanact=2` if SANICAP bit 1, else `format --ses=1`; see the fallback rules below |
 | ssd / unknown | `dd` zeros over metadata | `shred -n 1` **+ warning** | `shred -n 3 -z` **+ warning** |
 | hdd | `dd` zeros over metadata | `shred -n 1` | `shred -n 3 -z` |
 
@@ -88,9 +88,33 @@ issued, and the operator is told so on screen.
 Falling back from sanitize to `format --ses=1` is safe *because both are a real
 erase*. The fallback downgrades thoroughness, never to "no erase" — and the path
 taken is printed. We probe SANICAP **before** issuing sanitize precisely so that
-an unsupported drive never starts one; once sanitize has started, an unreadable
-log is a hard failure rather than a fallback, since the drive's state is no longer
-ours to reason about.
+an unsupported drive never starts one.
+
+But the fallback is only available **while no sanitize is running**, and this is
+a hard rule rather than a preference. Once the controller accepts a sanitize it
+will reject `format` with `SANITIZE_IN_PROGRESS (0x1d)` — the fallback cannot
+succeed, so attempting it converts a probably-fine wipe into a reported failure.
+`nvmeSanitize()` therefore has a three-value contract:
+
+| rc | meaning | caller must |
+|---|---|---|
+| 0 | sanitize confirmed complete (SSTAT 1 or 4) | return success |
+| 1 | no sanitize is running — rejected outright, or failed and failure mode cleared | fall back to `format --ses=1` |
+| 2 | sanitize started but its outcome is unconfirmable | **not** fall back, and **not** claim the data survived |
+
+Only rc 1 may fall back. The rc 2 case is the interesting one: because a sanitize
+cannot be canceled and resumes across power cycles, a drive whose log we can no
+longer read is not "unwiped" — it is *unknown*, and most likely still working.
+Reporting either "erased" or "still holds its data" would be a guess. FOS prints
+neither, and instead tells the operator to read `nvme sanitize-log` on the drive
+itself, where SSTAT 1 or 4 is proof of completion.
+
+Recovering from a *failed* sanitize (SSTAT 3) needs one extra step before the
+fallback is legal. Status `0x1c` is defined as "the most recent sanitize
+operation failed and **no recovery action has been successfully completed**",
+which blocks `format` just as an in-progress sanitize does. `nvmeSanitize()`
+issues `sanitize --sanact=1` (Exit Failure Mode) and only returns rc 1 if that
+clears; if it doesn't, the drive is left alone and the wipe refuses.
 
 A bare `nvme format` with no `--ses` is never issued by any path.
 `tests/checks/wipe.sh` asserts this directly, and a negative-control run
@@ -161,7 +185,9 @@ issues a format without an explicit `--ses`, and asserts that every primitive's
 failure refuses rather than reports completion. Negative-control runs confirm
 each fix is load-bearing: restoring the bare `nvme format --force` fails 6 cases,
 swallowing the format exit status fails 2, swallowing `shred`'s exit status fails
-1, and moving the mode validation back behind the NVMe dispatch fails 4.
+1, moving the mode validation back behind the NVMe dispatch fails 4, reverting the
+sanitize-log parse fails 5, and allowing a format fallback after a sanitize has
+started fails 3.
 
 That last control guards a non-obvious ordering constraint found while writing
 these tests. `nvmeSecureErase()` treats any mode it does not recognise as
@@ -170,9 +196,42 @@ placed after the class dispatch — the natural reading order — an unknown mod
 refused on `/dev/sda` but *erased* `/dev/nvme0n1`. The mode check must stay ahead
 of the dispatch, and the two NVMe cases pin it there.
 
-**Not yet validated on real hardware.** The harness stubs `nvme-cli`, so it
-proves which commands FOS issues and how it reacts to their exit statuses — it
-cannot prove that a physical drive erases, nor that the `sanitize-log` JSON field
-names (`sstat`, `sprog`, `sanicap`, `fna`) match every nvme-cli build in the
-field. The sanitize polling loop in particular has never run against a real
-controller. Both want a pass on NVMe hardware before this is relied on.
+## The sanitize poll was wrong, and the stub hid it
+
+The caveat originally recorded here — that the harness "cannot prove the
+`sanitize-log` JSON field names match every nvme-cli build" — fired on the first
+hardware test. It is worth keeping the post-mortem rather than just the fix.
+
+The poll parsed `jq -r '.sstat // empty'`, expecting `{"sstat":2,"sprog":32768}`.
+What nvme-cli actually emits is three things different at once:
+
+```json
+{"/dev/nvme0":{"sprog":32768,"sstat":{"status":"(2) Sanitize in Progress.", ...}}}
+```
+
+The object is nested under a device-name key, `sstat` is an object rather than an
+integer, and the status is a *string* with the code in parentheses. So `.sstat`
+was null on the very first poll, `nvmeSanitize()` bailed, the code fell back to
+`format`, the controller rejected it with `0x1d`, and the operator was told **"This
+disk still holds its data"** about a drive that was — as far as anyone can tell —
+sanitizing correctly. The one message worse than a wrong wipe is a wrong verdict
+about a wipe, and this produced the exact inversion.
+
+The important part is why 24 green tests didn't catch it: **the stub was written
+from the same assumption as the parser.** It printed the flat shape I believed
+nvme-cli emitted, so the tests confirmed the code agreed with me, not with
+nvme-cli. A test double authored from the same misreading as the code under test
+proves nothing, and does it convincingly. The stub is now transcribed from
+`json_sanitize_log()` in nvme-cli's `nvme-print-json.c` (identical in 2.15, which
+FOS ships, and 2.16), and the harness hard-requires real `jq` rather than a sed
+shim that would reintroduce the same "half-right parser" hazard.
+
+Verified against the emitting source, not against a drive: `id-ctrl` really is
+flat (`sanicap` and `fna` sit at the root), so those probes needed no change.
+
+**Still not validated on real hardware.** The harness stubs `nvme-cli`, so it
+proves which commands FOS issues and how it reacts to their exit statuses; it
+cannot prove that a physical drive erases. The corrected polling loop has been
+reasoned from nvme-cli's source and pinned by tests, but has still not completed a
+real sanitize end to end. It wants a pass on NVMe hardware before this is relied
+on — and the lesson above is that its previous version wanted one too.

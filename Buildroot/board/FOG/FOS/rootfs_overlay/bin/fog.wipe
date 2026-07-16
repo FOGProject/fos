@@ -19,7 +19,7 @@ usleep $((seconds * 1000000))
 
 [[ $wipemode != "fast" ]] && usleep 10000000
 if ! wipeDisk "$hd" "$wipemode"; then
-    handleError "The wipe of $hd did NOT complete. ($0)\n   Mode: $wipemode\n   This disk still holds its data; do not treat it as erased."
+    handleError "The wipe of $hd did NOT complete. ($0)\n   Mode: $wipemode\n   Do not treat this disk as erased; see the messages above for what ran."
 fi
 echo -e "\n Wiping complete.\n"
 . /bin/fog.nonimgcomplete

@@ -2206,42 +2206,104 @@ nvmeSanitizeSupported() {
     [[ -z $sanicap || $sanicap != +([0-9]) ]] && return 1
     [[ $((sanicap & bit)) -ne 0 ]]
 }
+# Reports (on stdout) the SSTAT status code of the most recent sanitize on the
+# controller passed, or nothing if the log cannot be read or parsed.
+#
+# The sanitize log JSON is NOT flat. nvme-cli nests the whole payload under a
+# device-name key, makes sstat an object, and renders its status as a string with
+# the code in parentheses:
+#
+#   {"/dev/nvme0":{"sprog":32768,"sstat":{"global_erased":0,"no_cmplted_passes":0,
+#                                         "status":"(2) Sanitize in Progress."}}}
+#
+# Hence the `.[]` (the device key is not knowable up front) and the leading-int
+# extraction. The status value is already masked to SSTAT bits 2:0 by nvme-cli, so
+# it needs no further masking here.
+#
+# $1 is the sanitize log JSON
+nvmeSanitizeStatus() {
+    local status=$(echo "$1" | jq -r '.[] | .sstat.status // empty' 2>/dev/null)
+    [[ $status =~ ^\(([0-9]+)\) ]] && echo "${BASH_REMATCH[1]}"
+}
 # Runs an NVMe sanitize of the action given against the controller behind the
-# namespace passed and blocks until it finishes. Returns 0 only when the sanitize
-# log confirms it completed; non-zero on a rejected command, a failed sanitize, or
-# an unreadable log.
+# namespace passed and blocks until it finishes.
+#
+# Returns:
+#   0 - the sanitize log confirms the erase completed
+#   1 - the sanitize is NOT running and the drive accepts other commands, so the
+#       caller may safely fall back to a format-based erase. Either the controller
+#       rejected the sanitize outright, or it failed and was recovered below.
+#   2 - the sanitize STARTED but its outcome cannot be confirmed. The caller must
+#       NOT fall back to format and must NOT tell the operator the data survived.
+#       Neither claim is safe: see nvmeSecureErase().
 #
 # Sanitize is asynchronous and, unlike format, is NOT cancelable: once started it
 # persists across power cycles and the drive stays busy until it completes. The
 # caller must therefore do its power-off-to-cancel countdown BEFORE calling this.
-# SSTAT bits 2:0: 1 = completed, 2 = in progress, 3 = failed, 4 = completed with
-# forced deallocation. SPROG is progress out of 65536.
+# SSTAT status: 0 = never sanitized, 1 = completed, 2 = in progress, 3 = failed,
+# 4 = completed with forced deallocation. SPROG is progress out of 65536.
 #
 # $1 is the disk (e.g. /dev/nvme0n1)
 # $2 is the sanact value (2 = block erase, 4 = crypto erase)
 nvmeSanitize() {
     local disk="$1" sanact="$2"
     local ctrl=$(nvmeCtrlOf "$disk")
-    nvme sanitize "$ctrl" --sanact="$sanact" >/dev/null 2>&1 || return 1
-    local log="" sstat="" sprog=""
+    local err=""
+    if ! err=$(nvme sanitize "$ctrl" --sanact="$sanact" 2>&1 >/dev/null); then
+        echo " * $ctrl rejected the sanitize command: ${err:-no error reported}"
+        return 1
+    fi
+    local log="" code="" sprog="" zeros=0
     while :; do
         log=$(nvme sanitize-log "$ctrl" -o json 2>/dev/null)
-        sstat=$(echo "$log" | jq -r '.sstat // empty' 2>/dev/null)
-        [[ -z $sstat || $sstat != +([0-9]) ]] && { printf "\n"; return 1; }
-        case $((sstat & 7)) in
+        code=$(nvmeSanitizeStatus "$log")
+        if [[ -z $code ]]; then
+            printf "\n"
+            echo " * Could not read the sanitize log of $ctrl; the sanitize is still running."
+            return 2
+        fi
+        case $code in
             1|4)
                 printf "\r * Sanitizing %s ... 100%%%-10s\n" "$disk" " "
                 return 0
                 ;;
-            2)
-                sprog=$(echo "$log" | jq -r '.sprog // 0' 2>/dev/null)
+            0|2)
+                # 0 is "never sanitized". The log can still read that way in the
+                # gap between the controller accepting the command and starting
+                # work, so tolerate it briefly -- but not forever, which would
+                # spin for good on a drive that took the command and did nothing.
+                if [[ $code -eq 0 ]]; then
+                    zeros=$((zeros + 1))
+                    if [[ $zeros -gt 12 ]]; then
+                        printf "\n"
+                        echo " * $ctrl accepted the sanitize but never started it"
+                        return 2
+                    fi
+                else
+                    zeros=0
+                fi
+                sprog=$(echo "$log" | jq -r '.[] | .sprog // 0' 2>/dev/null)
                 [[ $sprog != +([0-9]) ]] && sprog=0
                 printf "\r * Sanitizing %s ... %3d%%" "$disk" $((sprog * 100 / 65536))
                 usleep 5000000
                 ;;
+            3)
+                # A failed sanitize leaves the controller aborting commands with
+                # "Sanitize Failed" (0x1c) until a recovery action completes, so a
+                # format fallback would be rejected too. Exit Failure Mode
+                # (sanact=1) is that recovery; it is not itself an erase.
+                printf "\n"
+                echo " * The sanitize of $disk failed; clearing the drive's failure mode"
+                if ! err=$(nvme sanitize "$ctrl" --sanact=1 2>&1 >/dev/null); then
+                    echo " * Could not clear the failure mode of $ctrl: ${err:-no error reported}"
+                    return 2
+                fi
+                return 1
+                ;;
             *)
                 printf "\n"
-                return 1
+                echo " * $ctrl reported an unknown sanitize status ($code)"
+                return 2
                 ;;
         esac
     done
@@ -2269,8 +2331,27 @@ nvmeSecureErase() {
     if [[ $mode == "full" ]] && nvmeSanitizeSupported "$disk" 2; then
         echo " * Erasing $disk with an NVMe sanitize block erase (sanact 2)"
         echo "   Sanitize cannot be canceled once started; it will resume after a power cycle."
-        nvmeSanitize "$disk" 2 && return 0
-        echo " * Sanitize failed; falling back to a format user data erase"
+        nvmeSanitize "$disk" 2
+        local rc=$?
+        [[ $rc -eq 0 ]] && return 0
+        if [[ $rc -eq 2 ]]; then
+            # The sanitize started and we cannot see how it ended. Falling back to
+            # format here is pointless -- the controller prohibits it while a
+            # sanitize runs ("Sanitize In Progress", 0x1d) -- and reporting "the
+            # data is still there" would be a lie: the erase is most likely still
+            # going. Report the one honest thing, which is that we do not know.
+            echo ""
+            echo " *** The sanitize of $disk started but could not be confirmed ***"
+            echo "   Do NOT assume this disk is erased. Do NOT assume it still holds its"
+            echo "   data either. A sanitize cannot be canceled and resumes across power"
+            echo "   cycles, so it may still be running, or may already have finished."
+            echo "   Check the drive itself before trusting or reusing it:"
+            echo "       nvme sanitize-log $(nvmeCtrlOf "$disk")"
+            echo "   Status 1 or 4 means it completed and the disk is erased."
+            echo ""
+            return 1
+        fi
+        echo " * Falling back to a format user data erase"
     fi
     local ses=1 what="user data erase"
     # FNA (id-ctrl) bit 2 set means the controller supports cryptographic erase.
@@ -2284,8 +2365,10 @@ nvmeSecureErase() {
         fi
     fi
     dots "Erasing $disk (nvme format --ses=$ses, $what)"
-    if ! nvme format "$disk" --ses="$ses" --force >/dev/null 2>&1; then
+    local err=""
+    if ! err=$(nvme format "$disk" --ses="$ses" --force 2>&1 >/dev/null); then
         echo "Failed"
+        echo " * nvme format failed: ${err:-no error reported}"
         return 1
     fi
     echo "Done"
