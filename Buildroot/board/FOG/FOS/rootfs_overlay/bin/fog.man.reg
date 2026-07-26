@@ -327,6 +327,17 @@ while [[ -z $askme ]]; do
                         echo " * Error: Invalid Login! ($retry remaining)"
                         let retry-=1
                         ;;
+                    '#!rl')
+                        # The server rate limits this endpoint after
+                        # repeated bad credentials and answers '#!rl'
+                        # until the window expires. Without this case it
+                        # fell through to "Unexpected response from
+                        # server", which sends the user looking for a
+                        # network fault instead of waiting.
+                        echo
+                        echo " * Error: Too many failed logins. Wait a few minutes and try again."
+                        let retry-=1
+                        ;;
                     *)
                         echo
                         echo " * Error: Unexpected response from server ($retry remaining)"
