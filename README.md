@@ -66,3 +66,27 @@ The `build.sh` script has usage flags that are used to build the inits/kernels. 
 ```
 /path/to/fos/repo/build.sh -nka arm64
 ```
+
+# USB Boot Image
+Some machines can't PXE boot reliably. `create-usb-image.sh` builds a bootable USB image (`fos-usb.img`) that boots straight into the same FOG menu (deploy/capture, registration, memtest, debug kernel) without needing PXE at all.
+
+Every release published on GitHub automatically gets a `fos-usb.img` attached via the `make_usb.yml` workflow — you normally don't need to build it yourself.
+
+#### Writing the image to a USB stick
+```
+dd if=fos-usb.img of=/dev/sdX bs=1M
+```
+Replace `/dev/sdX` with your USB stick's device name. Double-check this — writing to the wrong device destroys its data.
+
+#### Pointing it at your FOG server
+The image defaults to `http://fog` as the FOG server address. Edit `boot/grub/grub.cfg` on the USB stick's FAT32 partition (any OS, any text editor) and change:
+```
+set myfogip=http://fog
+```
+to your FOG server's actual IP or hostname. This can be done any time after writing the image — no need to rebuild it.
+
+#### Building it manually
+```
+./create-usb-image.sh <base URL for downloading bzImage and init.xz>
+```
+Requires `grub-efi-amd64`, `parted`, and `kpartx`. Produces `/tmp/fos-usb.img`.

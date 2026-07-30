@@ -56,6 +56,25 @@ Where /dev/sdX is the device name of your USB stick. Be very careful with this c
 
 Once you have written the image to the USB stick, you can boot the target system from the USB stick. The system will boot into a FOG menu that will allow you to capture an image, deploy an image, register a host, or run a memory test.
 
+CHANGING THE FOG SERVER ADDRESS
+
+boot/grub/grub.cfg on this drive is a plain text file, not baked into the bootloader binary. Plug the USB stick into any PC, mount its (only) FAT32 partition, and edit boot/grub/grub.cfg with any text editor:
+
+  set myfogip=http://fog
+
+Change "fog" to the IP address or hostname of your FOG server, save, and re-insert the stick. No need to recreate the image.
+
+BOOT MENU OPTIONS
+
+1. FOG Image Deploy/Capture    - normal imaging menu, same as PXE
+2. Full Host Registration and Inventory
+3. Quick Registration and Inventory
+4. Client System Information (Compatibility)
+5. Run Memtest86+
+6. FOG Debug Kernel            - verbose logging, for troubleshooting
+7. FOG iPXE Jumpstart BIOS
+8. FOG iPXE Jumpstart EFI
+
 EOF
 
 echo Create the grub configuration file
