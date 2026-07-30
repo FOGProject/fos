@@ -1,15 +1,15 @@
-Binary files chntpw-140201/chntpw.static and chntpw-140201_new/chntpw.static differ
-diff -rupN chntpw-140201/Makefile chntpw-140201_new/Makefile
---- chntpw-140201/Makefile	2014-02-01 11:54:37.000000000 -0500
-+++ chntpw-140201_new/Makefile	2014-03-06 21:17:44.603673531 -0500
-@@ -7,13 +7,8 @@
+diff --git a/Makefile b/Makefile
+index 6b4531e..9be0b0e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -7,13 +7,9 @@
  #
  
  #SSLPATH=/usr/local/ssl
 -OSSLPATH=/usr
 +OSSLPATH=../../.././output/target/usr
  OSSLINC=$(OSSLPATH)/include
--
+ 
 -CC=gcc
 -
 -# Force 32 bit
@@ -17,13 +17,13 @@ diff -rupN chntpw-140201/Makefile chntpw-140201_new/Makefile
  OSSLLIB=$(OSSLPATH)/lib
  
  # 64 bit if default for compiler setup
-@@ -26,37 +21,22 @@ OSSLLIB=$(OSSLPATH)/lib
+@@ -26,36 +22,23 @@ OSSLLIB=$(OSSLPATH)/lib
  LIBS=-L$(OSSLLIB)
  
  
 -all: chntpw chntpw.static cpnt reged reged.static samusrgrp samusrgrp.static sampasswd sampasswd.static
--
 +all: chntpw cpnt reged samusrgrp sampasswd
+ 
  chntpw: chntpw.o ntreg.o edlib.o libsam.o
  	$(CC) $(CFLAGS) -o chntpw chntpw.o ntreg.o edlib.o libsam.o $(LIBS)
  
@@ -52,10 +52,50 @@ diff -rupN chntpw-140201/Makefile chntpw-140201_new/Makefile
 -	$(CC) -static $(CFLAGS) -o sampasswd.static sampasswd.o ntreg.o libsam.o 
 -
 -
--
+ 
  #ts: ts.o ntreg.o
  #	$(CC) $(CFLAGS) -nostdlib -o ts ts.o ntreg.o $(LIBS)
+diff --git a/chntpw-presplit.c b/chntpw-presplit.c
+index 824fed5..a8203b9 100644
+--- a/chntpw-presplit.c
++++ b/chntpw-presplit.c
+@@ -582,7 +582,7 @@ int put_grp_members_sid(int grp, struct sid_array *sarray)
  
-Binary files chntpw-140201/reged.static and chntpw-140201_new/reged.static differ
-Binary files chntpw-140201/sampasswd.static and chntpw-140201_new/sampasswd.static differ
-Binary files chntpw-140201/samusrgrp.static and chntpw-140201_new/samusrgrp.static differ
+      if (gverbose) printf("put_grp_members_sid: ajusted: mofs = %x, mlen = %x (%d)\n", mofs + 0x34 ,mlen,mlen);
+ 
+-     if (gverbose) hexdump(&c->data, 0, c->len, 1);
++     if (gverbose) hexdump((char *)&c->data, 0, c->len, 1);
+ 
+     /* Get total size of new SID data */
+ 
+@@ -610,7 +610,7 @@ int put_grp_members_sid(int grp, struct sid_array *sarray)
+     cd->members_len = sidlen;  /* Update member count in C struct */
+     cd->grp_members = i;
+ 
+-    if (gverbose) hexdump(&c->data, 0, c->len, 1);
++    if (gverbose) hexdump((char *)&c->data, 0, c->len, 1);
+ 
+     if (!put_buf2val(hive[H_SAM], c, 0, g, 0, TPF_VK_EXACT)) {
+       fprintf(stderr,"put_grp_members_sid: could not write back group info in value %s\n",g);
+diff --git a/libsam.c b/libsam.c
+index 2c06c11..0932db7 100644
+--- a/libsam.c
++++ b/libsam.c
+@@ -511,7 +511,7 @@ int sam_put_grp_members_sid(struct hive *hdesc, int grp, struct sid_array *sarra
+ 
+      if (gverbose) printf("put_grp_members_sid: ajusted: mofs = %x, mlen = %x (%d)\n", mofs + 0x34 ,mlen,mlen);
+ 
+-     if (gverbose) hexdump(&c->data, 0, c->len, 1);
++     if (gverbose) hexdump((char *)&c->data, 0, c->len, 1);
+ 
+     /* Get total size of new SID data */
+ 
+@@ -539,7 +539,7 @@ int sam_put_grp_members_sid(struct hive *hdesc, int grp, struct sid_array *sarra
+     cd->members_len = sidlen;  /* Update member count in C struct */
+     cd->grp_members = i;
+ 
+-    if (gverbose) hexdump(&c->data, 0, c->len, 1);
++    if (gverbose) hexdump((char *)&c->data, 0, c->len, 1);
+ 
+     if (!put_buf2val(hdesc, c, 0, g, 0, TPF_VK_EXACT)) {
+       fprintf(stderr,"put_grp_members_sid: could not write back group info in value %s\n",g);

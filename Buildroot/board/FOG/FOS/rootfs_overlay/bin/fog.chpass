@@ -7,6 +7,7 @@ disk=""
 hd=""
 parts=""
 part=""
+[[ -z $winuser ]] && handleError "Invalid User Account ($0)\n   Args Passed: $*"
 dots "Creating chntpw partition"
 [[ ! -d /chntpw ]] && mkdir -p /chntpw >/dev/null 2>&1
 if [[ ! -d /chntpw ]]; then
@@ -26,7 +27,6 @@ fi
 echo "$hd"
 debugPause
 sam=""
-getSAMLoc
 getPartitions "$hd"
 for part in $parts; do
     isBitlockedPartition "$part"
@@ -36,6 +36,7 @@ for part in $parts; do
             echo " * Mounting partition $part"
             ntfs-3g -o remove_hiberfile,rw "$part" /chntpw >/tmp/ntfs-mount-output 2>&1
             [[ ! $? -eq 0 ]] && handleError " * Could not mount $part ($0)\n    Args Passed: $*\n     Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
+            getSAMLoc /chntpw
             if [[ ! -f $sam ]]; then
                 echo " * Unable to locate SAM file"
                 debugPause
@@ -43,7 +44,7 @@ for part in $parts; do
                 continue
             fi
             dots "Removing password"
-            chntpw "$sam"
+            chntpw -u "$winuser" "$sam" >/dev/null 2>&1 </usr/share/fog/lib/EOFCHNTPW
             if [[ ! $? -eq 0 ]]; then
                 echo "Failed"
                 debugPause

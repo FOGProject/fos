@@ -1,8 +1,8 @@
 diff --git a/Config.in b/Config.in
-index df43db7eff..8a3e0ac0a4 100644
+index 0bfe6d1ab5..faf578c6d2 100644
 --- a/Config.in
 +++ b/Config.in
-@@ -712,6 +712,24 @@ config BR2_GLOBAL_PATCH_DIR
+@@ -745,6 +745,24 @@ config BR2_GLOBAL_PATCH_DIR
  
  menu "Advanced"
  
@@ -28,20 +28,42 @@ index df43db7eff..8a3e0ac0a4 100644
  	bool "Force the building of host dependencies"
  	help
 diff --git a/package/Makefile.in b/package/Makefile.in
-index 1cedfefa7e..62bcbd3269 100644
+index 5ebb5f9ba8..8701319072 100644
 --- a/package/Makefile.in
 +++ b/package/Makefile.in
-@@ -431,8 +431,9 @@ else ifeq ($(BR2_SHARED_STATIC_LIBS),y)
- SHARED_STATIC_LIBS_OPTS = --enable-static --enable-shared
+@@ -456,7 +456,9 @@ SHARED_STATIC_LIBS_OPTS = --enable-static --enable-shared
  endif
  
--# Used by our binutils patches.
+ # Used by our binutils patches.
 +ifeq ($(BR2_COMPILER_PARANOID_UNSAFE_PATH),y)
  export BR_COMPILER_PARANOID_UNSAFE_PATH=enabled
 +endif
  
  include package/pkg-download.mk
  include package/pkg-autotools.mk
+diff --git a/package/ntfs-3g/ntfs-3g.hash b/package/ntfs-3g/ntfs-3g.hash
+index 3fcba6af4d..45ee0daafd 100644
+--- a/package/ntfs-3g/ntfs-3g.hash
++++ b/package/ntfs-3g/ntfs-3g.hash
+@@ -1,4 +1,4 @@
+ # Locally calculated
+-sha256  f20e36ee68074b845e3629e6bced4706ad053804cbaf062fbae60738f854170c  ntfs-3g_ntfsprogs-2022.10.3.tgz
++sha256  7754f3b32e8baf9c472459b4e9c981e3ae0f5039107cdd8d8201aed0a949008a  ntfs-3g_ntfsprogs-2026.2.25.tgz
+ sha256  231f7edcc7352d7734a96eef0b8030f77982678c516876fcb81e25b32d68564c  COPYING
+ sha256  d7bf9d064ac3e5840f9dd02422b7eeec4f1fd03f37fadbd043602be5e882304f  COPYING.LIB
+diff --git a/package/ntfs-3g/ntfs-3g.mk b/package/ntfs-3g/ntfs-3g.mk
+index 62c515d50f..5a85f4368f 100644
+--- a/package/ntfs-3g/ntfs-3g.mk
++++ b/package/ntfs-3g/ntfs-3g.mk
+@@ -4,7 +4,7 @@
+ #
+ ################################################################################
+ 
+-NTFS_3G_VERSION = 2022.10.3
++NTFS_3G_VERSION = 2026.2.25
+ NTFS_3G_SOURCE = ntfs-3g_ntfsprogs-$(NTFS_3G_VERSION).tgz
+ NTFS_3G_SITE = http://tuxera.com/opensource
+ NTFS_3G_CONF_OPTS = --disable-ldconfig
 diff --git a/support/config-fragments/minimal.config b/support/config-fragments/minimal.config
 index 3430fcce11..71344e2c69 100644
 --- a/support/config-fragments/minimal.config
@@ -53,18 +75,18 @@ index 3430fcce11..71344e2c69 100644
 +BR2_COMPILER_PARANOID_UNSAFE_PATH=y
  BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
 diff --git a/toolchain/toolchain-wrapper.c b/toolchain/toolchain-wrapper.c
-index e436889760..caadda4eb0 100644
+index 5b306190bb..253c90fdea 100644
 --- a/toolchain/toolchain-wrapper.c
 +++ b/toolchain/toolchain-wrapper.c
-@@ -157,6 +157,7 @@ static const struct str_len_s unsafe_opts[] = {
+@@ -147,6 +147,7 @@ static const struct str_len_s unsafe_opts[] = {
   */
  static void check_unsafe_path(const char *arg,
  			      const char *path,
-+				  int paranoid,
++                              int paranoid,
  			      int arg_has_path)
  {
  	const struct str_len_s *p;
-@@ -165,12 +166,14 @@ static void check_unsafe_path(const char *arg,
+@@ -155,12 +156,14 @@ static void check_unsafe_path(const char *arg,
  		if (strncmp(path, p->str, p->len))
  			continue;
  		fprintf(stderr,
@@ -76,22 +98,22 @@ index e436889760..caadda4eb0 100644
  			arg_has_path ? "" : "' '", /* close single-quote, space, open single-quote */
  			arg_has_path ? "" : path); /* so that arg and path are properly quoted. */
 -		exit(1);
-+		if (paranoid)
-+			exit(1);
++                if (paranoid)
++		    exit(1);
  	}
  }
  
-@@ -245,6 +248,8 @@ int main(int argc, char **argv)
+@@ -235,6 +238,8 @@ int main(int argc, char **argv)
  	char *progpath = argv[0];
  	char *basename;
  	char *env_debug;
 +	char *paranoid_wrapper;
 +	int paranoid;
- 	int ret, i, count = 0, debug = 0, found_shared = 0;
+ 	int ret, i, count = 0, debug = 0, found_shared = 0, found_nonoption = 0;
+ 	size_t n_args;
  
- 	/* Debug the wrapper to see arguments it was called with.
-@@ -474,6 +479,12 @@ int main(int argc, char **argv)
- #endif
+@@ -310,6 +315,12 @@ int main(int argc, char **argv)
+ 		}
  	}
  
 +	paranoid_wrapper = getenv("BR_COMPILER_PARANOID_UNSAFE_PATH");
@@ -103,7 +125,7 @@ index e436889760..caadda4eb0 100644
  	/* Check for unsafe library and header paths */
  	for (i = 1; i < argc; i++) {
  		const struct str_len_s *opt;
-@@ -490,9 +501,9 @@ int main(int argc, char **argv)
+@@ -326,9 +337,9 @@ int main(int argc, char **argv)
  				i++;
  				if (i == argc)
  					break;

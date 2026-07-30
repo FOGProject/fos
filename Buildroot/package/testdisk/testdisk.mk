@@ -3,7 +3,7 @@
 # testdisk
 #
 #############################################################
-TESTDISK_VERSION:=7.1
+TESTDISK_VERSION:=7.2
 TESTDISK_SOURCE:=testdisk-$(TESTDISK_VERSION).tar.bz2
 TESTDISK_SITE:=http://www.cgsecurity.org
 TESTDISK_INSTALL_STAGING=YES

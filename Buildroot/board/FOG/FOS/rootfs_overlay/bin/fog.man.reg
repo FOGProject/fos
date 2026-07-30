@@ -327,6 +327,22 @@ while [[ -z $askme ]]; do
                         echo " * Error: Invalid Login! ($retry remaining)"
                         let retry-=1
                         ;;
+                    '#!rl')
+                        # The server rate limits this endpoint after
+                        # repeated bad credentials and answers '#!rl'
+                        # until the window expires. Without this case it
+                        # fell through to "Unexpected response from
+                        # server", which sends the user looking for a
+                        # network fault instead of waiting.
+                        echo
+                        echo " * Error: Too many failed logins. Wait a few minutes and try again."
+                        let retry-=1
+                        ;;
+                    *)
+                        echo
+                        echo " * Error: Unexpected response from server ($retry remaining)"
+                        let retry-=1
+                        ;;
                 esac
             done
             askme="Y"
@@ -340,7 +356,7 @@ done
 dots "Attempting to register host"
 res=""
 while [[ -z $res ]]; do
-    res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&username=$user64&password=$pass64&groupid=$group64&snapinid=$snapin64&productKey=$productKey" ${web}service/auto.register.php 2>/dev/null)
+    res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&ou=$ou64&username=$user64&password=$pass64&groupid=$group64&snapinid=$snapin64&productKey=$productKey" ${web}service/auto.register.php 2>/dev/null)
     echo "$res"
     usleep 2000000
 done

@@ -1,0 +1,6 @@
+config R8126
+    tristate "Realtek 5G Ethernet driver (r8126)"
+    depends on PCI && MII
+    help
+      This is the official Realtek 5G Ethernet driver. 
+

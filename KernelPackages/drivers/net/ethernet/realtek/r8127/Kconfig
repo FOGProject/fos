@@ -1,0 +1,6 @@
+config R8127
+    tristate "Realtek 10G Ethernet driver (r8127)"
+    depends on PCI && MII
+    help
+      This is the official Realtek 10G Ethernet driver. 
+

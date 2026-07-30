@@ -1,0 +1,6 @@
+
+source "drivers/net/ethernet/realtek/r8125/Kconfig"
+source "drivers/net/ethernet/realtek/r8126/Kconfig"
+source "drivers/net/ethernet/realtek/r8127/Kconfig"
+source "drivers/net/ethernet/realtek/r8168/Kconfig"
+

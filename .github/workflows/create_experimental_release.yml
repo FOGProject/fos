@@ -5,27 +5,27 @@ on:
     inputs:
       init_arm64:
         type: boolean
-        default: false
+        default: true
         description: "Create arm64 Init"
       init_x64:
         type: boolean
-        default: false
+        default: true
         description: "Create x64 Init"
       init_x86:
         type: boolean
-        default: false
+        default: true
         description: "Create x86 Init"
       kernel_arm64:
         type: boolean
-        default: false
+        default: true
         description: "Create arm64 kernel"
       kernel_x64:
         type: boolean
-        default: false
+        default: true
         description: "Create x64 kernel"
       kernel_x86:
         type: boolean
-        default: false
+        default: true
         description: "Create x86 kernel"
 
 defaults:
@@ -34,8 +34,8 @@ defaults:
 
 jobs:
   input_checks:
-    runs-on: ubuntu-22.04
-    
+    runs-on: ubuntu-24.04
+
     steps:
       - name: Make sure at least one workflow input is selected
         run: |
@@ -50,15 +50,36 @@ jobs:
             exit 1
           fi
 
+  download_filesystem_packages:
+    needs: input_checks
+
+    if: ${{ inputs.init_arm64 || inputs.init_x64 || inputs.init_x86 }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Restore Buildroot DL cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-dl
+          key: buildroot-dl-${{ hashFiles('**/build.sh') }}
+          restore-keys: |
+            buildroot-dl-
+
+      - name: Download all FS packages
+        run: ./build.sh -i --fs-download-only
+
   build_kernel_arm64:
     needs: input_checks
 
     if: ${{ inputs.kernel_arm64 }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build arm64 kernel
         run: ./build.sh --install-dep -nka arm64
@@ -70,7 +91,7 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distribution-files-kernel-arm64
           path: dist
@@ -80,11 +101,11 @@ jobs:
     needs: input_checks
 
     if: ${{ inputs.kernel_x86 }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build x86 kernel
         run: ./build.sh --install-dep -nka x86
@@ -96,7 +117,7 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distribution-files-kernel-x86
           path: dist
@@ -106,11 +127,11 @@ jobs:
     needs: input_checks
 
     if: ${{ inputs.kernel_x64 }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build x64 kernel
         run: ./build.sh --install-dep -nka x64
@@ -122,21 +143,37 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distribution-files-kernel-x64
           path: dist
           retention-days: 1
 
   build_initrd_arm64:
-    needs: input_checks
+    needs: [input_checks, download_filesystem_packages]
 
     if: ${{ inputs.init_arm64 }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Restore Buildroot DL cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-dl
+          key: buildroot-dl-${{ hashFiles('**/build.sh') }}
+          restore-keys: |
+            buildroot-dl-
+
+      - name: Restore Buildroot CCache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-ccache-arm64
+          key: ccache-arm64-${{ github.run_id }}
+          restore-keys: |
+            ccache-arm64-
 
       - name: Build arm64 initrd
         run: ./build.sh --install-dep -nfa arm64
@@ -148,7 +185,7 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distribution-files-initrd-arm64
           path: dist
@@ -156,21 +193,37 @@ jobs:
 
       - name: Save log file
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Buildroot-logs-arm64
           path: fssourcearm64/buildrootarm64.log
           retention-days: 30
 
   build_initrd_x86:
-    needs: input_checks
+    needs: [input_checks, download_filesystem_packages]
 
     if: ${{ inputs.init_x86 }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Restore Buildroot DL cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-dl
+          key: buildroot-dl-${{ hashFiles('**/build.sh') }}
+          restore-keys: |
+            buildroot-dl-
+
+      - name: Restore Buildroot CCache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-ccache-x86
+          key: ccache-x86-${{ github.run_id }}
+          restore-keys: |
+            ccache-x86-
 
       - name: Build x86 initrd
         run: ./build.sh --install-dep -nfa x86
@@ -182,7 +235,7 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distribution-files-initrd-x86
           path: dist
@@ -190,21 +243,37 @@ jobs:
 
       - name: Save log file
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Buildroot-logs-x86
           path: fssourcex86/buildrootx86.log
           retention-days: 30
 
   build_initrd_x64:
-    needs: input_checks
+    needs: [input_checks, download_filesystem_packages]
 
     if: ${{ inputs.init_x64 }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Restore Buildroot DL cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-dl
+          key: buildroot-dl-${{ hashFiles('**/build.sh') }}
+          restore-keys: |
+            buildroot-dl-
+
+      - name: Restore Buildroot CCache
+        uses: actions/cache@v5
+        with:
+          path: ~/.buildroot-ccache-x64
+          key: ccache-x64-${{ github.run_id }}
+          restore-keys: |
+            ccache-x64-
 
       - name: Build x64 initrd
         run: ./build.sh --install-dep -nfa x64
@@ -216,7 +285,7 @@ jobs:
           if [[ $? -ne 0 ]]; then exit 1; fi
 
       - name: Save distribution files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: distribution-files-initrd-x64
           path: dist
@@ -224,7 +293,7 @@ jobs:
 
       - name: Save log file
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Buildroot-logs-x64
           path: fssourcex64/buildrootx64.log
@@ -246,14 +315,14 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download distribution files
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: distribution-files-*
           merge-multiple: true
@@ -261,11 +330,11 @@ jobs:
 
       - name: Set release name variable
         run: |
-          echo "RELEASE_NAME=Experimental release from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Experimental release from $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_ENV
 
       - name: Set tag name variable
         run: |
-          echo "TAG_NAME=EXP_$(date '+%Y%m%d')" >> $GITHUB_ENV
+          echo "TAG_NAME=EXP_$(date -u '+%Y%m%d-%H%M%S')" >> $GITHUB_ENV
 
       - name: Get Linux Kernel version from build.sh
         run: |
@@ -280,7 +349,7 @@ jobs:
           cd distribution-files
           sha256sum -c ./*.sha256
           if [[ $? -ne 0 ]]; then exit 1; fi
-      
+
       - name: Create release body
         run: |
           release_body_text="WARNING! This is an experimental releases. Backup your previous kernels/inits before installing these.\n\n"
@@ -300,7 +369,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: ${{ env.RELEASE_NAME }}
           body: ${{ env.RELEASE_BODY_TEXT }}

@@ -1,0 +1,6 @@
+config R8125
+    tristate "Realtek 2.5G Ethernet driver (r8125)"
+    depends on PCI && MII
+    help
+      This is the official Realtek 2.5G Ethernet driver. 
+

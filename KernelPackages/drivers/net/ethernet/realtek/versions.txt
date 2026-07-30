@@ -1,0 +1,6 @@
+Realtek download page: https://www.realtek.com/Download/List?cate_id=584
+
+2.5G Ethernet r8125 = 9.016.01 (2025/08/15)
+5G Ethernet r8126 = 10.016.00 (2025/07/01)
+10G Ethernet r8127 = 11.016.00 (2026/03/06)
+GBE Ethernet r8168 = 8.056.02 (2026/01/28)

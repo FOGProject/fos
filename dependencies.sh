@@ -21,6 +21,12 @@ declare -ar common_dependencies=(
     "file"
     "rsync"
     "patch"
+    "unzip"
+    "bzip2"
+    "findutils"
+    "autoconf"
+    "automake"
+    "libtool"
 )
 
 declare -ar deb_dependencies=(
@@ -28,6 +34,7 @@ declare -ar deb_dependencies=(
     "xz-utils"
     "g++"
     "libncurses-dev"
+    "autopoint"
 )
 
 declare -ar rhel_dependencies=(
@@ -36,6 +43,7 @@ declare -ar rhel_dependencies=(
     "xz"
     "gcc-c++"
     "ncurses-devel"
+    "gettext-devel"
 )
 
 
@@ -48,22 +56,23 @@ function __epel_repo_message() {
 
 
 function checkDependencies() {
-    local running_os=$(cat /etc/os-release | grep "^ID=" | cut -d'=' -f2 | tr -d '"')
+    local running_os
+    running_os=$(grep "^ID=" /etc/os-release | cut -d'=' -f2 | tr -d '"')
     package_manager=""
 
     case $running_os in
         "debian" | "ubuntu")
             dependencies=("${common_dependencies[@]}" "${deb_dependencies[@]}")
             package_manager="sudo apt install -y"
-            pkgmgr() {
-                dpkg -l
+            pkginstalled() {
+                dpkg -s "$1" 2> /dev/null | grep -q "^Status:.*ok installed"
             }
             ;;
         "rhel" | "rocky" | "fedora")
             dependencies=("${common_dependencies[@]}" "${rhel_dependencies[@]}")
             package_manager="sudo dnf install -y"
-            pkgmgr() {
-                rpm -qa --qf "ii %{NAME}\n"
+            pkginstalled() {
+                rpm -q --whatprovides "$1" > /dev/null 2>&1
             }
             if [[ $running_os == "rhel" || $running_os == "rocky" ]]; then
                 __epel_repo_message
@@ -78,8 +87,7 @@ function checkDependencies() {
 
     missing_packages=""
     for package in "${dependencies[@]}"; do
-        pkgmgr | awk '{print $2}' | cut -d':' -f1 | grep -qe "${package}"
-        if [[ $? > 0 ]]; then
+        if ! pkginstalled "${package}"; then
             missing_packages="${missing_packages} ${package}"
         fi
     done
@@ -101,7 +109,7 @@ function installDependencies() {
     if [[ -n $missing_packages ]]; then
         echo "Atempting to install missing dependencies..."
         $package_manager "${dependencies[@]}" > /dev/null 2>&1
-        if [[ $? > 0 ]]; then
+        if [[ $? -ne 0 ]]; then
             echo "Failed to install dependencies, please install the packages manually. Exiting now."
             exit 1
         fi
