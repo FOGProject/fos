@@ -317,6 +317,9 @@ jobs:
 
     runs-on: ubuntu-24.04
 
+    outputs:
+      tag_name: ${{ steps.export_tag.outputs.tag_name }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -333,8 +336,11 @@ jobs:
           echo "RELEASE_NAME=Experimental release from $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_ENV
 
       - name: Set tag name variable
+        id: export_tag
         run: |
-          echo "TAG_NAME=EXP_$(date -u '+%Y%m%d-%H%M%S')" >> $GITHUB_ENV
+          TAG_NAME="EXP_$(date -u '+%Y%m%d-%H%M%S')"
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Get Linux Kernel version from build.sh
         run: |
@@ -377,3 +383,12 @@ jobs:
           prerelease: true
           files: |
             distribution-files/*
+
+  add_usb_image:
+    needs: release
+
+    if: needs.release.result == 'success' && inputs.kernel_x64 && inputs.init_x64
+
+    uses: ./.github/workflows/make_usb.yml
+    with:
+      tag_name: ${{ needs.release.outputs.tag_name }}

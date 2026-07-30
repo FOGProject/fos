@@ -4,6 +4,14 @@ on:
   release:
     types:
       - published
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   add-usb-image:
@@ -13,12 +21,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
+      - name: Set tag name
+        run: echo "TAG_NAME=${{ inputs.tag_name || github.event.release.tag_name }}" >> "$GITHUB_ENV"
+
       - name: Create USB Image
         run: |
             sudo apt-get install grub-efi-amd64 parted kpartx
-            sudo ./create-usb-image.sh "https://github.com/${{github.repository}}/releases/download/${{ github.event.release.tag_name }}" 
+            sudo ./create-usb-image.sh "https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}"
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ env.TAG_NAME }}
           files: /tmp/fos-usb.img
