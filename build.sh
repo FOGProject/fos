@@ -20,13 +20,16 @@ Usage() {
     echo -e "\t\t-i --install-dep (optional) Attempt to install dependencies."
     echo -e "\t\t-v --verbose (optional) Show make output on screen for filesystem builds as well as write it to the log file."
     echo -e "\t\t   --fs-download-only (optional) Only download Buildroot source packages for each filesystem."
+    echo -e "\t\t   --sign-key (optional) Private key used to sign the kernel for UEFI Secure Boot."
+    echo -e "\t\t   --sign-cert (optional) Certificate matching --sign-key. Both are required together."
+    echo -e "\t\t                Can also be given as \$FOS_SIGN_KEY / \$FOS_SIGN_CERT."
     echo -e "\t\t-h --help -? Display this message."
     exit 0
 }
 [[ -n "$arch" ]] && unset "$arch"
 
 shortopts="?hkfnia:p:v"
-longopts="help,kernel-only,filesystem-only,noconfirm,install-dep,arch:,path:,verbose,fs-download-only"
+longopts="help,kernel-only,filesystem-only,noconfirm,install-dep,arch:,path:,verbose,fs-download-only,sign-key:,sign-cert:"
 
 optargs=$(getopt -o "$shortopts" -l "$longopts" -n "$0" -- "$@")
 [[ $? -ne 0 ]] && Usage
@@ -76,6 +79,14 @@ while :; do
             buildPath=$2
             shift 2
             ;;
+        --sign-key)
+            signKey=$2
+            shift 2
+            ;;
+        --sign-cert)
+            signCert=$2
+            shift 2
+            ;;
         --)
             shift
             break
@@ -94,6 +105,28 @@ done
 [[ -z $installDep ]] && installDep="n"
 [[ -z $verbose ]] && verbose="n"
 [[ -z $fsDownloadOnly ]] && fsDownloadOnly="n"
+[[ -z $signKey ]] && signKey="$FOS_SIGN_KEY"
+[[ -z $signCert ]] && signCert="$FOS_SIGN_CERT"
+
+# Signing is entirely opt-in: with neither set, every artifact is produced
+# exactly as it always was. Half a pair is always a mistake, so refuse it rather
+# than silently shipping an unsigned kernel someone believes is signed.
+if [[ -n $signKey || -n $signCert ]]; then
+    if [[ -z $signKey || -z $signCert ]]; then
+        echo "Error: --sign-key and --sign-cert must be given together."
+        Usage
+    fi
+    for f in "$signKey" "$signCert"; do
+        if [[ ! -r $f ]]; then
+            echo "Error: cannot read signing file '$f'."
+            exit 1
+        fi
+    done
+    if ! command -v sbsign >/dev/null 2>&1; then
+        echo "Error: sbsign not found. Install sbsigntool (Debian/Ubuntu) or sbsigntools (RHEL/Fedora)."
+        exit 1
+    fi
+fi
 
 checkDependencies
 installDependencies "$installDep"
@@ -230,6 +263,28 @@ function buildFilesystem() {
     cd ..
 }
 
+# Sign a built kernel in place for UEFI Secure Boot. No-op unless --sign-key and
+# --sign-cert were given. Must run before the artifact is checksummed so the
+# published sha256 covers the signed image, not the one we threw away.
+#
+# sbsign will not cleanly re-sign an already-signed image, so it writes to a
+# temp file and replaces the original only on success. A signing failure is
+# fatal: a build that quietly emits an unsigned kernel is worse than no build,
+# because it fails later at the client with a Security Policy Violation.
+function signKernel() {
+    local kernelfile="$1"
+    [[ -z $signKey ]] && return 0
+    dots "Signing $kernelfile for Secure Boot"
+    if ! sbsign --key "$signKey" --cert "$signCert" \
+            --output "${kernelfile}.signed" "$kernelfile" >/dev/null 2>&1; then
+        echo "Failed"
+        echo " * sbsign could not sign $kernelfile"
+        exit 1
+    fi
+    mv -f "${kernelfile}.signed" "$kernelfile"
+    echo "Done"
+}
+
 function buildKernel() {
     local arch="$1"
     local kflags ktarget
@@ -334,7 +389,7 @@ function buildKernel() {
             kernelfile='arm_Image'
             ;;
     esac
-    [[ ! -f $compiledfile ]] && echo 'File not found.' || cp "$compiledfile" "$kernelfile" && sha256sum "$kernelfile" > "${kernelfile}.sha256"
+    [[ ! -f $compiledfile ]] && echo 'File not found.' || { cp "$compiledfile" "$kernelfile" && signKernel "$kernelfile" && sha256sum "$kernelfile" > "${kernelfile}.sha256"; }
     cd ..
 }
 
