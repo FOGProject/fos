@@ -222,6 +222,9 @@ jobs:
 
     runs-on: ubuntu-22.04
 
+    outputs:
+      tag_name: ${{ steps.export_tag.outputs.tag_name }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -260,6 +263,10 @@ jobs:
             echo "TAG_NAME=$fog_version" >> $GITHUB_ENV
           fi
 
+      - name: Export tag name
+        id: export_tag
+        run: echo "tag_name=${{ env.TAG_NAME }}" >> "$GITHUB_OUTPUT"
+
       - name: Run sha256 checksum on all files
         run: |
           cd distribution-files
@@ -287,3 +294,12 @@ jobs:
             distribution-files/init.xz.sha256
             distribution-files/init_32.xz
             distribution-files/init_32.xz.sha256
+
+  add_usb_image:
+    needs: release
+
+    if: needs.release.result == 'success'
+
+    uses: ./.github/workflows/make_usb.yml
+    with:
+      tag_name: ${{ needs.release.outputs.tag_name }}
