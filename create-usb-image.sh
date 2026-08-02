@@ -75,7 +75,13 @@ wget -P "$ipxe_tmp" "${ipxe_url}/${ipxe_ver}/${ipxe_tar}.sha256"
 (cd "$ipxe_tmp" && sha256sum -c "${ipxe_tar}.sha256")
 # The tarball is the whole TFTP staging tree; the USB menu only needs the two
 # top-level binaries that grub entries 7 and 8 boot.
-tar -xzf "${ipxe_tmp}/${ipxe_tar}" -C /mnt/boot/ ./ipxe.krn ./ipxe.efi
+#
+# Unpack into the temp dir and copy across, rather than extracting straight
+# onto /mnt. This script runs as root, so tar tries to restore the archived
+# ownership -- which vfat cannot represent, so it fails the extract and takes
+# the build down with it under `set -e`. cp does not preserve ownership.
+tar -xzf "${ipxe_tmp}/${ipxe_tar}" -C "$ipxe_tmp" ./ipxe.krn ./ipxe.efi
+cp "${ipxe_tmp}/ipxe.krn" "${ipxe_tmp}/ipxe.efi" /mnt/boot/
 rm -rf "$ipxe_tmp"
 
 cat > /mnt/boot/README.txt << 'EOF'
