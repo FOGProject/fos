@@ -10,6 +10,15 @@ if [ -z "$dl_url" ]; then
     exit 1
 fi
 
+# Which FOG server branch the memdisk/memtest binaries and the iPXE version pin
+# are read from. Overridable so a stick can be built to match a 1.6 server.
+fog_branch="${FOG_BRANCH:-dev-branch}"
+fp_raw="https://github.com/FOGProject/fogproject/raw/refs/heads/${fog_branch}/packages"
+ipxe_url="https://github.com/FOGProject/fog-ipxe/releases/download"
+# Only used if the version pin cannot be read; keep in step with fogproject's
+# FOG_IPXE_VERSION when bumping it there.
+ipxe_fallback="v2.0.0-fog.2"
+
 if [ -f /tmp/fogkern.img ]; then
     echo Nuking old FOG Debug image
     rm -f /tmp/fos-usb.img
@@ -37,10 +46,37 @@ grub-install --removable --no-nvram --no-uefi-secure-boot --efi-directory=/mnt -
 echo Download the FOG kernels and inits
 wget -P /mnt/boot/ ${dl_url}/bzImage
 wget -P /mnt/boot/ ${dl_url}/init.xz
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/raw/refs/heads/dev-branch/packages/web/service/ipxe/memdisk
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/raw/refs/heads/dev-branch/packages/web/service/ipxe/memtest.bin
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/raw/refs/heads/dev-branch/packages/tftp/ipxe.krn
-wget -P /mnt/boot/ https://github.com/FOGProject/fogproject/raw/refs/heads/dev-branch/packages/tftp/ipxe.efi
+wget -P /mnt/boot/ ${fp_raw}/web/service/ipxe/memdisk
+wget -P /mnt/boot/ ${fp_raw}/web/service/ipxe/memtest.bin
+
+echo Download the iPXE binaries for the Jumpstart menu entries
+# ipxe.krn and ipxe.efi used to be committed to fogproject at packages/tftp/.
+# iPXE now lives in its own repository and ships as a release tarball, so
+# packages/tftp is a gitignored staging directory the FOG installer fills at
+# runtime -- fetching those two paths from git returns 404, and because this
+# script runs under `set -e` that aborted the whole build. Take them from the
+# same release asset the installer uses, pinned to the same version the FOG
+# server pins, so a stick built here chains the iPXE build its server expects.
+# See fogproject GH-959.
+ipxe_ver=$(wget -qO- ${fp_raw}/web/lib/fog/system.class.php \
+    | awk -F"'" '/FOG_IPXE_VERSION/{print $4}' | tr -d '[:space:]')
+if [ -z "$ipxe_ver" ]; then
+    echo "Could not read FOG_IPXE_VERSION from ${fog_branch}, using ${ipxe_fallback}" >&2
+    ipxe_ver="$ipxe_fallback"
+fi
+echo "Using iPXE ${ipxe_ver}"
+
+ipxe_tar="fog-ipxe-${ipxe_ver}.tar.gz"
+ipxe_tmp=$(mktemp -d)
+# Checksum the tarball rather than trusting the transfer. A truncated download
+# would otherwise produce a stick that looks built and fails to boot.
+wget -P "$ipxe_tmp" "${ipxe_url}/${ipxe_ver}/${ipxe_tar}"
+wget -P "$ipxe_tmp" "${ipxe_url}/${ipxe_ver}/${ipxe_tar}.sha256"
+(cd "$ipxe_tmp" && sha256sum -c "${ipxe_tar}.sha256")
+# The tarball is the whole TFTP staging tree; the USB menu only needs the two
+# top-level binaries that grub entries 7 and 8 boot.
+tar -xzf "${ipxe_tmp}/${ipxe_tar}" -C /mnt/boot/ ./ipxe.krn ./ipxe.efi
+rm -rf "$ipxe_tmp"
 
 cat > /mnt/boot/README.txt << 'EOF'
 
