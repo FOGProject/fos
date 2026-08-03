@@ -13,9 +13,14 @@
 # confirms at the MokManager screen. Fully automatic enrolment is the db path
 # (Setup Mode), which is Phase 2 and lands beside this.
 
-# The EFI global variable namespace. SetupMode, SecureBoot, PK, KEK and db all
-# live under it; efivarfs names entries "<Name>-<guid>".
+# The EFI global variable namespace. SetupMode, SecureBoot, PK and KEK live
+# under it; efivarfs names entries "<Name>-<guid>".
 sbEfiGlobalGuid="8be4df61-93ca-11d2-aa0d-00e098032b8c"
+# db and dbx live in their own namespace (EFI_IMAGE_SECURITY_DATABASE_GUID), NOT
+# the global one. Writing "db" under the global GUID creates a junk variable
+# that firmware ignores and reports success doing it, so the two are kept as
+# separate constants rather than one default with an exception.
+sbEfiSecurityGuid="d719b2cb-3d3a-4596-a3bc-dad00e67656f"
 sbEfiVarDir="/sys/firmware/efi/efivars"
 
 # Mount efivarfs if it is not already up.
@@ -189,4 +194,128 @@ sbMokPassword() {
     # Deliberately short and unambiguous: this gets typed by hand, once, at a
     # firmware prompt with no clipboard, and it protects nothing at rest.
     tr -dc 'A-HJ-NP-Z2-9' < /dev/urandom 2>/dev/null | head -c 8
+}
+# ---------------------------------------------------------------------------
+# The Setup Mode path (fos ADR-0009 "path A"): write the server's certificate
+# straight into the platform's own Secure Boot databases, with no MokManager
+# screen and no human at the keyboard.
+#
+# This works ONLY in Setup Mode. db/KEK/PK are authenticated variables whose
+# write policy the firmware derives from whether a PK is present -- not from
+# whether Secure Boot enforcement is switched on. A machine with Secure Boot
+# merely turned OFF still has a PK and still refuses these writes. See sbState().
+# ---------------------------------------------------------------------------
+
+# Download a signed variable update (PK.auth / KEK.auth / db.auth) to $2.
+#
+# Nothing here is secret and nothing here is trusted on the strength of the
+# transport: the blob is a signed authenticated-variable update, and once the
+# platform has a PK it verifies the signature itself. The check below exists to
+# catch a 404 page or a truncated download, not an attacker.
+#
+# $1 variable name (PK, KEK, db)
+# $2 destination path
+sbFetchAuthVar() {
+    local name="$1"
+    local dest="$2"
+    [[ -z $name ]] && handleError "No variable name passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $dest ]] && handleError "No destination passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $web ]] && handleError "No web root known, cannot fetch ${name}.auth (${FUNCNAME[0]})"
+    rm -f "$dest" >/dev/null 2>&1
+    curl -Lks -o "$dest" "${web}service/secureboot/${name}.auth" >/dev/null 2>&1
+    [[ -s $dest ]] || return 1
+    # An EFI_VARIABLE_AUTHENTICATION_2 descriptor is a 16-byte EFI_TIME followed
+    # by a WIN_CERTIFICATE_UEFI_GUID header, so bytes 20..23 are wRevision
+    # (0x0200) and wCertificateType (0x0EF1), both little-endian. Checking those
+    # four bytes distinguishes a real .auth from an HTML error page or a
+    # half-written file, which a size check alone does not.
+    [[ $(od -An -tx1 -j20 -N4 "$dest" 2>/dev/null | tr -d '[:space:]') == 0002f10e ]] || return 1
+    return 0
+}
+# Write a signed variable update into efivarfs.
+#
+# efivarfs demands the whole thing in ONE write(): a 4-byte little-endian
+# attribute mask immediately followed by the payload. A short or split write is
+# rejected outright, which is why the attribute prefix and the .auth body are
+# concatenated into one file and pushed with a single dd block rather than
+# `cat a b > var`. cat happens to do one write for a file this size, but that is
+# a property of its buffer size, not a guarantee.
+#
+# Attributes 0x27 = NON_VOLATILE|BOOTSERVICE_ACCESS|RUNTIME_ACCESS|
+# TIME_BASED_AUTHENTICATED_WRITE_ACCESS. The authenticated bit is not optional:
+# without it the firmware treats the payload as raw data rather than a signed
+# update, and either rejects it or stores garbage.
+#
+# $1 variable name (PK, KEK, db)
+# $2 namespace GUID
+# $3 path to the .auth file
+sbWriteEfiAuthVar() {
+    local name="$1"
+    local guid="$2"
+    local authfile="$3"
+    [[ -z $name ]] && handleError "No variable name passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $guid ]] && handleError "No GUID passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -s $authfile ]] || return 1
+    local path="${sbEfiVarDir}/${name}-${guid}"
+    local payload="/tmp/.sbauth.${name}"
+    rm -f "$payload" >/dev/null 2>&1
+    printf '\x27\x00\x00\x00' > "$payload" 2>/dev/null || return 1
+    cat "$authfile" >> "$payload" 2>/dev/null || return 1
+    local size
+    size=$(stat -c %s "$payload" 2>/dev/null)
+    [[ -n $size && $size -gt 4 ]] || { rm -f "$payload"; return 1; }
+    # The kernel sets the immutable flag on existing efivarfs entries so that a
+    # stray `rm -rf /sys` cannot brick the firmware. Clearing it is the intended
+    # way to update one. A variable that does not exist yet has no flag to
+    # clear, so a failure here is only interesting if the file is there.
+    if [[ -e $path ]]; then
+        chattr -i "$path" >/dev/null 2>&1
+    fi
+    # iflag=fullblock so a short read cannot turn this into two writes;
+    # conv=notrunc because efivarfs does not implement truncation and dd's
+    # default O_TRUNC on a variable that already exists is not meaningful.
+    if ! dd if="$payload" of="$path" bs="$size" count=1 conv=notrunc \
+            iflag=fullblock >/dev/null 2>&1; then
+        rm -f "$payload" >/dev/null 2>&1
+        return 1
+    fi
+    rm -f "$payload" >/dev/null 2>&1
+    [[ -s $path ]] || return 1
+    return 0
+}
+# Enrol this server's certificate into the platform's Secure Boot databases.
+#
+# Order is db, then KEK, then PK, and it is not interchangeable. Writing PK is
+# what takes the platform OUT of Setup Mode; from that moment every further
+# write must carry a signature the firmware will check. Do PK first and the db
+# and KEK writes that follow are rejected, leaving a machine that enforces
+# Secure Boot and trusts nothing -- recoverable only at the firmware screen.
+#
+# A failure part-way through is NOT that trap: db and KEK written without a PK
+# leaves the platform still in Setup Mode, still booting anything, exactly as it
+# was found. So this aborts loudly on the first failure (ADR-0003) rather than
+# pressing on to the write that would close the door.
+#
+# Returns 0 on success, 1 on any failure. The caller reports; this does not
+# print, so it stays testable.
+sbEnrollDb() {
+    local var guid authfile
+    # Fetch all three BEFORE writing any. A download that fails halfway would
+    # otherwise leave the platform mid-enrolment for no better reason than a
+    # web server hiccup, and the fetch is free to retry while a partial write
+    # is not.
+    for var in db KEK PK; do
+        authfile="/tmp/${var}.auth"
+        sbFetchAuthVar "$var" "$authfile" || return 1
+    done
+    for var in db KEK PK; do
+        [[ $var == db ]] && guid="$sbEfiSecurityGuid" || guid="$sbEfiGlobalGuid"
+        sbWriteEfiAuthVar "$var" "$guid" "/tmp/${var}.auth" || return 1
+    done
+    # SetupMode flipping 1 -> 0 is the firmware confirming it accepted the PK,
+    # and it is the only confirmation available from a running OS: SecureBoot
+    # stays 0 until the next boot, because firmware computes it during POST.
+    # Checking it here turns "dd wrote some bytes" into "the platform enrolled".
+    [[ $(sbEfiFlag SetupMode) == 0 ]] || return 1
+    return 0
 }

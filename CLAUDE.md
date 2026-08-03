@@ -83,7 +83,7 @@ tests/checks/sector-size.sh   # validateImageSectorSize() refusal/reformat behav
 tests/checks/fill-engine.sh   # sfdisk fill engine: 4Kn rescaling, GPT clamp, abort-on-unusable-table
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
-tests/checks/secureboot.sh    # firmware-state detection and non-interactive MOK staging
+tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
 ```
 
 Both harness families work the same way: they copy `funcs.sh`/
@@ -149,6 +149,12 @@ and add a new ADR for any similarly hard-to-reverse decision:
   write policy follows the presence of a PK), so `sbState()` keeps `setup` and
   `disabled` as distinct answers. Signing tooling stays on the server — FOS
   writes `.auth` bytes it was handed, and no private key ever reaches the init.
+  Four things in `sbWriteEfiAuthVar()`/`sbEnrollDb()` are load-bearing and fail
+  *silently* if changed: `db` uses `EFI_IMAGE_SECURITY_DATABASE_GUID` while
+  `PK`/`KEK` use the global GUID; the attribute prefix is `0x27` (the
+  authenticated-write bit is not optional); efivarfs needs prefix and payload in
+  a single `write()`; and `PK` is written **last**, because writing it leaves
+  Setup Mode and any write after it must be signature-checked.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

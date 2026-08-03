@@ -38,10 +38,15 @@ mkdir -p "$SANDBOX/proc" "$SANDBOX/bin"
 
 # /sys/firmware/efi and /proc/mounts are rewritten into the sandbox so state
 # detection reads a fake firmware we control rather than this dev machine's.
-# /tmp/.mokpwhash likewise, so a run never touches the host's /tmp.
-sed -e "s#/sys/firmware/efi#$SANDBOX/sys/firmware/efi#g" \
+# One rule covers every quoted /tmp path the library writes to (.mokpwhash,
+# .sbauth.*, the downloaded *.auth files) so a run never touches the host's /tmp.
+#
+# It MUST run before the /sys and /proc rules. $SANDBOX is itself under /tmp, so
+# a rule that has already rewritten a path to "$SANDBOX/sys/..." leaves a line
+# that this rule would match again and prefix a second time.
+sed -e "s#\"/tmp/#\"$SANDBOX/#g" \
+    -e "s#/sys/firmware/efi#$SANDBOX/sys/firmware/efi#g" \
     -e "s#/proc/mounts#$SANDBOX/proc/mounts#g" \
-    -e "s#/tmp/.mokpwhash#$SANDBOX/mokpwhash#g" \
     "$REPO_LIB/secureboot-funcs.sh" > "$SANDBOX/secureboot-funcs.sh"
 
 STUBBIN="$SANDBOX/bin"
@@ -79,21 +84,80 @@ esac
 exit 0
 EOF
 
-# curl double: writes whatever $FAKE_CURL_BODY says into the -o target.
+# curl double: writes whatever $FAKE_CURL_BODY says into the -o target. A .auth
+# URL gets an authenticated-variable body instead of a certificate, so one stub
+# serves both fetch paths; $FAKE_AUTH_FAIL names one variable whose download
+# should fail, which is how the "fetch everything before writing anything"
+# property gets tested.
 cat > "$STUBBIN/curl" <<'EOF'
 #!/bin/bash
 echo "curl $*" >> "$SANDBOX/calls"
-dest=""
+dest=""; url=""
 while [[ $# -gt 0 ]]; do
     [[ $1 == -o ]] && { dest="$2"; shift 2; continue; }
-    shift
+    url="$1"; shift
 done
 [[ -z $dest ]] && exit 0
+if [[ $url == *.auth ]]; then
+    name="${url##*/}"; name="${name%.auth}"
+    if [[ -n $FAKE_AUTH_FAIL && $name == "$FAKE_AUTH_FAIL" ]]; then
+        printf '<!DOCTYPE html><h1>404</h1>' > "$dest"
+        exit 0
+    fi
+    if [[ -n $FAKE_AUTH_GARBAGE && $name == "$FAKE_AUTH_GARBAGE" ]]; then
+        # Full length, plausible shape, wrong magic: a truncated or mangled
+        # download rather than an error page.
+        head -c 64 /dev/zero > "$dest"
+        exit 0
+    fi
+    # 16-byte EFI_TIME, dwLength, wRevision=0x0200, wCertificateType=0x0EF1,
+    # then filler standing in for the GUID and PKCS#7 blob. Only the four bytes
+    # at offset 20 are load-bearing for the validator under test.
+    {
+        printf '\xea\x07\x08\x03\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        printf '\x30\x00\x00\x00\x00\x02\xf1\x0e'
+        printf 'AUTHBODY-%s-PADDINGPADDINGPADDING' "$name"
+    } > "$dest"
+    exit 0
+fi
 case "${FAKE_CURL_BODY:-der}" in
     der)   printf '\x30\x82\x01\x0a\x02\x01\x00' > "$dest" ;;
     html)  printf '<!DOCTYPE html><h1>404</h1>'  > "$dest" ;;
     empty) : > "$dest" ;;
 esac
+exit 0
+EOF
+
+# chattr double. The real one cannot run on the tmpfs sandbox, and the call is
+# fire-and-forget in the library, so the stub exists to make "did it clear the
+# immutable flag before writing" observable at all.
+cat > "$STUBBIN/chattr" <<'EOF'
+#!/bin/bash
+echo "chattr $*" >> "$SANDBOX/calls"
+exit 0
+EOF
+
+# dd double: logs argv, then hands off to the real dd so the variable file ends
+# up with the bytes actually written. $FAKE_DD_FAIL names one variable whose
+# write should fail, so an abort mid-sequence can be tested.
+cat > "$STUBBIN/dd" <<'EOF'
+#!/bin/bash
+echo "dd $*" >> "$SANDBOX/calls"
+out=""
+for a in "$@"; do
+    [[ $a == of=* ]] && out="${a#of=}"
+done
+if [[ -n $FAKE_DD_FAIL && ${out##*/} == "$FAKE_DD_FAIL"-* ]]; then
+    exit 1
+fi
+/usr/bin/dd "$@" || exit 1
+# Writing a PK is what takes a platform out of Setup Mode. Modelling that here
+# is the only way to test that sbEnrollDb confirms the enrolment from the
+# firmware rather than from dd's exit status.
+if [[ ${out##*/} == PK-* && -z $FAKE_PK_KEEPS_SETUP ]]; then
+    guid="8be4df61-93ca-11d2-aa0d-00e098032b8c"
+    printf '\x07\x00\x00\x00\x00' > "${out%/*}/SetupMode-$guid"
+fi
 exit 0
 EOF
 
@@ -161,12 +225,23 @@ new_case() {
     FAKE_GENHASH_FAIL=""; FAKE_GENHASH_GARBAGE=""; FAKE_IMPORT_FAIL=""
     FAKE_IMPORT_NOOP=""; FAKE_KEY_ENROLLED=""; FAKE_DB_OUT=""
     FAKE_CURL_BODY="der"; FAKE_MOUNT_FAIL=""; FAKE_UNMOUNTED=""
+    FAKE_AUTH_FAIL=""; FAKE_DD_FAIL=""; FAKE_PK_KEEPS_SETUP=""
+    FAKE_AUTH_GARBAGE=""
     export FAKE_GENHASH_FAIL FAKE_GENHASH_GARBAGE FAKE_IMPORT_FAIL \
            FAKE_IMPORT_NOOP FAKE_KEY_ENROLLED FAKE_DB_OUT FAKE_CURL_BODY \
-           FAKE_MOUNT_FAIL FAKE_UNMOUNTED
-    rm -f "$SANDBOX/calls" "$SANDBOX/staged" "$SANDBOX/mokpwhash" >/dev/null 2>&1
+           FAKE_MOUNT_FAIL FAKE_UNMOUNTED FAKE_AUTH_FAIL FAKE_DD_FAIL \
+           FAKE_PK_KEEPS_SETUP FAKE_AUTH_GARBAGE
+    rm -f "$SANDBOX/calls" "$SANDBOX/staged" "$SANDBOX/.mokpwhash" >/dev/null 2>&1
+    rm -f "$SANDBOX"/*.auth "$SANDBOX"/.sbauth.* >/dev/null 2>&1
     : > "$SANDBOX/calls"
 }
+
+# The two namespaces db/KEK/PK live in. Kept here as literals rather than read
+# from the library, so a test failure means the library changed, not that the
+# test followed it.
+GLOBAL_GUID="8be4df61-93ca-11d2-aa0d-00e098032b8c"
+SECURITY_GUID="d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+EFIVARS="$SANDBOX/sys/firmware/efi/efivars"
 
 # --- firmware state detection ---
 
@@ -337,11 +412,11 @@ check "23. import exits 0 but stages nothing -> refuse" \
 # the technician is about to type, and /tmp is world-readable.
 new_case; make_firmware 0 1
 lib 'sbStageMok "$SANDBOX/fp.der" hunter2 >/dev/null' >/dev/null 2>&1
-if [[ ! -f $SANDBOX/mokpwhash ]]; then
+if [[ ! -f $SANDBOX/.mokpwhash ]]; then
     echo "PASS: 24. hash file is removed after staging"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: 24. hash file left behind at $SANDBOX/mokpwhash"
+    echo "FAIL: 24. hash file left behind at $SANDBOX/.mokpwhash"
     FAIL=$((FAIL + 1))
 fi
 
@@ -363,6 +438,147 @@ else
     echo "FAIL: 26. random fallback password was \"$GOT\""
     FAIL=$((FAIL + 1))
 fi
+
+# --- the Setup Mode (db) path ---
+
+# 27. A signed variable update is recognised by its
+# EFI_VARIABLE_AUTHENTICATION_2 header, not by being non-empty.
+new_case; make_firmware 1 0
+check "27. a well-formed .auth is accepted" \
+    "$(lib 'sbFetchAuthVar db "$SANDBOX/x.auth" && echo ok || echo refused')" "ok"
+
+# 28. An HTML error page is longer than the header it would have to match, so a
+# size check alone would pass it. A client that wrote one into db would enrol
+# nothing and report success.
+new_case; make_firmware 1 0; FAKE_AUTH_FAIL=db; export FAKE_AUTH_FAIL
+check "28. an HTML error page is not mistaken for a .auth" \
+    "$(lib 'sbFetchAuthVar db "$SANDBOX/x.auth" && echo ok || echo refused')" "refused"
+
+# 29. Right length, wrong magic -- models a truncated or mangled download.
+new_case; make_firmware 1 0; FAKE_AUTH_GARBAGE=db; export FAKE_AUTH_GARBAGE
+check "29. a body with the wrong wRevision/wCertificateType is refused" \
+    "$(lib 'sbFetchAuthVar db "$SANDBOX/x.auth" && echo ok || echo refused')" "refused"
+
+# 30. THE namespace trap. db and dbx live under
+# EFI_IMAGE_SECURITY_DATABASE_GUID, while PK/KEK live under the global GUID.
+# Writing "db" under the global GUID creates a junk variable that firmware
+# ignores -- and efivarfs accepts the write, so it looks like it worked.
+new_case; make_firmware 1 0
+lib 'sbEnrollDb' >/dev/null 2>&1
+if [[ -s $EFIVARS/db-$SECURITY_GUID && ! -e $EFIVARS/db-$GLOBAL_GUID ]]; then
+    echo "PASS: 30. db is written under the image-security GUID, not the global one"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 30. db went to the wrong namespace"
+    FAIL=$((FAIL + 1))
+fi
+
+# 31. KEK and PK go under the global GUID.
+new_case; make_firmware 1 0
+lib 'sbEnrollDb' >/dev/null 2>&1
+if [[ -s $EFIVARS/KEK-$GLOBAL_GUID && -s $EFIVARS/PK-$GLOBAL_GUID ]]; then
+    echo "PASS: 31. KEK and PK are written under the global GUID"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 31. KEK/PK went to the wrong namespace"
+    FAIL=$((FAIL + 1))
+fi
+
+# 32. Write ORDER, and it is not cosmetic. Writing PK is what leaves Setup Mode;
+# after that every write must carry a signature the firmware checks. PK first
+# would make the db and KEK writes bounce, leaving a machine that enforces
+# Secure Boot and trusts nothing -- recoverable only at the firmware screen.
+new_case; make_firmware 1 0
+lib 'sbEnrollDb' >/dev/null 2>&1
+ORDER="$(grep '^dd ' "$SANDBOX/calls" | sed -n 's#.*of=[^ ]*/\([A-Za-z]*\)-.*#\1#p' | tr '\n' ' ')"
+check "32. write order is db, KEK, PK (PK last)" "$ORDER" "db KEK PK "
+
+# 33. The 4-byte attribute prefix must be 0x27 little-endian:
+# NV|BS|RT|TIME_BASED_AUTHENTICATED_WRITE_ACCESS. Drop the authenticated bit and
+# the firmware stores the payload as raw data instead of applying it as a signed
+# update -- which efivarfs accepts without complaint.
+new_case; make_firmware 1 0
+lib 'sbEnrollDb' >/dev/null 2>&1
+check "33. attribute prefix is 0x27 little-endian" \
+    "$(od -An -tx1 -N4 "$EFIVARS/db-$SECURITY_GUID" 2>/dev/null | tr -d '[:space:]')" "27000000"
+
+# 34. The .auth body must follow the prefix verbatim. A reader that re-encoded
+# or padded it would produce a signature the firmware rejects.
+new_case; make_firmware 1 0
+lib 'sbEnrollDb' >/dev/null 2>&1
+if od -An -c "$EFIVARS/db-$SECURITY_GUID" 2>/dev/null | tr -d ' \n' | grep -q 'AUTHBODY-db'; then
+    echo "PASS: 34. the .auth payload is written verbatim after the prefix"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 34. the .auth payload was not written through intact"
+    FAIL=$((FAIL + 1))
+fi
+
+# 35. efivarfs requires the prefix and payload in ONE write(). bs=<total size>
+# with count=1 and iflag=fullblock is what guarantees that; a short read
+# otherwise splits it into two writes and the firmware rejects the lot.
+new_case; make_firmware 1 0
+lib 'sbEnrollDb' >/dev/null 2>&1
+DDLINE="$(grep -m1 '^dd .*db-' "$SANDBOX/calls")"
+if [[ $DDLINE == *"count=1"* && $DDLINE == *"iflag=fullblock"* && $DDLINE == *"bs="* ]]; then
+    echo "PASS: 35. the variable is written as a single full-block dd"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 35. dd was not invoked as a single full block (\"$DDLINE\")"
+    FAIL=$((FAIL + 1))
+fi
+
+# 36. The kernel marks existing efivarfs entries immutable so a stray rm cannot
+# brick the firmware. Updating one means clearing that first.
+new_case; make_firmware 1 0
+mkdir -p "$EFIVARS"; printf '\x27\x00\x00\x00old' > "$EFIVARS/db-$SECURITY_GUID"
+lib 'sbEnrollDb' >/dev/null 2>&1
+if grep -q -- "chattr -i .*db-$SECURITY_GUID" "$SANDBOX/calls"; then
+    echo "PASS: 36. the immutable flag is cleared before rewriting an existing variable"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 36. chattr -i was not issued for an existing variable"
+    FAIL=$((FAIL + 1))
+fi
+
+# 37. Every blob is downloaded BEFORE any is written. A web server hiccup partway
+# through should cost nothing; leaving a platform mid-enrolment over one is a
+# far worse trade than re-running the fetch.
+new_case; make_firmware 1 0; FAKE_AUTH_FAIL=PK; export FAKE_AUTH_FAIL
+GOT="$(lib 'sbEnrollDb && echo ok || echo refused')"
+if [[ $GOT == refused ]] && ! grep -q '^dd ' "$SANDBOX/calls"; then
+    echo "PASS: 37. a failed download writes no variables at all"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 37. a failed download still reached the write stage (got \"$GOT\")"
+    FAIL=$((FAIL + 1))
+fi
+
+# 38. A failure mid-sequence must stop before PK. Stopping there is what keeps
+# the machine in Setup Mode -- still booting whatever it booted before, rather
+# than enforcing against a half-written database.
+new_case; make_firmware 1 0; FAKE_DD_FAIL=KEK; export FAKE_DD_FAIL
+GOT="$(lib 'sbEnrollDb && echo ok || echo refused')"
+if [[ $GOT == refused ]] && [[ ! -e $EFIVARS/PK-$GLOBAL_GUID ]]; then
+    echo "PASS: 38. a mid-sequence failure aborts before the PK write"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 38. a failed KEK write did not stop the PK write (got \"$GOT\")"
+    FAIL=$((FAIL + 1))
+fi
+
+# 39. THE silent-failure guard for this path, mirroring case 23. dd can write
+# bytes into efivarfs that the firmware then declines to apply. SetupMode
+# flipping 1 -> 0 is the firmware confirming it took the PK, and it is the only
+# confirmation available before a reboot.
+new_case; make_firmware 1 0; FAKE_PK_KEEPS_SETUP=1; export FAKE_PK_KEEPS_SETUP
+check "39. writes succeed but SetupMode stays 1 -> refuse" \
+    "$(lib 'sbEnrollDb && echo ok || echo refused')" "refused"
+
+# 40. Happy path: all three written, firmware left Setup Mode.
+new_case; make_firmware 1 0
+check "40. enrolment succeeds when the firmware leaves Setup Mode" \
+    "$(lib 'sbEnrollDb && echo ok || echo refused')" "ok"
 
 echo "----"
 echo "$PASS passed, $FAIL failed"

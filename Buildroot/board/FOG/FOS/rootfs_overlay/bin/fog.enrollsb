@@ -53,14 +53,43 @@ if sbCertTrusted "$cert"; then
 fi
 
 if [[ $state == setup ]]; then
-    # Worth saying out loud rather than silently doing the MOK dance: this is
-    # the one state where the fully automatic db path will work, and a site
-    # seeing this message is a site that can skip the blue screen entirely once
-    # Phase 2 lands.
-    echo " * This machine is in Setup Mode, so its Secure Boot keys can be"
-    echo "   written directly. Automatic enrolment is not available yet;"
-    echo "   staging a MOK request instead."
+    # The automatic path. Preferred over staging a MOK whenever it is available,
+    # because it finishes here: no reboot into MokManager, no password, nobody
+    # at the keyboard. Only reachable in Setup Mode -- see sbState().
+    echo " * This machine is in Setup Mode, so its Secure Boot databases can be"
+    echo "   written directly. Enrolling automatically; no MOK Manager step is"
+    echo "   needed."
     echo
+    dots "Enrolling Secure Boot keys"
+    if ! sbEnrollDb; then
+        echo "Failed"
+        debugPause
+        # Deliberately spells out the state the machine is left in. A partial
+        # enrolment stops before the PK write, so the platform is still in Setup
+        # Mode and still boots exactly what it booted before -- that is worth
+        # saying, because "Secure Boot enrolment failed" otherwise reads like
+        # the machine may now be unbootable, and someone will make an
+        # unnecessary trip to the firmware screen to check.
+        handleError "Automatic Secure Boot enrolment failed. ($0)\n   This machine is still in Setup Mode and still boots as it did before;\n   nothing has been made unbootable.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth --\n   the FOG server needs efitools installed to produce them."
+    fi
+    echo "Done"
+    debugPause
+
+    echo
+    echo "=============================================================================="
+    echo " Secure Boot is now enrolled on this machine."
+    echo
+    echo "   This FOG server's certificate is in the platform's db, and Microsoft's"
+    echo "   certificates were enrolled alongside it, so Windows and FOG's own"
+    echo "   signed PXE chain both still boot."
+    echo
+    echo " The machine has left Setup Mode. Secure Boot enforcement takes effect on"
+    echo " the next boot; turn it on in the firmware if it is not already."
+    echo "=============================================================================="
+    echo
+
+    . /bin/fog.nonimgcomplete
+    exit 0
 fi
 
 password=$(sbMokPassword)

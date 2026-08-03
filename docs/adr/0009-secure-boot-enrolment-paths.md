@@ -97,6 +97,36 @@ This distinction is easy to get wrong and expensive when it is:
 than collapsing them into a boolean, and `tests/checks/secureboot.sh` asserts
 that separation directly.
 
+#### How the write is actually done, and the four ways to get it wrong
+
+Implemented as `sbFetchAuthVar()` / `sbWriteEfiAuthVar()` / `sbEnrollDb()`. Each
+of the following is a decision with a failure mode that firmware accepts
+silently, so each has a dedicated assertion in the harness:
+
+- **Namespace.** `db` and `dbx` live under `EFI_IMAGE_SECURITY_DATABASE_GUID`
+  (`d719b2cb-…`); `PK` and `KEK` live under `EFI_GLOBAL_VARIABLE`
+  (`8be4df61-…`). Writing `db` under the global GUID creates a junk variable the
+  firmware ignores — and efivarfs accepts the write, so it looks like it worked.
+  The two GUIDs are separate constants, not one default with an exception.
+- **Attributes `0x27`** = `NV|BS|RT|TIME_BASED_AUTHENTICATED_WRITE_ACCESS`, as a
+  four-byte little-endian prefix. Drop the authenticated bit and the firmware
+  stores the payload as raw data instead of applying it as a signed update.
+- **One `write()`.** efivarfs requires the attribute prefix and the payload in a
+  single write; a split write is rejected outright. Hence `dd bs=<total>
+  count=1 iflag=fullblock` over a pre-concatenated file, not `cat a b > var` —
+  `cat` happens to do one write at these sizes, but that is a property of its
+  buffer, not a guarantee. Existing entries carry the kernel's immutable flag,
+  cleared with `chattr -i` first.
+- **Order: `db`, `KEK`, `PK` — PK last.** Writing `PK` is what takes the platform
+  out of Setup Mode; from that moment every further write must carry a signature
+  the firmware checks. `PK` first makes the `db` and `KEK` writes bounce, leaving
+  a machine that enforces Secure Boot and trusts nothing — recoverable only at
+  the firmware screen. This is the single most damaging ordering mistake
+  available in this file.
+
+All three blobs are downloaded before any is written: a web server hiccup should
+cost a retry, not leave a platform mid-enrolment.
+
 ### 2. Out-of-band (Redfish / vendor BMC) — the only zero-touch tier
 
 On hardware with a BMC, `/redfish/v1/Systems/{id}/SecureBoot` and its
@@ -167,11 +197,23 @@ path.
 A BIOS/CSM boot, or UEFI with unmountable efivarfs, aborts rather than reporting
 a success that enrolled nothing.
 
+The Setup Mode path has the same shape of guard, because `dd` can write bytes
+into efivarfs that the firmware then declines to apply. `sbEnrollDb()` therefore
+re-reads `SetupMode` and requires it to have flipped `1 → 0` before reporting
+success: that is the firmware confirming it accepted the `PK`, and it is the only
+confirmation available before a reboot (`SecureBoot` stays `0` until the next
+POST computes it). An enrolment that failed part-way stops before the `PK` write,
+so the machine is still in Setup Mode and still boots whatever it booted before —
+`fog.enrollsb` says so explicitly, because "Secure Boot enrolment failed"
+otherwise reads like the machine may now be unbootable.
+
 ## Why the `db` baseline is Microsoft's certificates
 
 Path 1 replaces the platform PK, so what goes into `db` alongside FOG's
-certificate is load-bearing. It will be Microsoft's published certificates — KEK
-CA 2011, Windows Production PCA 2011, UEFI CA 2011, plus the 2023 generation.
+certificate is load-bearing. It is Microsoft's published certificates — KEK
+CA 2011, Windows Production PCA 2011, UEFI CA 2011, plus the 2023 generation —
+vendored in fogproject at `packages/secureboot/mscerts/` with a MANIFEST
+recording each source URL and sha256.
 
 The decisive reason is **not** Windows compatibility, it is FOG itself. The chain
 measured above is `shimx64.efi` → signed iPXE → FOG-signed kernel, and that shim
@@ -196,7 +238,13 @@ it current.
 
 - A new library, `secureboot-funcs.sh`, rather than more of `funcs.sh`. It shares
   no state, vocabulary or failure modes with the imaging engine.
-- A new entry point, `bin/fog.enrollsb`, and `mode=enrollsb` in `bin/fog`.
+- A new entry point, `bin/fog.enrollsb`, and `mode=enrollsb` in `bin/fog`. It
+  picks its path from `sbState()`: `setup` takes the automatic `db` route and
+  finishes; anything else stages a MOK request for a human to confirm.
+- No new Buildroot packages for path 1. It needs `coreutils` (GNU `dd`,
+  `iflag=fullblock`), `e2fsprogs` (`chattr`) and `curl`, all already in the FOS
+  configs. Deliberately no signing tooling on the client: the server signs the
+  updates, the client only writes them.
 - `rootfs_overlay/etc/fstab` mounted efivarfs with type `efivars`, which is not a
   mountable filesystem type — it was the old `CONFIG_EFI_VARS` sysfs interface at
   `/sys/firmware/efi/vars`. The entry silently failed under the `mount -a` in
@@ -213,3 +261,11 @@ Writing `PK`/`KEK`/`db` is not reversible from the OS — getting it wrong needs
 firmware trip to recover. Path 1 wants per-model hardware validation before it is
 relied on. The staged-MOK path is reversible (`mokutil --revoke-import`) and has
 now been exercised end to end.
+
+What the 40 harness cases can and cannot prove is worth stating plainly, because
+this ADR already recorded one design that passed every test and was still wrong.
+They prove the **bytes and the sequence**: the right namespace, the right
+attribute mask, one write, `PK` last, no writes after a failed download, and a
+refusal when `SetupMode` does not flip. They cannot prove that a given firmware
+*accepts* the update — that is a property of the machine, not of this code, and
+the only way to learn it is to boot one.
