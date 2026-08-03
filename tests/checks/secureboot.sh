@@ -75,10 +75,19 @@ case "$1" in
         [[ -f $SANDBOX/staged ]] && echo "[key 1]"
         ;;
     --test-key)
-        [[ -n $FAKE_KEY_ENROLLED ]] && echo "SHA256 ... is already enrolled"
-        ;;
-    --db)
-        echo "${FAKE_DB_OUT:-nothing here}"
+        # VERBATIM mokutil 0.7.2 output. Taken from the format strings in the
+        # binary, NOT invented: an earlier version of this stub printed a
+        # SHA-256 and the phrase "is already enrolled", which is what
+        # sbCertTrusted was grepping for -- so the stub and the bug agreed with
+        # each other and the case passed while the real thing failed on
+        # hardware. If this ever needs changing, read it out of mokutil again.
+        if [[ -n $FAKE_KEY_ENROLLED ]]; then
+            echo "CA of $2 is already enrolled"
+        elif [[ -n $FAKE_KEY_IN_DB ]]; then
+            echo "$2 is already in db"
+        else
+            echo "$2 is not enrolled"
+        fi
         ;;
 esac
 exit 0
@@ -197,6 +206,33 @@ make_firmware() {
     return 0
 }
 
+# Build a db variable holding $1 inside an EFI_SIGNATURE_LIST, the way firmware
+# stores it: 4-byte efivarfs attribute prefix, then a 16-byte EFI_CERT_X509_GUID,
+# SignatureListSize, SignatureHeaderSize(0), SignatureSize, then a 16-byte owner
+# GUID followed by the DER. Built out of the real layout rather than a
+# placeholder, because the code under test searches for the certificate's bytes
+# and a fake shape would prove nothing.
+make_db_with_cert() {
+    local cert="$1"
+    local dir="$SANDBOX/sys/firmware/efi/efivars"
+    local guid="d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+    mkdir -p "$dir"
+    local certsz sigsz listsz
+    certsz=$(stat -c %s "$cert")
+    sigsz=$((certsz + 16))
+    listsz=$((sigsz + 28))
+    {
+        printf '\x27\x00\x00\x00'
+        printf '\xa1\x59\xc0\xa5\xe4\x94\xa7\x4a\x87\xb5\xab\x15\x5c\x2b\xf0\x72'
+        printf "$(printf '\\x%02x\\x%02x\\x%02x\\x%02x' \
+            $((listsz & 255)) $(((listsz >> 8) & 255)) $(((listsz >> 16) & 255)) $(((listsz >> 24) & 255)))"
+        printf '\x00\x00\x00\x00'
+        printf "$(printf '\\x%02x\\x%02x\\x%02x\\x%02x' \
+            $((sigsz & 255)) $(((sigsz >> 8) & 255)) $(((sigsz >> 16) & 255)) $(((sigsz >> 24) & 255)))"
+        printf '\x44\xe4\x62\xf0\xc9\x51\xe8\x41\x8e\xa3\xd4\x40\x7a\xe3\x8e\x04'
+        cat "$cert"
+    } > "$dir/db-$guid"
+}
 # Run a snippet against the sandboxed library and echo its stdout.
 lib() {
     (
@@ -223,12 +259,12 @@ check() {
 
 new_case() {
     FAKE_GENHASH_FAIL=""; FAKE_GENHASH_GARBAGE=""; FAKE_IMPORT_FAIL=""
-    FAKE_IMPORT_NOOP=""; FAKE_KEY_ENROLLED=""; FAKE_DB_OUT=""
+    FAKE_IMPORT_NOOP=""; FAKE_KEY_ENROLLED=""; FAKE_KEY_IN_DB=""
     FAKE_CURL_BODY="der"; FAKE_MOUNT_FAIL=""; FAKE_UNMOUNTED=""
     FAKE_AUTH_FAIL=""; FAKE_DD_FAIL=""; FAKE_PK_KEEPS_SETUP=""
     FAKE_AUTH_GARBAGE=""
     export FAKE_GENHASH_FAIL FAKE_GENHASH_GARBAGE FAKE_IMPORT_FAIL \
-           FAKE_IMPORT_NOOP FAKE_KEY_ENROLLED FAKE_DB_OUT FAKE_CURL_BODY \
+           FAKE_IMPORT_NOOP FAKE_KEY_ENROLLED FAKE_KEY_IN_DB FAKE_CURL_BODY \
            FAKE_MOUNT_FAIL FAKE_UNMOUNTED FAKE_AUTH_FAIL FAKE_DD_FAIL \
            FAKE_PK_KEEPS_SETUP FAKE_AUTH_GARBAGE
     rm -f "$SANDBOX/calls" "$SANDBOX/staged" "$SANDBOX/.mokpwhash" >/dev/null 2>&1
@@ -325,13 +361,37 @@ new_case; make_firmware 0 1; FAKE_KEY_ENROLLED=1; export FAKE_KEY_ENROLLED
 check "already-enrolled MOK is detected" \
     "$(lib 'sbCertTrusted "$SANDBOX/fp.der" && echo trusted || echo untrusted')" "trusted"
 
-# 15. A machine enrolled through the Phase 2 db path has NO MOK entry, so the
-# MOK check alone would wrongly stage a request on it.
+# 15. THE REGRESSION THIS FILE EXISTS FOR. A machine enrolled through the Setup
+# Mode path has the certificate in db and NO MOK entry at all. This case passed
+# for a fortnight against a stub that printed the SHA-256 the (wrong) code was
+# grepping for; mokutil actually prints a SHA1 there, so on real hardware the
+# task went on to stage a MOK, which mokutil refused because the certificate was
+# already in db, and the task aborted.
+#
+# So this now answers the question the way the firmware does: put the
+# certificate's real bytes inside a real EFI_SIGNATURE_LIST in a real db
+# variable, and require sbCertTrusted to find them. mokutil is told the key is
+# NOT enrolled, so only the db path can satisfy it.
 new_case; make_firmware 0 1
-printf '\x30\x82\x01\x0a' > "$SANDBOX/fp.der"
-FAKE_DB_OUT="$(sha256sum "$SANDBOX/fp.der" | awk '{print toupper($1)}')"; export FAKE_DB_OUT
-check "key present in db (no MOK entry) is detected as trusted" \
+printf '\x30\x82\x01\x0a\xde\xad\xbe\xef' > "$SANDBOX/fp.der"
+make_db_with_cert "$SANDBOX/fp.der"
+check "15. certificate present in db (no MOK entry) is detected as trusted" \
     "$(lib 'sbCertTrusted "$SANDBOX/fp.der" && echo trusted || echo untrusted')" "trusted"
+
+# 15b. mokutil's own db verdict is the fallback for firmware whose db this code
+# cannot read directly. Matched on the string mokutil really prints.
+new_case; make_firmware 0 1; FAKE_KEY_IN_DB=1; export FAKE_KEY_IN_DB
+check "15b. mokutil \"is already in db\" is honoured" \
+    "$(lib 'sbCertTrusted "$SANDBOX/fp.der" && echo trusted || echo untrusted')" "trusted"
+
+# 15c. A DIFFERENT certificate in db must not read as trusted -- otherwise the
+# byte search is matching something incidental rather than this certificate.
+new_case; make_firmware 0 1
+printf '\x30\x82\x01\x0a\xde\xad\xbe\xef' > "$SANDBOX/other.der"
+make_db_with_cert "$SANDBOX/other.der"
+printf '\x30\x82\x01\x0a\xca\xfe\xba\xbe' > "$SANDBOX/fp.der"
+check "15c. a different certificate in db does not read as trusted" \
+    "$(lib 'sbCertTrusted "$SANDBOX/fp.der" && echo trusted || echo untrusted')" "untrusted"
 
 # 16. Neither list -> not trusted.
 new_case; make_firmware 0 1

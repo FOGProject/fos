@@ -119,18 +119,62 @@ sbCertFingerprint() {
     [[ -z $cert ]] && handleError "No certificate passed (${FUNCNAME[0]})\n   Args Passed: $*"
     sha256sum "$cert" 2>/dev/null | awk '{print toupper($1)}' | sed 's/../&:/g;s/:$//'
 }
+# Return 0 if the certificate is present in the platform's db.
+#
+# Reads the variable and looks for the certificate's own bytes, rather than
+# asking a tool and parsing what it prints. A db entry embeds the DER verbatim
+# inside an EFI_SIGNATURE_LIST, so "are these bytes in that variable" is exactly
+# the question, and the answer depends only on the UEFI data format -- which is
+# a published spec that cannot quietly change under us. Every alternative here
+# is a bet on some program's output formatting.
+#
+# $1 path to the DER certificate
+sbCertInDb() {
+    local cert="$1"
+    [[ -z $cert ]] && handleError "No certificate passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local path="${sbEfiVarDir}/db-${sbEfiSecurityGuid}"
+    [[ -r $path && -s $cert ]] || return 1
+    local certhex dbhex
+    # -v because od collapses repeated lines into "*" by default, which would
+    # silently drop a run of identical bytes out of the middle of either string.
+    certhex=$(od -An -tx1 -v "$cert" 2>/dev/null | tr -d '[:space:]')
+    dbhex=$(od -An -tx1 -v "$path" 2>/dev/null | tr -d '[:space:]')
+    [[ -n $certhex && -n $dbhex ]] || return 1
+    case $dbhex in
+        *"$certhex"*) return 0 ;;
+    esac
+    return 1
+}
 # Return 0 if the certificate is already trusted by this machine.
 #
-# Checks the MOK list and db both: a machine that went through the Phase 2 db
-# path has the key in db and no MOK entry at all, and staging a MOK request on
-# it would send a technician to a blue screen for no reason.
+# Two stores, because a machine can be trusting this certificate by either
+# route: the Setup Mode path puts it in db with no MOK entry at all, and the
+# staged-MOK path puts it in MokList with nothing in db. Missing either one
+# sends a technician to a blue screen to re-enrol something already trusted.
+#
+# THIS FUNCTION GOT IT WRONG ONCE, AND ONLY HARDWARE CAUGHT IT. It used to grep
+# `mokutil --db` for the certificate's SHA-256. mokutil prints a **SHA1**
+# fingerprint there, so the match could never fire -- and the harness stub had
+# been written to emit the SHA-256 this code was looking for, so the test agreed
+# with the bug. On a machine whose db already held the certificate, the task
+# went on to stage a MOK anyway, which mokutil then refused (it will not stage a
+# request for a certificate already in db) and the task aborted.
+#
+# Hence: the db half is answered from the bytes (sbCertInDb) rather than from
+# any tool's output, and the MokList half matches mokutil's own strings, taken
+# from the binary rather than assumed -- `mokutil --test-key` reports
+# "<file> is already in db" or "CA of <file> is already enrolled", never the
+# bare "already enrolled" this used to look for. Verified against mokutil 0.7.2,
+# which is what Buildroot builds.
 #
 # $1 path to the DER certificate
 sbCertTrusted() {
     local cert="$1"
     [[ -z $cert ]] && handleError "No certificate passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    mokutil --test-key "$cert" 2>/dev/null | grep -qi "already enrolled" && return 0
-    mokutil --db 2>/dev/null | grep -qiF "$(sbCertFingerprint "$cert" | tr -d ':')" && return 0
+    sbCertInDb "$cert" && return 0
+    case $(mokutil --test-key "$cert" 2>/dev/null) in
+        *"is already in db"*|*"is already enrolled"*) return 0 ;;
+    esac
     return 1
 }
 # Stage a MOK enrolment request, without prompting.
