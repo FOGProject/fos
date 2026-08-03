@@ -51,6 +51,14 @@ tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # without an explicit --ses, warns that overwriting
                               # an SSD is not a guaranteed erase, and refuses
                               # instead of reporting a wipe that did not run
+tests/checks/secureboot.sh    # secureboot-funcs.sh: derives the right firmware
+                              # state from efivarfs (keeping Setup Mode distinct
+                              # from "Secure Boot merely off"), rejects a
+                              # non-certificate download, and stages the MOK
+                              # request non-interactively without ever putting
+                              # the one-time password on a mokutil argv --
+                              # refusing when mokutil exits 0 having staged
+                              # nothing
 ```
 
 Like the golden harness, these source a sandbox copy of the library with its

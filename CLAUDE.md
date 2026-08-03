@@ -83,6 +83,7 @@ tests/checks/sector-size.sh   # validateImageSectorSize() refusal/reformat behav
 tests/checks/fill-engine.sh   # sfdisk fill engine: 4Kn rescaling, GPT clamp, abort-on-unusable-table
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
+tests/checks/secureboot.sh    # firmware-state detection and non-interactive MOK staging
 ```
 
 Both harness families work the same way: they copy `funcs.sh`/
@@ -139,6 +140,15 @@ and add a new ADR for any similarly hard-to-reverse decision:
   `--ses` flag must never be issued (it doesn't guarantee erasure); prefer
   `sanitize` when supported, falling back to `format --ses=1` only when no
   sanitize is in progress or unrecoverably failed.
+- **0009 — Secure Boot enrolment.** shim's `MokList` is a boot-services-only
+  variable, so the running OS *cannot* enrol a MOK — only MokManager can, behind
+  a physical-presence password. `secureboot-funcs.sh`/`fog.enrollsb` therefore
+  **stage** a request and must never report that they enrolled anything. The
+  automatable path is writing `db` while the platform is in **Setup Mode**; note
+  that Secure Boot merely being switched *off* does not make `db` writable (the
+  write policy follows the presence of a PK), so `sbState()` keeps `setup` and
+  `disabled` as distinct answers. Signing tooling stays on the server — FOS
+  writes `.auth` bytes it was handed, and no private key ever reaches the init.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

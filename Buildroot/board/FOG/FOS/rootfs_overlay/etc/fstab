@@ -6,4 +6,10 @@ tmpfs		/dev/shm	tmpfs	mode=0777	0	0
 tmpfs		/tmp		tmpfs	mode=1777	0	0
 tmpfs		/run		tmpfs	mode=0755,nosuid,nodev	0	0
 sysfs		/sys		sysfs	defaults	0	0
-efivarfs    /sys/firmware/efi/efivars   efivars defaults    0   0
+# Type is efivarfs, NOT efivars: "efivars" was the old CONFIG_EFI_VARS sysfs
+# interface at /sys/firmware/efi/vars and has never been a mountable filesystem
+# type, so this entry silently failed under the `mount -a` in inittab and FOS
+# had no access to EFI variables at all. Needed by fog.enrollsb to read
+# SetupMode/SecureBoot. noauto is deliberately absent -- a BIOS-booted client
+# has no /sys/firmware/efi and mount just skips it.
+efivarfs    /sys/firmware/efi/efivars   efivarfs    defaults    0   0

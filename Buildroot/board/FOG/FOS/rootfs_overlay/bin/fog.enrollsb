@@ -1,0 +1,101 @@
+#!/bin/bash
+. /usr/share/fog/lib/funcs.sh
+. /usr/share/fog/lib/secureboot-funcs.sh
+clearScreen
+displayBanner
+
+cert="/tmp/MOK.der"
+
+echo " * Enrolling this machine's FOG Secure Boot certificate"
+echo
+
+dots "Checking firmware state"
+state=$(sbState)
+echo "$state"
+debugPause
+
+case $state in
+    nonefi)
+        # Not a failure of this task so much as a task pointed at the wrong
+        # machine, but it is still a task that cannot do what it was asked to.
+        # Per ADR-0003 that aborts rather than reporting a success that enrolled
+        # nothing.
+        handleError "This machine booted in BIOS/CSM mode, where Secure Boot does not exist. ($0)\n   Nothing was enrolled. Switch the firmware to UEFI and run this again."
+        ;;
+    noefivars)
+        handleError "UEFI firmware was detected but efivarfs could not be mounted. ($0)\n   FOS cannot read or write EFI variables, so nothing was enrolled."
+        ;;
+esac
+
+dots "Fetching certificate"
+if ! sbFetchCert "$cert"; then
+    echo "Failed"
+    debugPause
+    handleError "Could not download a usable certificate from ${web}service/secureboot/MOK.der ($0)\n   Secure Boot signing may not be configured on this FOG server;\n   check the Secure Boot page under FOG Configuration."
+fi
+echo "Done"
+debugPause
+
+# Printed for the record, not as a security gate: FOS is already running a
+# kernel this same server signed and served, so a server that could hand us the
+# wrong certificate could equally have handed us the wrong kernel. The value of
+# showing it is that it matches what the Secure Boot page displays, so an
+# enrolment can be audited after the fact.
+echo " * Certificate SHA-256:"
+echo "     $(sbCertFingerprint "$cert")"
+echo
+
+if sbCertTrusted "$cert"; then
+    echo " * This certificate is already trusted by this machine. Nothing to do."
+    echo
+    . /bin/fog.nonimgcomplete
+    exit 0
+fi
+
+if [[ $state == setup ]]; then
+    # Worth saying out loud rather than silently doing the MOK dance: this is
+    # the one state where the fully automatic db path will work, and a site
+    # seeing this message is a site that can skip the blue screen entirely once
+    # Phase 2 lands.
+    echo " * This machine is in Setup Mode, so its Secure Boot keys can be"
+    echo "   written directly. Automatic enrolment is not available yet;"
+    echo "   staging a MOK request instead."
+    echo
+fi
+
+password=$(sbMokPassword)
+if [[ -z $password ]]; then
+    handleError "Could not determine a one-time password for the MOK request. ($0)"
+fi
+
+dots "Staging MOK enrolment request"
+if ! sbStageMok "$cert" "$password"; then
+    echo "Failed"
+    debugPause
+    handleError "The MOK enrolment request was NOT staged. ($0)\n   Do not reboot expecting a MokManager prompt; nothing is pending.\n   See the messages above for what ran."
+fi
+echo "Done"
+debugPause
+
+echo
+echo "=============================================================================="
+echo " A Secure Boot enrolment request is now pending on this machine."
+echo
+echo "   ONE-TIME PASSWORD:   $password"
+echo
+echo " On the next boot, a blue MOK Manager screen appears instead of the normal"
+echo " boot. Work through it in this order:"
+echo
+echo "   1. Enroll MOK"
+echo "   2. View key 0        <- check it names your FOG server"
+echo "   3. Continue"
+echo "   4. Yes"
+echo "   5. Enter the password above"
+echo "   6. Reboot"
+echo
+echo " If MOK Manager does NOT appear, this machine did not boot through a shim"
+echo " and nothing has been enrolled."
+echo "=============================================================================="
+echo
+
+. /bin/fog.nonimgcomplete
