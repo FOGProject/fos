@@ -202,14 +202,27 @@ function buildFilesystem() {
     fi
     cd "fssource$arch" || { echo "Couldn't change directory to fssource$arch"; exit 1; }
     if [[ -f ../patch/filesystem/fs.patch ]]; then
-        dots " * Applying filesystem patch"
-        echo
-        patch -p1 < ../patch/filesystem/fs.patch
-        if [[ $? -ne 0 ]]; then
-            echo "Failed"
-            exit 1
+        # Guarded by a marker file, the same way .packConfDone guards the
+        # Config.in append just below. Without it build.sh only ever worked
+        # against a freshly downloaded tree: a second run re-applies an
+        # already-applied patch, every hunk is rejected, and the hard exit
+        # below aborts before anything is built. That makes an incremental
+        # rebuild -- the normal loop when changing a config symbol or an
+        # overlay file -- impossible, and the failure reads like a corrupt
+        # patch rather than a re-run.
+        if [[ -f .fsPatchDone ]]; then
+            echo " * Filesystem patch already applied, skipping"
+        else
+            dots " * Applying filesystem patch"
+            echo
+            patch -p1 < ../patch/filesystem/fs.patch
+            if [[ $? -ne 0 ]]; then
+                echo "Failed"
+                exit 1
+            fi
+            touch .fsPatchDone
+            echo "Done"
         fi
-        echo "Done"
     else
         echo " * WARNING: Did not find any patch file(s), building filesystem without patches!"
     fi
@@ -369,12 +382,21 @@ function buildKernel() {
     cp "../configs/kernel$arch.config" .config
     echo "Done"
     if [[ -f ../patch/kernel/linux.patch ]]; then
-        dots " * Applying patch"
-        echo
-        patch -p1 < ../patch/kernel/linux.patch
-        if [[ $? -ne 0 ]]; then
-            echo "Failed"
-            exit 1
+        # Same re-run guard as the filesystem patch above. `make mrproper`
+        # clears build artifacts and .config but does not revert source edits,
+        # so the patch survives it and a second kernel build would otherwise
+        # abort on rejected hunks.
+        if [[ -f .kernelPatchDone ]]; then
+            echo " * Kernel patch already applied, skipping"
+        else
+            dots " * Applying patch"
+            echo
+            patch -p1 < ../patch/kernel/linux.patch
+            if [[ $? -ne 0 ]]; then
+                echo "Failed"
+                exit 1
+            fi
+            touch .kernelPatchDone
         fi
     else
         echo " * WARNING: Did not find a patch file building vanilla kernel without patches!"

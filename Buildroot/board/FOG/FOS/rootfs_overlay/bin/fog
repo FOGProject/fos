@@ -68,6 +68,9 @@ if [[ -n $mode && $mode != +(*debug*) && -z $type ]]; then
         sysinfo)
             fog.sysinfo
             ;;
+        enrollsb)
+            fog.enrollsb
+            ;;
         *)
             handleError "Fatal Error: Unknown mode :: $mode ($0)\n   Args Passed: $*"
             ;;

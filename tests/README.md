@@ -51,6 +51,21 @@ tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # without an explicit --ses, warns that overwriting
                               # an SSD is not a guaranteed erase, and refuses
                               # instead of reporting a wipe that did not run
+tests/checks/secureboot.sh    # secureboot-funcs.sh: derives the right firmware
+                              # state from efivarfs (keeping Setup Mode distinct
+                              # from "Secure Boot merely off"), rejects a
+                              # non-certificate download, and stages the MOK
+                              # request non-interactively without ever putting
+                              # the one-time password on a mokutil argv --
+                              # refusing when mokutil exits 0 having staged
+                              # nothing. Also covers the Setup Mode db path:
+                              # db goes to the image-security GUID and not the
+                              # global one, the attribute prefix carries the
+                              # authenticated-write bit, the variable is written
+                              # in a single full-block dd, PK is written LAST,
+                              # a failed download writes nothing at all, and a
+                              # SetupMode that does not flip 1 -> 0 is a refusal
+                              # rather than a success
 ```
 
 Like the golden harness, these source a sandbox copy of the library with its
