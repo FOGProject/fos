@@ -255,17 +255,48 @@ it current.
 - 32-bit UEFI gets no MOK path: no signed 32-bit shim exists (already noted in
   `_enrollSecureBootChoice`). Path 1 would still work there.
 
-## Not yet validated on hardware
+## Hardware validation
 
-Writing `PK`/`KEK`/`db` is not reversible from the OS — getting it wrong needs a
-firmware trip to recover. Path 1 wants per-model hardware validation before it is
-relied on. The staged-MOK path is reversible (`mokutil --revoke-import`) and has
-now been exercised end to end.
+**Path 1 validated end to end on 2026-08-03** (VirtualBox 7.2 EFI, platform keys
+cleared to enter Setup Mode). The task enrolled with nobody at the keyboard, and
+the firmware afterwards held exactly what it should:
 
-What the 40 harness cases can and cannot prove is worth stating plainly, because
-this ADR already recorded one design that passed every test and was still wrong.
-They prove the **bytes and the sequence**: the right namespace, the right
+- `db` — Microsoft's five db CAs plus FOG's signing certificate
+- `KEK` — Microsoft's two KEK CAs plus this server's KEK
+- `PK` — this server's PK alone
+
+Secure Boot was then switched **on**, and the same machine PXE-booted FOG's
+signed chain: `bzImage... ok`, `init.xz... ok`, where before enrolment both were
+refused with `Verification failed: Security Policy Violation`. That is the whole
+feature demonstrated in one line.
+
+Still open: per-model validation on physical firmware. Writing `PK`/`KEK`/`db` is
+not reversible from the OS, so a model that rejects the update needs a firmware
+trip to recover.
+
+### What the harness can and cannot prove
+
+Worth stating plainly, because this ADR has now recorded **two** things that
+passed every test and were still wrong.
+
+The cases prove the **bytes and the sequence**: the right namespace, the right
 attribute mask, one write, `PK` last, no writes after a failed download, and a
 refusal when `SetupMode` does not flip. They cannot prove that a given firmware
-*accepts* the update — that is a property of the machine, not of this code, and
-the only way to learn it is to boot one.
+*accepts* the update — that is a property of the machine.
+
+They also cannot prove that an external tool's output looks the way this code
+assumes. `sbCertTrusted()` used to grep `mokutil --db` for the certificate's
+SHA-256; mokutil prints a **SHA1** fingerprint there, so the match could never
+fire. The stub in the harness had been written to emit the SHA-256 the code was
+looking for, so **the test agreed with the bug** and reported success for a
+fortnight. On the first machine whose `db` already held the certificate, the task
+skipped its short-circuit, tried to stage a MOK, was refused by mokutil (which
+will not stage a request for a certificate already in `db`), and aborted.
+
+The fix is a rule, not a patch: **answer from the data where a spec defines it,
+and from the tool only where the tool owns the format.** db membership is now
+decided by searching the variable for the certificate's own bytes — the UEFI
+signature-list layout is published and cannot drift. MokList membership still
+goes through `mokutil`, but against strings read out of the binary rather than
+imagined. See also the `test-doubles-from-source` note: a double built from a
+guess is a second copy of the guess, not a check on it.
