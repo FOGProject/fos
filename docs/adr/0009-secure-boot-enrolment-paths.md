@@ -1,43 +1,91 @@
-# Secure Boot enrolment: stage a MOK request, enrol into db, never pretend either is automatic
+# Secure Boot enrolment: only Setup Mode scales, because FOS cannot bootstrap its own trust
 
 FOG generates a Secure Boot signing key by default and signs the FOS kernels
 with it on every install and upgrade. What it has never had is a way to get that
-certificate **trusted on more than a handful of machines**. Both delivery routes
+certificate **trusted on more than a handful of machines**. Both existing routes
 end at a human at a keyboard: the USB enrolment kit (`fog-enroll-mok.sh` on a
 stock Ubuntu/Debian live image) and PXE menu item 14, which chains MokManager
 directly and still needs `MOK.der` on local FAT media because MokManager has no
 network stack.
 
-This ADR records why the obvious fix is impossible, what is possible instead,
-and which of the two the code is allowed to describe as automatic.
+This ADR records the constraint that governs every possible design here, which
+of the available paths survive it, and — importantly — a design this ADR
+originally got wrong.
 
-## MOK enrolment cannot be automated, and no tooling changes that
+## The governing constraint: trust cannot bootstrap itself
+
+**Whatever performs the enrolment must already be trusted by the firmware.**
+Every viable design is a different answer to "trusted by what?", and every
+non-viable design is one that forgot to ask.
+
+Two independent walls enforce this.
+
+### Wall 1 — MOK enrolment always requires a human
 
 `mokutil --import` writes the `MokNew` UEFI variable, which is
 runtime-accessible. `MokList` — the store shim actually consults when deciding
 whether to load a binary — is **boot-services-only**. The running OS physically
 cannot write it after ExitBootServices. Only MokManager, executing in boot
 services before the OS starts, can promote `MokNew` into `MokList`, and it
-demands the one-time password as proof that a human is present.
+demands a one-time password as proof that a human is present.
 
 That is shim's entire security model. If the OS could enrol a key silently,
 Secure Boot would mean nothing, because the first thing any malware would do is
-enrol its own. There is no `--yes` flag, there is no environment variable, and
-there should not be one. Any future change that appears to have found a way
-around this has almost certainly found a bug, and the correct response is to
-report it upstream rather than to depend on it.
+enrol its own. There is no `--yes` flag and there should not be one. Any future
+change that appears to have found a way around this has almost certainly found a
+bug; report it upstream rather than depend on it.
 
 **Consequence for this codebase:** `sbStageMok()` is named for what it does. It
 stages a request. It does not enrol anything, no message in `fog.enrollsb` may
 claim it did, and the task reports "pending", not "enrolled".
 
-## What *can* be automated: db in Setup Mode
+### Wall 2 — FOS itself is not loadable until the key is already trusted
 
-`db`, `KEK` and `PK` are authenticated variables. Their write policy follows the
+**This is the correction.** An earlier revision of this ADR assumed FOS could
+boot on a Secure-Boot-enforcing machine and stage a MOK request there, turning a
+prepared-USB-media visit into a scheduled task. That assumption was false, and
+it survived 26 passing harness cases because no unit test can observe firmware
+policy.
+
+Measured on real firmware (VirtualBox 7.2 EFI, Secure Boot enforcing, MokList
+empty — 2026-08-03):
+
+```
+NBP filename is secureboot/snponly-shimx64.efi     <- MS-signed, accepted
+Fetching Netboot Image secureboot/snponly.efi      <- iPXE-signed, accepted
+iPXE 2.0.0 ... http://<server>/fog/service/ipxe/boot.php... ok
+bzImage... ok
+Verification failed: Security Policy Violation
+init.xz... ok
+Verification failed: Security Policy Violation
+Could not boot: Error 0x7f04819a
+```
+
+**iPXE verifies the kernel *and* the initrd through shim.** The signed chain
+loads fine right up to the point where FOG's own artefacts are checked against a
+MokList that does not yet contain FOG's certificate, and both are refused.
+
+So FOS can never be the thing that establishes trust in FOG's key on a machine
+that is enforcing Secure Boot. The task that would enrol the key cannot run on
+the machine that needs it enrolled.
+
+## The three paths that survive, ranked
+
+Each is a different source of pre-existing trust.
+
+### 1. Setup Mode — no trust required (the fleet answer)
+
+`db`, `KEK` and `PK` are authenticated variables whose write policy follows the
 presence of a **PK**, not the Secure Boot enforcement bit. While the platform is
-in **Setup Mode** (PK absent), writes are unauthenticated, and from FOS that is
-a plain write to `efivarfs` — a four-byte attribute prefix and a payload, no
-signing tooling required on the client at all.
+in **Setup Mode** (PK absent) writes are unauthenticated, nothing is enforcing,
+so FOS loads normally and can write FOG's certificate straight into `db` — a
+plain `efivarfs` write of a four-byte attribute prefix and a payload, with no
+signing tooling on the client at all.
+
+No MokManager, no password, no blue screen, no prepared media. The cost is one
+firmware visit to clear the platform keys, and that visit can be the same one
+where the tech enables Secure Boot — so it is one BIOS screen, once, per machine,
+ever.
 
 This distinction is easy to get wrong and expensive when it is:
 
@@ -47,125 +95,121 @@ This distinction is easy to get wrong and expensive when it is:
 
 `sbState()` therefore reports `setup` and `disabled` as different answers rather
 than collapsing them into a boolean, and `tests/checks/secureboot.sh` asserts
-that separation directly. Conflating them would make the db path attempt a write
-that silently fails on every machine whose owner merely toggled Secure Boot off
-in firmware.
+that separation directly.
 
-The chicken-and-egg resolves in our favour: for a FOS task to run at all, Secure
-Boot must already be off or FOG's key already trusted — which is exactly the
-state a machine is in when this task is worth running.
+### 2. Out-of-band (Redfish / vendor BMC) — the only zero-touch tier
 
-## The client needs no signing tools
+On hardware with a BMC, `/redfish/v1/Systems/{id}/SecureBoot` and its
+`SecureBootDatabases` collection let the server write `db` with the client
+powered off. No boot, no OS, no physical presence — authenticated by BMC
+credentials instead. Dell `cctk` is the equivalent for desktops where a trusted
+OS is already running.
 
-`efitools` and `sbsigntool` are not Buildroot packages, and adding them was
-considered and rejected. The `.auth` blobs are built on the **server**, where the
-signing key already lives and where `sbsign` is already a dependency. FOS writes
-bytes it was handed. This keeps the private key on exactly one machine and keeps
-the init small, and it mirrors the split the existing `fog-sign-kernel` sudo
-helper already established.
+This is the only path that is genuinely automated end to end, and it should be
+described as the zero-touch tier rather than as a "follow-on".
 
-`mokutil` *is* a stock Buildroot package and is now enabled on all three
-architectures. It pulls in `efivar`, `keyutils` and `libxcrypt` by `select`.
+### 3. Borrowed trust (MS-signed live Linux) — the existing USB kit
 
-## Non-interactive mokutil
+Ubuntu/Debian live boots under enforcing Secure Boot because Microsoft signed
+*its* shim, so mokutil runs there. This is what `fog-enroll-mok.sh` already does.
+It still ends at MokManager. It remains the answer for a machine that cannot be
+put into Setup Mode.
+
+## Where the staged-MOK task (`fog.enrollsb`) actually fits
+
+Given Wall 2, this task is **not** the fleet answer and must not be presented as
+one. Its honest scope is: **machines that currently have Secure Boot off and are
+going to have it turned on.**
+
+That is a real and common case — plenty of sites disable Secure Boot precisely so
+they can use FOG, and want it back on afterwards. There, the task stages the key
+with no USB media, no live image and no fingerprint transcription, and the tech
+confirms once at MokManager. That is a genuine improvement on the USB kit for
+that case, and nothing more.
+
+On an enforcing machine the task cannot run at all, so no in-code guard is
+needed — the failure happens in iPXE, before FOS exists. `fog.enrollsb` still
+reports Setup Mode explicitly when it sees it, because that machine is a
+candidate for path 1 and the operator should be told so.
+
+## Non-interactive mokutil (validated)
 
 A task has no terminal, so the usual password prompt is fatal to automation.
 `--generate-hash=<pw>` prints a SHA-512 crypt string without prompting, and
-`--import --hash-file <f>` consumes it: `update_request()` in mokutil takes the
+`--import --hash-file` consumes it: `update_request()` in mokutil takes the
 hash-file branch and never reaches `get_password()`. Both are documented
 options, verified against mokutil 0.7.2 — the version Buildroot builds.
 
-The password **must not** travel on an `--import` argv, where it would be
-visible in `ps` output and in any command log. `tests/checks/secureboot.sh`
-case 18 asserts this, because a regression that reverted to piping would still
-pass a naive "did the import run" check.
+Confirmed on hardware: after the task ran, the client's NVRAM carried `MokNew`
+and `MokAuth`, with FOG's exact 810-byte DER certificate at offset 44 of the
+854-byte `MokNew` (44 bytes being the `EFI_SIGNATURE_LIST` header plus owner
+GUID), and shim displayed "Shim UEFI key management" on the next boot.
+
+The password **must not** travel on an `--import` argv, where it would be visible
+in `ps` output and any command log. `tests/checks/secureboot.sh` case 18 asserts
+this, because a regression to piping would still pass a naive "did the import
+run" check.
 
 The password is not a secret. It authenticates nothing at rest; it exists so the
 person answering MokManager is demonstrably the person who requested the
-enrolment. It therefore has to be *shown* to the technician. `$sbmokpw` sets one
-password fleet-wide, which is the difference between typing the same six
-characters down a row of machines and reading a different random string off each
-screen.
+enrolment. `$sbmokpw` sets one password fleet-wide.
 
 ## Fail loud, per ADR-0003
 
-`mokutil` can exit 0 having staged nothing. `sbStageMok()` re-reads
-`--list-new` rather than trusting the exit status, because a request that
-silently did not stage sends a technician to reboot a machine that boots
-straight past MokManager with no explanation — the same class of silent success
+`mokutil` can exit 0 having staged nothing. `sbStageMok()` re-reads `--list-new`
+rather than trusting the exit status, because a request that silently did not
+stage sends a technician to reboot a machine that boots straight past MokManager
+with no explanation — the same class of silent success
 [ADR-0003](0003-fail-loud-on-partition-table-failure.md) removed from the
-partition path and [ADR-0008](0008-secure-wipe-by-device-class.md) removed from
-the wipe path.
+partition path and [ADR-0008](0008-secure-wipe-by-device-class.md) from the wipe
+path.
 
 A BIOS/CSM boot, or UEFI with unmountable efivarfs, aborts rather than reporting
 a success that enrolled nothing.
 
-## Why the shipped `db` baseline is Microsoft's certificates
+## Why the `db` baseline is Microsoft's certificates
 
-*(Decided here, implemented in Phase 2.)*
+Path 1 replaces the platform PK, so what goes into `db` alongside FOG's
+certificate is load-bearing. It will be Microsoft's published certificates — KEK
+CA 2011, Windows Production PCA 2011, UEFI CA 2011, plus the 2023 generation.
 
-The db path replaces the platform PK, so what goes into `db` alongside FOG's
-certificate is the load-bearing decision. It will be Microsoft's published
-certificates — KEK CA 2011, Windows Production PCA 2011, UEFI CA 2011, and the
-2023 generation.
+The decisive reason is **not** Windows compatibility, it is FOG itself. The chain
+measured above is `shimx64.efi` → signed iPXE → FOG-signed kernel, and that shim
+is signed by **Microsoft Corporation UEFI CA 2011**. A `db` without that CA
+breaks FOG's own Secure Boot PXE boot — we would enrol the key and break the
+thing we enrolled it for.
 
-The decisive reason is **not** Windows compatibility. It is FOG itself.
-`downloadipxesecureboot()` in the fogproject installer notes that the Secure
-Boot iPXE binaries are *"signed by keys FOG does not hold: Microsoft's, for the
-shim, and iPXE's."* FOG's own chain is `shimx64.efi` → signed iPXE → FOG-signed
-kernel, and that shim is signed by **Microsoft Corporation UEFI CA 2011**. A
-`db` without that CA breaks FOG's own Secure Boot PXE boot: we would enrol the
-key and break the thing we enrolled it for.
-
-**Rejected as the baseline: capturing each machine's factory keyset.** It reads
-`db`/`KEK`/`dbx` from efivarfs and restores them afterwards, which sounds
-strictly safer and is not:
-
-- It has no answer for the first machine of any model.
-- It depends on an ordering the admin cannot recover from getting wrong. Once
-  "clear all keys" has been done in firmware, the factory keyset is gone.
-- Restoring a `dbx` captured at an older BIOS **re-trusts bootloaders revoked
-  since**. That is a security regression, and a silent one.
-
-Capture survives as *optional enrichment* (Phase 3): its real value is narrower
-than it first appears — preserving OEM-specific `db` entries so vendor tooling
-(Dell SupportAssist OS Recovery, HP Sure Recover, Lenovo diagnostics) keeps
-working. Losing those is visible and non-destructive, so it warrants a warning,
-not a refusal.
+**Rejected as the baseline: capturing each machine's factory keyset.** No answer
+for the first machine of a model; depends on an ordering the admin cannot recover
+from getting wrong (once "clear all keys" is done the factory keyset is gone);
+and restoring a `dbx` captured at an older BIOS re-trusts bootloaders revoked
+since. Capture survives as *optional enrichment* — preserving OEM-specific `db`
+entries so vendor tooling (Dell SupportAssist OS Recovery, HP Sure Recover,
+Lenovo diagnostics) keeps working. Losing those is visible and non-destructive,
+so it warrants a warning, not a refusal.
 
 `dbx` is deliberately **not** baked into the shipped bundle. A stale revocation
-list shipped by FOG is worse than none, and it would make FOG responsible for
-keeping it current. The intent is to fetch the current UEFI revocation list at
-install time and refuse to write an older `dbx` over a newer one.
-
-## What stays manual, and why that is acceptable
-
-Entering Setup Mode and enabling Secure Boot are firmware operations. They
-collapse into **one BIOS visit**: set "Secure Boot: Enabled" and "Clear all
-keys" together, and the machine reboots in Setup Mode with enforcement pending.
-FOS enrols, and the next boot is Secure Boot active with FOG trusted.
-
-Automating even that is possible but vendor-specific — `cctk` (Dell Command |
-Configure) has a Linux build and could run from inside FOS; Redfish
-(`/redfish/v1/Systems/{id}/SecureBoot`) does it fully out-of-band on server
-hardware with no client boot at all. Deliberately out of scope here: it is a
-per-vendor integration surface, not a property of the enrolment mechanism.
+list shipped by FOG is worse than none and would make FOG responsible for keeping
+it current.
 
 ## Consequences
 
-- A new library, `secureboot-funcs.sh`, rather than more of `funcs.sh`. It
-  shares no state, vocabulary or failure modes with the imaging engine.
+- A new library, `secureboot-funcs.sh`, rather than more of `funcs.sh`. It shares
+  no state, vocabulary or failure modes with the imaging engine.
 - A new entry point, `bin/fog.enrollsb`, and `mode=enrollsb` in `bin/fog`.
-- `rootfs_overlay/etc/fstab` mounted efivarfs with type `efivars`, which is not
-  a mountable filesystem type — it was the old `CONFIG_EFI_VARS` sysfs interface
-  at `/sys/firmware/efi/vars`. The entry silently failed under the `mount -a` in
-  `inittab` and FOS had no EFI variable access at all. Fixed to `efivarfs`.
+- `rootfs_overlay/etc/fstab` mounted efivarfs with type `efivars`, which is not a
+  mountable filesystem type — it was the old `CONFIG_EFI_VARS` sysfs interface at
+  `/sys/firmware/efi/vars`. The entry silently failed under the `mount -a` in
+  `inittab` and FOS had no EFI variable access at all. Fixed to `efivarfs`, and
+  confirmed against real firmware: the attribute mask on `SetupMode` is `0x06`
+  (BS|RT, no NV bit), i.e. these variables are volatile and readable only from a
+  booted OS — which is why detection lives in FOS and not on the server.
 - 32-bit UEFI gets no MOK path: no signed 32-bit shim exists (already noted in
-  `_enrollSecureBootChoice`). The db path would still work there.
+  `_enrollSecureBootChoice`). Path 1 would still work there.
 
 ## Not yet validated on hardware
 
 Writing `PK`/`KEK`/`db` is not reversible from the OS — getting it wrong needs a
-firmware trip to recover. The Phase 1 MOK staging path is reversible
-(`mokutil --revoke-import`) and much lower risk, which is why it ships first.
-Phase 2 wants per-model hardware validation before it is relied on.
+firmware trip to recover. Path 1 wants per-model hardware validation before it is
+relied on. The staged-MOK path is reversible (`mokutil --revoke-import`) and has
+now been exercised end to end.
