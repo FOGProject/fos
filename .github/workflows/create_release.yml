@@ -17,6 +17,25 @@ defaults:
   run:
     shell: bash
 
+# Only one official release build at a time. The tag is date-based
+# ($(date '+%Y%m%d'), or $fog_version for an official release), so two runs
+# started on the same day target the SAME tag and upload the SAME asset
+# filenames -- bzImage, init.xz and the rest. Re-firing after a failure while
+# the first run still has jobs finishing is the realistic way into that, and it
+# would race two sets of uploads onto one release.
+#
+# cancel-in-progress is deliberately false: a second click must never kill a
+# ~50-minute build that may already be uploading. The second run queues instead,
+# which also makes an accidental double-fire visible in the Actions tab rather
+# than silent.
+#
+# Note this serializes, it does not dedupe -- the queued run still publishes to
+# the same tag when its turn comes. Refusing outright when a tag already exists
+# would be a guard in the release job, not here.
+concurrency:
+  group: create-release
+  cancel-in-progress: false
+
 jobs:
   input_checks:
     runs-on: ubuntu-24.04
