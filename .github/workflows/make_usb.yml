@@ -22,13 +22,32 @@ on:
 permissions:
   contents: write
 
+# One USB build per release tag. Nothing can collide today: the release
+# published by create_release.yml is created with GITHUB_TOKEN, and a release
+# created that way deliberately does not re-trigger workflows, so the
+# `release: published` trigger and the `workflow_call` path never both fire.
+# That protection is real but invisible, and it disappears the moment the
+# release step uses a PAT -- at which point two runs would build and upload the
+# same asset to the same tag at once. Stating it here costs nothing and does not
+# depend on remembering why it was safe.
+concurrency:
+  group: make-usb-${{ inputs.tag_name || github.event.release.tag_name }}
+  cancel-in-progress: false
+
 jobs:
   add-usb-image:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest, matching the two release workflows.
+    # `latest` moves under you between runs, which is exactly the kind of
+    # surprise a release path should not carry.
+    runs-on: ubuntu-24.04
+
+    # A successful run takes well under a minute; this only catches a hang,
+    # which would otherwise sit for the 6 hour default.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set tag name
         run: echo "TAG_NAME=${{ inputs.tag_name || github.event.release.tag_name }}" >> "$GITHUB_ENV"
@@ -41,8 +60,26 @@ jobs:
             sudo apt-get install -y grub-efi-amd64 parted kpartx
             sudo ./create-usb-image.sh "https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}"
 
+      # Every other published artifact ships a .sha256 beside it -- build.sh
+      # writes one for each kernel and init, and the release job verifies the
+      # whole set with `sha256sum -c`. The USB image was the exception, and it
+      # is the one asset a user writes straight to physical media, so it is the
+      # one where a silently truncated or corrupted download matters most.
+      #
+      # Generated from inside /tmp so the file records a bare filename, the same
+      # way build.sh does it. `sha256sum -c` then works in whatever directory
+      # someone downloads the pair into; an absolute path would only verify on
+      # a machine that happened to put it in /tmp.
+      - name: Checksum USB image
+        run: |
+            cd /tmp
+            sha256sum fos-usb.img > fos-usb.img.sha256
+            cat fos-usb.img.sha256
+
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG_NAME }}
-          files: /tmp/fos-usb.img
+          files: |
+            /tmp/fos-usb.img
+            /tmp/fos-usb.img.sha256

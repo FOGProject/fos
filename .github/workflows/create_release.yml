@@ -383,6 +383,16 @@ jobs:
 
     if: needs.release.result == 'success'
 
+    # Granted explicitly rather than inherited. A called workflow can never hold
+    # more permission than its caller, so make_usb.yml's own `contents: write`
+    # is capped by whatever this workflow has -- and with no block here that is
+    # the repo-wide default. It is `write` today, so this changes nothing; if
+    # that default is ever tightened to read-only (a common org-wide hardening)
+    # the USB upload would start failing at the very end of a release, after
+    # every build had already succeeded.
+    permissions:
+      contents: write
+
     uses: ./.github/workflows/make_usb.yml
     with:
       tag_name: ${{ needs.release.outputs.tag_name }}
