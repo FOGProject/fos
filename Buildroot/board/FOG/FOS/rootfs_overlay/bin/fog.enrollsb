@@ -27,6 +27,26 @@ case $state in
         ;;
 esac
 
+# 32-bit UEFI is refused outright rather than degraded to the db path. See
+# docs/adr/0009-secure-boot-enrolment-paths.md and FOGProject/fos#140.
+#
+# The db write would succeed -- nothing in it is architecture-specific -- and
+# that is precisely the trap. No Microsoft-signed 32-bit shim and no signed
+# 32-bit iPXE exist, so this machine cannot boot FOG under Secure Boot
+# enforcement whether or not the certificate is enrolled. Meanwhile the only
+# state where this task can run on ia32 at all is Setup Mode (nothing is
+# enforcing, so the unsigned chain boots), and the last thing the db path does
+# is write the PK -- which is what LEAVES Setup Mode. Degrading would therefore
+# take a machine FOG can image today, make it enforceable, and leave it with
+# nothing signed to boot, irreversibly from the client's side.
+#
+# Checked before the certificate fetch and before the already-trusted
+# short-circuit: no db contents make enrolment useful here, so there is no state
+# in which continuing tells the admin something more useful than this does.
+if [[ $(sbPlatformBits) == 32 ]]; then
+    handleError "This machine has 32-bit UEFI firmware, which FOG cannot enrol. ($0)\n   No Microsoft-signed 32-bit shim and no signed 32-bit iPXE exist, so it\n   cannot boot FOG under Secure Boot enforcement even with this key trusted.\n   Nothing was enrolled and nothing was changed. Leave Secure Boot off here."
+fi
+
 dots "Fetching certificate"
 if ! sbFetchCert "$cert"; then
     echo "Failed"

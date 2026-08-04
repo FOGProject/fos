@@ -252,8 +252,30 @@ it current.
   confirmed against real firmware: the attribute mask on `SetupMode` is `0x06`
   (BS|RT, no NV bit), i.e. these variables are volatile and readable only from a
   booted OS — which is why detection lives in FOS and not on the server.
-- 32-bit UEFI gets no MOK path: no signed 32-bit shim exists (already noted in
-  `_enrollSecureBootChoice`). Path 1 would still work there.
+- **32-bit UEFI is refused outright, not degraded to path 1** (FOGProject/fos#140).
+  An earlier revision of this ADR said "no MOK path, but path 1 would still work
+  there". The write would indeed work — nothing in it is architecture-specific —
+  and that is the trap. There is no signed 32-bit boot chain in existence to
+  make bootable: `ipxe/shim` publishes `shimx64.efi` and `shimaa64.efi` only,
+  iPXE's `ipxeboot.tar.gz` ships `x86_64-sb/` and `arm64-sb/` only, and what FOG
+  serves an ia32 client is an unsigned `i386-efi/snponly.efi`.
+
+  The consequence is worse than "no benefit". The one state in which this task
+  can run on ia32 at all is Setup Mode — no PK, so nothing enforces and the
+  unsigned chain boots — and the final act of path 1 is writing the `PK`, which
+  is what *leaves* Setup Mode. Degrading would take a machine FOG can image
+  today, make it enforceable, leave it with nothing signed to load, and `PK` is
+  not reversible from the OS. `sbPlatformBits()` reads
+  `/sys/firmware/efi/fw_platform_size` (firmware width, not `uname -m` — ia32
+  UEFI is usually a 64-bit CPU) and `fog.enrollsb` refuses before fetching
+  anything.
+
+  This would change if FOG signed its own `i386-efi/ipxe.efi` with the key it
+  already writes into `db`: once that certificate is in `db` the firmware
+  accepts a FOG-signed binary directly, with no shim in the path, because shim
+  exists only to bridge to Microsoft's trust and that bridge is redundant here.
+  Nothing builds or signs an ia32 iPXE today, so the refusal means "no chain
+  exists yet", not "ia32 is unsupportable".
 
 ## Hardware validation
 

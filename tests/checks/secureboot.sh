@@ -196,6 +196,11 @@ make_firmware() {
     [[ $1 == noefi ]] && return 0
     local dir="$SANDBOX/sys/firmware/efi/efivars"
     mkdir -p "$dir"
+    # $3 is the firmware width the kernel reports. Defaults to 64 so every case
+    # written before this existed keeps meaning exactly what it meant; "-"
+    # models firmware whose size the kernel did not expose at all.
+    local bits="${3:-64}"
+    [[ $bits != - ]] && echo "$bits" > "$SANDBOX/sys/firmware/efi/fw_platform_size"
     local guid="8be4df61-93ca-11d2-aa0d-00e098032b8c"
     # efivarfs layout: 4-byte LE attribute mask, then the data. Writing the
     # prefix is the point -- a reader that forgets it gets the attributes back
@@ -326,6 +331,49 @@ check "sbEfiFlag skips the 4-byte attribute prefix" "$(lib 'sbEfiFlag SetupMode'
 # 9. An absent variable is not an error -- firmware need not expose every one.
 new_case; make_firmware - 1
 check "absent SetupMode -> falls through to SecureBoot" "$(lib 'sbState')" "enforcing"
+
+# --- firmware width ---
+#
+# What these prove is only that the value is read correctly. The refusal itself
+# lives in bin/fog.enrollsb alongside the nonefi and noefivars refusals, which
+# are equally out of this harness's reach -- it sources the library, not the
+# entry point. And per the note at the foot of this file, no case here can prove
+# anything about what a given firmware does.
+
+# 9a. The ordinary case. Every other case in this file relies on this default,
+# so a regression that made 64-bit read as anything else would refuse enrolment
+# on the hardware the feature is actually for.
+new_case; make_firmware 1 0 64
+check "fw_platform_size 64 -> 64" "$(lib 'sbPlatformBits')" "64"
+
+# 9b. ia32 UEFI. This is the answer bin/fog.enrollsb refuses on, because no
+# signed 32-bit shim or iPXE exists for such a machine to boot -- so enrolling
+# would leave it enforceable with nothing signed to load. Note this is firmware
+# width, NOT CPU width: the hardware here is usually a 64-bit CPU, which is why
+# `uname -m` cannot be used for this.
+new_case; make_firmware 1 0 32
+check "fw_platform_size 32 -> 32" "$(lib 'sbPlatformBits')" "32"
+
+# 9c. Unreadable width reads as "unknown" and callers proceed. The kernel has
+# exposed this since 4.14 so it should not happen on UEFI, and refusing on it
+# would break every x86-64 client to guard a case that cannot occur.
+new_case; make_firmware 1 0 -
+check "absent fw_platform_size -> unknown" "$(lib 'sbPlatformBits')" "unknown"
+
+# 9c-ii. ...and does so silently. Without the readability test the wildcard
+# still yields "unknown", so stdout alone cannot tell the two apart -- but bash
+# writes "No such file or directory" to stderr on the way, and on a BIOS-booted
+# client that is an alarming line printed by a task doing the right thing. This
+# is the case that makes the guard load-bearing rather than decorative.
+new_case; make_firmware 1 0 -
+check "absent fw_platform_size is silent on stderr" \
+    "$( ( lib 'sbPlatformBits' ) 2>&1 1>/dev/null )" ""
+
+# 9d. A value that is neither 32 nor 64 is not passed through to a caller that
+# only compares against 32. Returning it raw would be a silent third answer.
+new_case; make_firmware 1 0 64
+echo "banana" > "$SANDBOX/sys/firmware/efi/fw_platform_size"
+check "unparseable fw_platform_size -> unknown" "$(lib 'sbPlatformBits')" "unknown"
 
 # --- certificate fetch ---
 
