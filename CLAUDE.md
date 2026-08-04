@@ -179,6 +179,17 @@ and add a new ADR for any similarly hard-to-reverse decision:
   a coin-flip choice; and boot-menu flags a human picks at iPXE (`isdebug`,
   `keymap`, `mdraid`, `chkdsk`, `mc`, `setmacto`) aren't server-known data at
   all and need their own design pass. See the ADR for the full analysis.
+- **0012 — Microsoft-signed FOG shim (proposed, unstarted).** The only way to
+  remove Secure Boot enrolment entirely rather than automate it further —
+  gated on ADR-0011's redesign actually shipping, and on the still-inactive
+  ADR-0010 lockdown patch. `ipxe/shim` cannot be repurposed for this (it
+  trusts exactly one thing, derives its second stage from its own filename,
+  and has no downstream hook by design); it requires FOG's own shim fork with
+  FOG's certificate as the vendor cert, an EV cert from the Microsoft Hardware
+  Dev Center, HSM/smartcard key custody, and a `rhboot/shim-review`
+  submission — which carries **permanent** CVE/hash-revocation duty
+  afterward, not a one-time cost. Tracked upstream as
+  FOGProject/fogproject#995.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
