@@ -166,6 +166,15 @@ and add a new ADR for any similarly hard-to-reverse decision:
   so a config can look right in git and produce a kernel missing lockdown
   entirely — which is why `tests/checks/secureboot-config.sh -b` inspects the
   post-`oldconfig` `.config` rather than the one we wrote.
+- **0011 — UKI feasibility.** Settles the question ADR 0010 left open:
+  adopting a Unified Kernel Image is feasible and does not require FOS to run
+  systemd (the addon mechanism is boot-stage-only), but it is gated on moving
+  task selection (`mode=`, `type=`, host identity) out of the network-supplied
+  boot cmdline and into an extended version of the runtime checkin
+  `bin/fog.checkin` already performs — every current `/proc/cmdline` consumer
+  (`funcs.sh:9-13`, `S40network`, `fog.capone`, `fog.sysinfo`) would need to
+  move to that channel instead. The per-deployment `web=` bootstrap mechanism
+  is left as an open follow-up spike, not yet decided.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
