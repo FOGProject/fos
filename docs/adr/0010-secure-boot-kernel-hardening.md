@@ -1,4 +1,4 @@
-# 0009 — Secure Boot kernel hardening, and why lockdown is not yet activated
+# 0010 — Secure Boot kernel hardening, and why lockdown is not yet activated
 
 ## Status
 
