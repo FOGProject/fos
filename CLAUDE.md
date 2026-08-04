@@ -166,6 +166,30 @@ and add a new ADR for any similarly hard-to-reverse decision:
   so a config can look right in git and produce a kernel missing lockdown
   entirely — which is why `tests/checks/secureboot-config.sh -b` inspects the
   post-`oldconfig` `.config` rather than the one we wrote.
+- **0011 — UKI feasibility.** Settles the question ADR 0010 left open:
+  adopting a Unified Kernel Image is feasible and does not require FOS to run
+  systemd (the addon mechanism is boot-stage-only), and does not touch the
+  custom kernel itself (Realtek drivers, Intel VMD, module-free build). It is
+  gated on redesigning FOS's boot-time config channel, which splits into three
+  subclasses, only the first of which this ADR actually solves: server-known
+  task data (`mode=`, `type=`, image id) can move into an extended version of
+  the runtime checkin `bin/fog.checkin` already performs; the `web=` server
+  address **cannot** — `S40network` needs it before any network round-trip is
+  reachable, so it needs a signed addon or DHCP-derived discovery instead, not
+  a coin-flip choice; and boot-menu flags a human picks at iPXE (`isdebug`,
+  `keymap`, `mdraid`, `chkdsk`, `mc`, `setmacto`) aren't server-known data at
+  all and need their own design pass. See the ADR for the full analysis.
+- **0012 — Microsoft-signed FOG shim (proposed, unstarted).** The only way to
+  remove Secure Boot enrolment entirely rather than automate it further —
+  gated on ADR-0011's redesign actually shipping, and on the still-inactive
+  ADR-0010 lockdown patch. `ipxe/shim` cannot be repurposed for this (it
+  trusts exactly one thing, derives its second stage from its own filename,
+  and has no downstream hook by design); it requires FOG's own shim fork with
+  FOG's certificate as the vendor cert, an EV cert from the Microsoft Hardware
+  Dev Center, HSM/smartcard key custody, and a `rhboot/shim-review`
+  submission — which carries **permanent** CVE/hash-revocation duty
+  afterward, not a one-time cost. Tracked upstream as
+  FOGProject/fogproject#995.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

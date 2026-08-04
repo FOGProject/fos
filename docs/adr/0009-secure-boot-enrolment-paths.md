@@ -39,6 +39,43 @@ bug; report it upstream rather than depend on it.
 stages a request. It does not enrol anything, no message in `fog.enrollsb` may
 claim it did, and the task reports "pending", not "enrolled".
 
+#### Rejected: a Microsoft-signed generic UEFI Shell writing `MokList` directly
+
+Worth naming explicitly, because it is the specific "found a way around Wall 1"
+case the paragraph above warns about, and it is tempting enough to get
+rediscovered. `MokList` carries only `NV|BS` attributes — it is **not** an
+authenticated variable the way `PK`/`KEK`/`db` are. The MokManager password is
+a MokManager *application* convention, not a firmware access-control check on
+the variable itself. Any EFI code running before `ExitBootServices` can call
+`SetVariable()` on it directly.
+
+The standard edk2 UEFI Shell — which Microsoft has signed and some vendors
+ship — includes `dmpstore`, a generic NVRAM save/restore command with no
+concept that `MokList` is special. Point it at a hand-crafted file with the
+right name/GUID/attributes/bytes and it writes an arbitrary cert list into
+`MokList` with no password, no MokManager screen, no physical presence. This
+is not a novel idea: it is the same technique class behind real Secure Boot
+bypasses in the wild (the BlackLotus bootkit is the most prominent), which is
+exactly why Microsoft has been revoking specific signed shell/bootloader
+hashes via `dbx` over time.
+
+**Rejected, not "not yet built."** Two independent reasons, not one:
+
+- It is a documented Secure Boot bypass class, not a shortcut — shipping it as
+  a FOG feature means FOG's own automation does what a bootkit does, and
+  undermines the exact guarantee this ADR and ADR-0010 exist to preserve for
+  every FOG deployment.
+- It is not durable even on its own terms. Microsoft actively revokes
+  known-vulnerable signed shells via `dbx`, so automation built on this can
+  stop working — or get flagged by security tooling watching for this exact
+  behavior — at a time FOG does not control.
+
+The real, legitimate versions of "close the enrolment gap further" are Path 1
+below (Setup Mode, or a signed update once FOG already owns the platform's
+`PK`/`KEK`), Path 2 (out-of-band BMC), or — the only way to remove the
+enrolment step entirely — FOGProject/fogproject#995, tracked in
+[ADR-0012](0012-fog-vendor-shim-signed-by-microsoft.md).
+
 ### Wall 2 — FOS itself is not loadable until the key is already trusted
 
 **This is the correction.** An earlier revision of this ADR assumed FOS could
@@ -126,6 +163,32 @@ silently, so each has a dedicated assertion in the harness:
 
 All three blobs are downloaded before any is written: a web server hiccup should
 cost a retry, not leave a platform mid-enrolment.
+
+#### An alternate front-end: user-supplied WinPE
+
+A site that would rather not PXE-boot FOS for the enrolment step — or prefers
+a Windows-native workflow — has another way to drive the exact same mechanism.
+WinPE boots via Windows Boot Manager, verified directly against Microsoft's
+certificates already in `db`. No shim, no `MokList`, nothing to enrol just to
+get WinPE running. Windows exposes an officially supported equivalent of
+`sbWriteEfiAuthVar()`/`sbEnrollDb()` for this exact purpose: the
+`Set-SecureBootUEFI` PowerShell cmdlet, which writes the same signed
+authenticated-variable updates.
+
+**FOG's deliverable here is a script, not a WinPE image.** Microsoft's Windows
+ADK / WinPE licensing does not permit a third party to freely redistribute
+built WinPE images carrying Microsoft's binaries — the pattern other imaging
+tools (MDT, SCCM boot media, and others) use instead is to ship an add-in
+payload the customer injects into a WinPE they build themselves from their own
+licensed ADK. FOG's equivalent would be a script that fetches the same
+`PK.auth`/`KEK.auth`/`db.auth` blobs `sbFetchAuthVar()` already serves and
+pushes them via `Set-SecureBootUEFI`, for the customer to add to their own
+build.
+
+This is a different front-end for Path 1, not a way around Wall 1 or Wall 2 —
+it still cannot touch `MokList`, and the machine still has to already be in
+(or willing to enter) Setup Mode. It has not been built; recorded here as a
+validated direction should a Windows-native front-end become worth building.
 
 ### 2. Out-of-band (Redfish / vendor BMC) — the only zero-touch tier
 

@@ -128,6 +128,11 @@ That question is worth answering **before** anyone writes the lockdown patch.
 If FOG cannot move to a UKI, an application for its own shim probably is not
 winnable, and the patch buys nothing on its own.
 
+**Settled in ADR 0011**: adopting a UKI is feasible, gated on moving task
+selection out of the boot cmdline and into an extended version of the runtime
+checkin `bin/fog.checkin` already performs. See that ADR for the analysis and
+what it leaves open before implementation can start.
+
 ## Consequences
 
 - The configs are inert for now: lockdown is compiled in but never activated,
