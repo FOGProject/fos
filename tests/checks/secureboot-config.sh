@@ -11,7 +11,7 @@
 # not met. A hand-edited config can therefore look completely correct in git and
 # still produce a kernel with lockdown missing, and nothing anywhere says so.
 # That failure would only surface as a Secure Boot client behaving differently
-# from the one you tested. See docs/adr/0009-secure-boot-kernel-hardening.md
+# from the one you tested. See docs/adr/0010-secure-boot-kernel-hardening.md
 #
 # The -b mode is the one that actually proves anything, because it inspects the
 # config Kconfig produced rather than the one we wrote. Run it after a build.

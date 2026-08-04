@@ -155,6 +155,17 @@ and add a new ADR for any similarly hard-to-reverse decision:
   authenticated-write bit is not optional); efivarfs needs prefix and payload in
   a single `write()`; and `PK` is written **last**, because writing it leaves
   Setup Mode and any write after it must be signature-checked.
+- **0010 — Secure Boot kernel hardening.** The lockdown LSM and the platform
+  keyring are built into all three arch configs but lockdown is **not activated**
+  (`CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y`) — activating it is downstream-only
+  work gated on the vendor-shim question. `CONFIG_LSM` is set explicitly rather
+  than left to `oldconfig`, because an LSM missing from the ordered list never
+  initialises, and `CONFIG_LOAD_UEFI_KEYS` is what imports the firmware's `db`
+  and `MokList` into the platform keyring. The trap this ADR exists for:
+  `make oldconfig` **silently drops** any symbol whose dependencies are unmet,
+  so a config can look right in git and produce a kernel missing lockdown
+  entirely — which is why `tests/checks/secureboot-config.sh -b` inspects the
+  post-`oldconfig` `.config` rather than the one we wrote.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
