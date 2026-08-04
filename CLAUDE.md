@@ -168,13 +168,17 @@ and add a new ADR for any similarly hard-to-reverse decision:
   post-`oldconfig` `.config` rather than the one we wrote.
 - **0011 — UKI feasibility.** Settles the question ADR 0010 left open:
   adopting a Unified Kernel Image is feasible and does not require FOS to run
-  systemd (the addon mechanism is boot-stage-only), but it is gated on moving
-  task selection (`mode=`, `type=`, host identity) out of the network-supplied
-  boot cmdline and into an extended version of the runtime checkin
-  `bin/fog.checkin` already performs — every current `/proc/cmdline` consumer
-  (`funcs.sh:9-13`, `S40network`, `fog.capone`, `fog.sysinfo`) would need to
-  move to that channel instead. The per-deployment `web=` bootstrap mechanism
-  is left as an open follow-up spike, not yet decided.
+  systemd (the addon mechanism is boot-stage-only), and does not touch the
+  custom kernel itself (Realtek drivers, Intel VMD, module-free build). It is
+  gated on redesigning FOS's boot-time config channel, which splits into three
+  subclasses, only the first of which this ADR actually solves: server-known
+  task data (`mode=`, `type=`, image id) can move into an extended version of
+  the runtime checkin `bin/fog.checkin` already performs; the `web=` server
+  address **cannot** — `S40network` needs it before any network round-trip is
+  reachable, so it needs a signed addon or DHCP-derived discovery instead, not
+  a coin-flip choice; and boot-menu flags a human picks at iPXE (`isdebug`,
+  `keymap`, `mdraid`, `chkdsk`, `mc`, `setmacto`) aren't server-known data at
+  all and need their own design pass. See the ADR for the full analysis.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

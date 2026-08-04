@@ -1,4 +1,4 @@
-# 0011 — Adopting a UKI is feasible, gated on moving task selection off the boot cmdline
+# 0011 — Adopting a UKI is feasible, gated on redesigning FOS's boot-time config channel
 
 ## Status
 
@@ -59,6 +59,21 @@ Kairos and Flatcar take a related but distinct approach — dynamic config as
 *data* consumed by already-trusted userspace, rather than dynamic *cmdline*
 driving the kernel's own security posture — which is a materially different
 (weaker, for this purpose) trust boundary and not the one recommended below.
+FOS already carries a smaller version of the same idea internally: USB boot
+(where iPXE cannot inject a cmdline at all) already fetches config over the
+network keyed by MAC/system UUID and sources it at runtime —
+`bin/fog:4-11` POSTs to `hostinfo.php`, writes the response to
+`/tmp/hinfo.txt`, and sources it before dispatch. That path still depends on
+`$web` already being known (see below), but it is evidence the general shape
+already works in this codebase, not just at Talos's scale.
+
+**4. Adopting a UKI does not touch the custom kernel.** A UKI is an assembly
+step on top of the *same* `bzImage` `build.sh` already produces — it changes
+nothing about kernel configuration, the built-in Realtek drivers, the Intel
+VMD patch, or the no-external-modules build. Those are Kconfig/source-tree
+concerns; the UKI only staples the finished kernel binary, the initrd, and a
+cmdline into one signed PE file. The two reasons FOS carries a custom kernel
+at all (ADR 0010) are unaffected by anything in this ADR.
 
 ## Decision
 
@@ -69,28 +84,52 @@ per-boot signed addon:
   `type=`, host identity, or `web=` — signed once per FOS release, identical
   for every deployment and every boot. This is the artifact `build.sh` would
   produce and sign, replacing today's separate `bzImage`/`init.xz` signing.
-- **Task selection moves into the existing checkin round-trip.**
+- **Server-known task data moves into the existing checkin round-trip.**
   `bin/fog.checkin:50-72` already POSTs `mac`/`type`/`sysuuid` to
   `${web}service/Pre_Stage1.php` and blocks until the server answers `##@GO` —
   the shape of an authenticated runtime handshake already exists. Extend that
   response from a bare `##@GO` into a real payload carrying `mode`, `type`,
-  image id, and whatever else is on the cmdline today, and change every
-  current `/proc/cmdline` consumer (`funcs.sh:9-13`, `S40network`,
-  `fog.capone`, `fog.sysinfo`) to source from it instead. This is a redesign of
-  FOS's config channel, not a bolt-on: it touches the same four files that
-  read `/proc/cmdline` today, nothing more.
-- **`web=` is the one genuinely per-deployment (not per-boot) variable left**,
-  and this ADR does not pick its mechanism — two candidates, either workable:
-  a signed per-deployment addon UKI carrying just `web=`, signed with that
-  FOG install's own key (reusing the signing infrastructure already built for
-  FOGProject/fogproject#961); or deriving it from the DHCP/PXE next-server
-  field the client already receives during network boot, without needing the
-  kernel cmdline's help at all. Left as a follow-up spike — see below.
+  image id, and other data the FOG server already decides. Everything
+  downstream just reads the environment `funcs.sh:9-13` currently populates
+  from `/proc/cmdline` — not the cmdline directly — so replacing that one
+  export point is enough to cover `$mode`/`$type`/image-id-class variables
+  without touching the dozens of files (`$web` alone appears in 18) that
+  merely consume the resulting env vars. This covers the data the *server*
+  decides. It does **not** cover the two subclasses below.
+- **`web=` cannot be solved by the checkin redesign at all, and is not a
+  coin flip between two equally-fine options.** `S40network:48` calls
+  `curl "${web}"/index.php` immediately after DHCP just to confirm the network
+  came up — before `fog.checkin` or any runtime round-trip is reachable. A
+  runtime checkin cannot supply the address of the server it needs to reach to
+  perform that checkin. This has to be solved by something present *before*
+  any network call: a signed per-deployment addon UKI carrying just `web=`
+  (signed with that FOG install's own key, reusing #961's infrastructure), or
+  deriving it from the DHCP/PXE next-server field already received during
+  network boot. Left as a follow-up spike, but not optional the way the
+  wording above might imply — some such mechanism is required.
+- **Boot-menu flags chosen by a human are a separate, unaddressed subclass.**
+  `$isdebug`, `$keymap`, `$mdraid`, `$chkdsk`, `$mc`, `$setmacto` (used in
+  `S40network`, `fog.checkin`, `S99fog`, `partition-funcs.sh`, and elsewhere)
+  are picked at iPXE's interactive boot menu, before any FOG-server round-trip
+  and independent of whatever task the server has scheduled. "Move task
+  selection into checkin" does not cover these, because the server has no way
+  to know what a human just chose in the menu unless iPXE tells it first —
+  which means a second, separate network call (from iPXE, at menu-selection
+  time, keyed by MAC) reporting the choice so the server can hand it back
+  during the later checkin. That call has the same `web=`-bootstrap
+  dependency as everything else here. This subclass needs its own design pass
+  before implementation starts; this ADR does not resolve it.
 
 ## What this does not resolve
 
 - **The `web=` bootstrap mechanism** — two candidates named above, neither
-  chosen. Needs a short, separate spike before implementation starts.
+  chosen, and not optional (some such mechanism is required, since nothing
+  else here can bootstrap it). Needs a short, separate spike before
+  implementation starts.
+- **The boot-menu-flags subclass** (`isdebug`, `keymap`, `mdraid`, `chkdsk`,
+  `mc`, `setmacto`, …) — needs its own design pass; "move task selection to
+  checkin" does not cover data a human chooses at the iPXE menu rather than
+  data the FOG server already knows.
 - **`fog.checkin`'s TLS is unverified today** (`curl -k`). That is not a new
   problem this ADR introduces, but the channel becomes more load-bearing once
   it also carries task selection, not just image content — worth tightening
