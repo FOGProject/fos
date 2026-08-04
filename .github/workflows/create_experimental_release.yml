@@ -389,6 +389,12 @@ jobs:
 
     if: needs.release.result == 'success' && inputs.kernel_x64 && inputs.init_x64
 
+    # Granted explicitly rather than inherited -- see the matching block in
+    # create_release.yml. A called workflow is capped by its caller's
+    # permissions, and with no block here that cap is the repo-wide default.
+    permissions:
+      contents: write
+
     uses: ./.github/workflows/make_usb.yml
     with:
       tag_name: ${{ needs.release.outputs.tag_name }}
