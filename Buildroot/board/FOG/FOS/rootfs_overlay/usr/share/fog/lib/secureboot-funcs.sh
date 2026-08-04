@@ -86,6 +86,39 @@ sbState() {
     [[ $sb == 1 ]] && { echo "enforcing"; return 0; }
     echo "disabled"
 }
+# Echo the width of the UEFI firmware in bits: "32", "64" or "unknown".
+#
+# This is FIRMWARE width, not CPU width, and the distinction is the whole point:
+# ia32 UEFI overwhelmingly runs on 64-bit CPUs (Bay Trail and Cherry Trail
+# tablets are the common case), so `uname -m` answers a different question and
+# answers this one wrongly. fw_platform_size is the firmware's own declaration.
+#
+# Why FOS cares at all: no Microsoft-signed 32-bit shim and no signed 32-bit
+# iPXE exist, so there is no Secure Boot chain an ia32 machine can boot. See the
+# refusal in bin/fog.enrollsb for what that means for enrolment.
+#
+# The kernel has exposed fw_platform_size on every EFI boot since 4.14 and FOS
+# runs 6.x, so on UEFI it is always readable. "unknown" therefore means a BIOS
+# boot -- which sbState() has already caught by the time anything asks -- or
+# something unforeseen. Callers should proceed on "unknown" rather than refuse:
+# guessing wrong in that direction breaks x86-64 clients, which is the far more
+# expensive mistake.
+sbPlatformBits() {
+    local path="/sys/firmware/efi/fw_platform_size"
+    local bits=""
+    # The readability test is what keeps a BIOS boot quiet. Reading a missing
+    # file leaves $bits empty and would reach "unknown" through the wildcard
+    # below anyway, but bash writes "No such file or directory" to stderr on the
+    # way -- and on a BIOS-booted client that is a scary-looking line under a
+    # task that is behaving correctly.
+    [[ -r $path ]] || { echo "unknown"; return 0; }
+    read -r bits < "$path"
+    case $bits in
+        32|64) echo "$bits" ;;
+        *) echo "unknown" ;;
+    esac
+    return 0
+}
 # Download the server's Secure Boot certificate to $1.
 #
 # The certificate is public by design -- it is the thing the server publishes
