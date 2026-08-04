@@ -17,21 +17,27 @@ defaults:
   run:
     shell: bash
 
-# Only one official release build at a time. The tag is date-based
-# ($(date '+%Y%m%d'), or $fog_version for an official release), so two runs
-# started on the same day target the SAME tag and upload the SAME asset
-# filenames -- bzImage, init.xz and the rest. Re-firing after a failure while
-# the first run still has jobs finishing is the realistic way into that, and it
-# would race two sets of uploads onto one release.
+# Only one official release build at a time.
 #
 # cancel-in-progress is deliberately false: a second click must never kill a
 # ~50-minute build that may already be uploading. The second run queues instead,
 # which also makes an accidental double-fire visible in the Actions tab rather
 # than silent.
 #
-# Note this serializes, it does not dedupe -- the queued run still publishes to
-# the same tag when its turn comes. Refusing outright when a tag already exists
-# would be a guard in the release job, not here.
+# This serializes, it does not dedupe. Two things stop a queued run from
+# publishing over the first one's release:
+#
+#   - the dated tag carries a UTC timestamp, so two runs cannot land on the same
+#     tag (this group also makes "same second" unreachable); and
+#   - both the official and the dated paths are checked against an existing
+#     release before anything is uploaded -- see the guards in input_checks and
+#     in the release job.
+#
+# The guards matter because the failure they prevent is silent:
+# softprops/action-gh-release UPDATES an existing release rather than refusing,
+# replacing same-named assets while leaving the git tag on whichever commit it
+# was originally cut from. The result is a tag that serves bytes its own commit
+# does not contain.
 concurrency:
   group: create-release
   cancel-in-progress: false
@@ -51,6 +57,24 @@ jobs:
           fi
           if [[ "$is_official" == "false" && "$fog_version" != "" ]]; then
             echo "Official Release checkbox was not selected, but Official Release FOG Version was entered!"
+            exit 1
+          fi
+
+      # Fail fast on the one tag that is predictable at dispatch time.
+      #
+      # An official release tags $fog_version, so re-running one for a version
+      # that already shipped is a plausible mistake -- and without this it would
+      # only be caught by the guard in the release job, ~50 minutes and six
+      # builds later. The dated path cannot be checked here because its tag is
+      # not decided until the release job stamps the time.
+      - name: Refuse an official release whose tag already exists
+        if: inputs.is_official_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fog_version="${{ inputs.official_fog_version }}"
+          if gh release view "$fog_version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $fog_version already exists. Delete it (and its tag) first, or pick another version -- re-running would replace its assets while leaving the tag on the original commit."
             exit 1
           fi
 
@@ -343,9 +367,26 @@ jobs:
         run: |
           echo "RELEASE_NAME=Latest from $(date '+%Y-%m-%d')" >> $GITHUB_ENV
           
+      # Timestamped, not just dated, so two runs on the same day cannot target
+      # the same tag. A bare %Y%m%d collided on any second release in a day --
+      # and the collision was silent, because the release action updates an
+      # existing release in place and does not move its tag, leaving that tag
+      # pointing at the earlier commit while serving the later build's binaries.
+      #
+      # Matches create_experimental_release.yml, which has always stamped the
+      # time (EXP_%Y%m%d-%H%M%S); this is the same shape without the prefix, so
+      # the two remain distinguishable at a glance and both still sort
+      # chronologically. UTC for the same reason that file uses it: a tag should
+      # not depend on where the runner thinks it is.
+      #
+      # The RELEASE NAME deliberately stays date-only -- FOG parses its first
+      # three characters ("Lat") for the Kernel Update page. Only the tag
+      # changes here, and nothing parses the tag: Route::kernelOrInitJson()
+      # passes tag_name through for display, and the installer's
+      # fosLatestURL resolves releases/latest/download by release, not by name.
       - name: Set tag name variable
         run: |
-          echo "TAG_NAME=$(date '+%Y%m%d')" >> $GITHUB_ENV
+          echo "TAG_NAME=$(date -u '+%Y%m%d-%H%M%S')" >> $GITHUB_ENV
 
       - name: Get Linux Kernel version from build.sh
         run: |
@@ -374,6 +415,24 @@ jobs:
           cd distribution-files
           sha256sum -c ./*.sha256
           if [[ $? -ne 0 ]]; then exit 1; fi
+
+      # The authoritative check, covering both paths and anything the naming
+      # scheme cannot anticipate -- a hand-created tag, a re-run of an old
+      # workflow_dispatch, a tag pushed while these builds were running. The
+      # timestamped tag makes a dated collision unreachable in practice, but a
+      # naming scheme is a heuristic and this is the invariant: never replace
+      # the assets of a release that already exists.
+      #
+      # Runs after the checksums so a genuine build problem is still reported
+      # first, and before the upload so nothing is published either way.
+      - name: Refuse if the release tag already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG_NAME already exists -- refusing to overwrite its assets. Nothing was published."
+            exit 1
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v3
