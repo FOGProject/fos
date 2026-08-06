@@ -189,11 +189,18 @@ alone confirms the mechanism, because it is the only difference the kernel is
 currently unable to correct.
 
 To prove the fix without a rebuild, clear ASPM control on both ends of the link
-and re-run the deploy:
+and re-run the deploy. Two details are load-bearing: the write is **masked to
+bits 1:0** (`0000:0003`), because a bare `=0000` would also clear Common Clock
+Configuration, Clock PM and Extended Sync in the same register — clearing CCC
+on a live link without a retrain is its own bug — and the **endpoint is cleared
+before the root port**, per PCIe r6.2 sec 7.5.3.7 ("when disabling ASPM L1,
+software must disable it in the Downstream component prior to disabling it in
+the Upstream component"), which is the same order `pcie_config_aspm_link()`
+uses:
 
 ```sh
-setpci -s <port> CAP_EXP+10.w=0000
-setpci -s <nic>  CAP_EXP+10.w=0000
+setpci -s <nic>  CAP_EXP+10.w=0000:0003
+setpci -s <port> CAP_EXP+10.w=0000:0003
 ```
 
 Throughput returning to 6–10 GB/min is the proof. Note this is a
