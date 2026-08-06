@@ -83,3 +83,51 @@ jobs:
           files: |
             /tmp/fos-usb.img
             /tmp/fos-usb.img.sha256
+
+      # Verify rather than trust, because a partial upload here fails silently.
+      #
+      # On 2026-08-06 this step uploaded fos-usb.img.sha256 fine and then died
+      # with `other side closed` partway through fos-usb.img itself. The release
+      # was left advertising a checksum for a file that was not present -- and
+      # nothing downstream noticed, because the release page renders happily
+      # with a missing asset and every other job in the run was green. The only
+      # user-visible symptom is `sha256sum -c` failing on a pair someone
+      # downloaded, long after the fact.
+      #
+      # A truncated transfer is a transport failure, which is precisely the kind
+      # that succeeds on a second attempt, so re-upload rather than just report.
+      # Sizes are compared instead of checksums deliberately: the failure being
+      # guarded against is a short or absent object, GitHub stores what it
+      # received, and re-hashing a 128 MiB asset over the network on every
+      # release buys nothing against that.
+      - name: Verify uploaded assets, re-uploading any that are missing or short
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          files=(/tmp/fos-usb.img /tmp/fos-usb.img.sha256)
+          for attempt in 1 2 3; do
+            incomplete=()
+            for f in "${files[@]}"; do
+              name=$(basename "$f")
+              want=$(stat -c%s "$f")
+              got=$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+                      --json assets -q ".assets[]|select(.name==\"$name\")|.size" 2>/dev/null)
+              if [[ "$got" != "$want" ]]; then
+                echo "::warning::$name is ${got:-absent} on release $TAG_NAME, expected $want bytes"
+                incomplete+=("$f")
+              fi
+            done
+            if [[ ${#incomplete[@]} -eq 0 ]]; then
+              echo "All USB assets present on $TAG_NAME at their expected sizes."
+              exit 0
+            fi
+            if [[ $attempt -lt 3 ]]; then
+              echo "Re-uploading ${#incomplete[@]} asset(s) (attempt $attempt of 3)..."
+              gh release upload "$TAG_NAME" "${incomplete[@]}" \
+                --repo "$GITHUB_REPOSITORY" --clobber || true
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::USB assets still missing or truncated on $TAG_NAME after 3 attempts -- the release is incomplete."
+          exit 1

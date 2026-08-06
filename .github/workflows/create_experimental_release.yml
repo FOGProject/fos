@@ -384,6 +384,46 @@ jobs:
           files: |
             distribution-files/*
 
+      # Same guard as create_release.yml and make_usb.yml -- see the comment in
+      # the former for the failure this exists for. It matters here despite
+      # these being prereleases: an experimental build is usually handed to one
+      # person to test a specific fix, and "the kernel you sent me doesn't work"
+      # is the most expensive possible way to discover a truncated upload.
+      #
+      # The expected set is whatever the selected arches actually produced,
+      # which is the same glob the upload uses, so partial-arch runs verify
+      # exactly what they published and nothing more.
+      - name: Verify uploaded assets, re-uploading any that are missing or short
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            incomplete=()
+            for f in distribution-files/*; do
+              name=$(basename "$f")
+              want=$(stat -c%s "$f")
+              got=$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+                      --json assets -q ".assets[]|select(.name==\"$name\")|.size" 2>/dev/null)
+              if [[ "$got" != "$want" ]]; then
+                echo "::warning::$name is ${got:-absent} on release $TAG_NAME, expected $want bytes"
+                incomplete+=("$f")
+              fi
+            done
+            if [[ ${#incomplete[@]} -eq 0 ]]; then
+              echo "All release assets present on $TAG_NAME at their expected sizes."
+              exit 0
+            fi
+            if [[ $attempt -lt 3 ]]; then
+              echo "Re-uploading ${#incomplete[@]} asset(s) (attempt $attempt of 3)..."
+              gh release upload "$TAG_NAME" "${incomplete[@]}" \
+                --repo "$GITHUB_REPOSITORY" --clobber || true
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::Release assets still missing or truncated on $TAG_NAME after 3 attempts -- $TAG_NAME is incomplete."
+          exit 1
+
   add_usb_image:
     needs: release
 

@@ -456,6 +456,50 @@ jobs:
             distribution-files/init_32.xz
             distribution-files/init_32.xz.sha256
 
+      # Same guard as the one in make_usb.yml, and for the same reason: an
+      # individual asset upload can die mid-transfer while the step as a whole
+      # still reports success, publishing a release that looks complete and is
+      # not. That is worse here than for the USB image -- these twelve files are
+      # what every branch install pulls, and a short bzImage or init.xz is a
+      # broken deploy for anyone who fetches it before someone notices.
+      #
+      # The expected set is taken from what the build actually produced rather
+      # than from a second copy of the list above, so the two cannot drift. If
+      # dist ever gains a file that is deliberately not published, this fails
+      # the release until the lists are reconciled, which is the right way round
+      # for a release path (ADR-0003: fail loud rather than ship something
+      # half-written).
+      - name: Verify uploaded assets, re-uploading any that are missing or short
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            incomplete=()
+            for f in distribution-files/*; do
+              name=$(basename "$f")
+              want=$(stat -c%s "$f")
+              got=$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" \
+                      --json assets -q ".assets[]|select(.name==\"$name\")|.size" 2>/dev/null)
+              if [[ "$got" != "$want" ]]; then
+                echo "::warning::$name is ${got:-absent} on release $TAG_NAME, expected $want bytes"
+                incomplete+=("$f")
+              fi
+            done
+            if [[ ${#incomplete[@]} -eq 0 ]]; then
+              echo "All release assets present on $TAG_NAME at their expected sizes."
+              exit 0
+            fi
+            if [[ $attempt -lt 3 ]]; then
+              echo "Re-uploading ${#incomplete[@]} asset(s) (attempt $attempt of 3)..."
+              gh release upload "$TAG_NAME" "${incomplete[@]}" \
+                --repo "$GITHUB_REPOSITORY" --clobber || true
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::Release assets still missing or truncated on $TAG_NAME after 3 attempts -- $TAG_NAME is incomplete."
+          exit 1
+
   add_usb_image:
     needs: release
 
