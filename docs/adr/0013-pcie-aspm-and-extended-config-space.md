@@ -1,4 +1,4 @@
-# 0011 — The kernel must be able to control PCIe ASPM
+# 0013 — The kernel must be able to control PCIe ASPM
 
 ## Status
 
@@ -8,12 +8,13 @@ on the reporter's Dell OptiPlex 3070 (RTL8168h rev 15), UEFI deploy went from
 `EXP_20260805-123232`; legacy speeds unchanged. The residual gap to their usual
 ~10 GB/min is attributed to a suspect patch lead on the test machine.
 
-Note what was *not* measured: the reporter did not run the `setpci` Link
-Control comparison below, so the claim that Dell's UEFI firmware enables L1
-where its CSM path does not remains an **inference**. It is the most plausible
-explanation for the UEFI/legacy split and nothing contradicts it, but the
-validation above only proves the fix works, not the mechanism behind the
-asymmetry.
+Note what is *not* on the record: no `setpci` Link Control readings were
+reported back, so the claim that Dell's UEFI firmware enables L1 where its CSM
+path does not remains an **inference**. It is the most plausible explanation
+for the UEFI/legacy split and nothing contradicts it, but the validation above
+proves the fix works, not the mechanism behind the asymmetry. Anyone with the
+affected hardware can still close that gap in a minute using the procedure
+below.
 
 Reported as slow UEFI imaging (~1.2 GB/min against 6–10 GB/min on the same
 machine booted legacy/BIOS) on the FOG forums, topic 18212. The same hardware
@@ -182,8 +183,9 @@ have made this bug appear on legacy boots too.
 
 ## Validating on hardware
 
-Read-only, no rebuild required, and it confirms or kills the whole theory in
-about a minute. Boot the affected machine to a FOS shell (FOG debug mode);
+Still unreported as of 2026-08-06 — the ASPM fix was validated by throughput
+alone, so this remains the open way to confirm the firmware mechanism. It is
+read-only, needs no rebuild, and settles the question in about a minute. Boot the affected machine to a FOS shell (FOG debug mode);
 `pciutils` and `ethtool` are both in the init. With `NN:NN.N` the Realtek
 function from `lspci -nn | grep -i ethernet`, and its upstream root port from
 `lspci -t`:

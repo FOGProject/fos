@@ -12,7 +12,7 @@
 # years, because the out-of-tree Realtek vendor drivers managed ASPM themselves.
 # Switching to the in-kernel r8169 (FOGProject/fos#108) removed that cover and
 # turned the missing symbols into a 10x download-throughput loss on RTL8168h.
-# See docs/adr/0011-pcie-aspm-and-extended-config-space.md for the full chain.
+# See docs/adr/0013-pcie-aspm-and-extended-config-space.md for the full chain.
 #
 # The failure mode is silent in the worst way: with CONFIG_PCIEASPM=n,
 # pci_disable_link_state() is an inline stub that RETURNS SUCCESS (0). r8169

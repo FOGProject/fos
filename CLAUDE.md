@@ -86,7 +86,7 @@ tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
 tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
-tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0011)
+tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
 ```
 
 The two `*-config.sh` harnesses assert on `configs/kernel*.config` rather than
@@ -174,16 +174,40 @@ and add a new ADR for any similarly hard-to-reverse decision:
   so a config can look right in git and produce a kernel missing lockdown
   entirely — which is why `tests/checks/secureboot-config.sh -b` inspects the
   post-`oldconfig` `.config` rather than the one we wrote.
-- **0011 — PCIe ASPM.** `CONFIG_PCIEASPM` and (on x86) `CONFIG_PCI_MMCONFIG`
+- **0011 — UKI feasibility.** Settles the question ADR 0010 left open:
+  adopting a Unified Kernel Image is feasible and does not require FOS to run
+  systemd (the addon mechanism is boot-stage-only), and does not touch the
+  custom kernel itself (Realtek drivers, Intel VMD, module-free build). It is
+  gated on redesigning FOS's boot-time config channel, which splits into three
+  subclasses, only the first of which this ADR actually solves: server-known
+  task data (`mode=`, `type=`, image id) can move into an extended version of
+  the runtime checkin `bin/fog.checkin` already performs; the `web=` server
+  address **cannot** — `S40network` needs it before any network round-trip is
+  reachable, so it needs a signed addon or DHCP-derived discovery instead, not
+  a coin-flip choice; and boot-menu flags a human picks at iPXE (`isdebug`,
+  `keymap`, `mdraid`, `chkdsk`, `mc`, `setmacto`) aren't server-known data at
+  all and need their own design pass. See the ADR for the full analysis.
+- **0012 — Microsoft-signed FOG shim (proposed, unstarted).** The only way to
+  remove Secure Boot enrolment entirely rather than automate it further —
+  gated on ADR-0011's redesign actually shipping, and on the still-inactive
+  ADR-0010 lockdown patch. `ipxe/shim` cannot be repurposed for this (it
+  trusts exactly one thing, derives its second stage from its own filename,
+  and has no downstream hook by design); it requires FOG's own shim fork with
+  FOG's certificate as the vendor cert, an EV cert from the Microsoft Hardware
+  Dev Center, HSM/smartcard key custody, and a `rhboot/shim-review`
+  submission — which carries **permanent** CVE/hash-revocation duty
+  afterward, not a one-time cost. Tracked upstream as
+  FOGProject/fogproject#995.
+- **0013 — PCIe ASPM.** `CONFIG_PCIEASPM` and (on x86) `CONFIG_PCI_MMCONFIG`
   must stay enabled, and the ASPM policy must stay `DEFAULT` or `PERFORMANCE` —
   never a power-saving one. Both symbols are `default y` upstream and were off
   in FOS from 2016 until this ADR; the out-of-tree Realtek vendor drivers hid
   that by managing ASPM themselves, so switching to in-kernel `r8169` turned it
-  into a 10x deploy-throughput loss on RTL8168h under UEFI. The trap: with
-  `CONFIG_PCIEASPM=n`, `pci_disable_link_state()` is a stub that **returns
-  success**, so `r8169` believes the OS disabled L1, sets `aspm_manageable`,
-  and then enables ASPM and L1.2 in the chip — silently. Without
-  `CONFIG_PCI_MMCONFIG` the L1-substates extended capability is not even
+  into a 5x deploy-throughput loss on RTL8168h under UEFI (1.2 → 6.5 GB/min,
+  measured). The trap: with `CONFIG_PCIEASPM=n`, `pci_disable_link_state()` is
+  a stub that **returns success**, so `r8169` believes the OS disabled L1, sets
+  `aspm_manageable`, and then enables ASPM and L1.2 in the chip — silently.
+  Without `CONFIG_PCI_MMCONFIG` the L1-substates extended capability is not even
   reachable (that is what the `falling back to CSI` notice reports), and
   `pcie_aspm=off` on the command line does nothing because the `__setup()` that
   registers it is compiled out. Guarded by `tests/checks/pcie-aspm-config.sh`.

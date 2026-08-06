@@ -77,7 +77,7 @@ tests/checks/pcie-aspm-config.sh
                               # Without these, pci_disable_link_state() is a stub
                               # that reports success, and r8169 enables ASPM and
                               # L1.2 on the NIC believing the OS disabled L1 --
-                              # a ~10x deploy throughput loss. See ADR-0011
+                              # a ~5x deploy throughput loss. See ADR-0013
 ```
 
 Like the golden harness, the library harnesses source a sandbox copy of the
