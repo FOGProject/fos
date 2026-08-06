@@ -2,8 +2,18 @@
 
 ## Status
 
-Implemented in the kernel configs; **awaiting hardware validation** on the
-reporter's Dell OptiPlex 3070 (RTL8168h rev 15) before release.
+Implemented in the kernel configs and **validated on hardware** (2026-08-06):
+on the reporter's Dell OptiPlex 3070 (RTL8168h rev 15), UEFI deploy went from
+~1.2 GB/min to ~6.5 GB/min with the experimental x64 kernel
+`EXP_20260805-123232`; legacy speeds unchanged. The residual gap to their usual
+~10 GB/min is attributed to a suspect patch lead on the test machine.
+
+Note what was *not* measured: the reporter did not run the `setpci` Link
+Control comparison below, so the claim that Dell's UEFI firmware enables L1
+where its CSM path does not remains an **inference**. It is the most plausible
+explanation for the UEFI/legacy split and nothing contradicts it, but the
+validation above only proves the fix works, not the mechanism behind the
+asymmetry.
 
 Reported as slow UEFI imaging (~1.2 GB/min against 6–10 GB/min on the same
 machine booted legacy/BIOS) on the FOG forums, topic 18212. The same hardware
@@ -207,6 +217,28 @@ Throughput returning to 6–10 GB/min is the proof. Note this is a
 before/after-within-one-boot test, not a fix — `Link Control` lives in standard
 config space, so it works even on today's kernel, which is what makes it a
 usable diagnostic.
+
+## A red herring worth naming
+
+The original report cited `tx checksumming: ko` from dmesg as a second symptom,
+and after the fix the reporter read `ethtool -k` showing `tx-checksumming: on`
+as evidence that the kernel change had fixed checksumming too. It did not, and
+there was nothing to fix. That line is `r8169_main.c`:
+
+```c
+if (jumbo_max)
+        netdev_info(dev, "jumbo features [frames: %d bytes, tx checksumming: %s]\n",
+                    jumbo_max, tp->mac_version <= RTL_GIGA_MAC_VER_06 ?
+                    "ok" : "ko");
+```
+
+It reports that **jumbo mode** on this chip cannot do TX checksum offload, it
+is keyed on `tp->mac_version` alone (a fixed property of the silicon, which no
+config option can change), and it is printed at probe regardless of the running
+MTU. At MTU 1500 it describes a mode that is not in use. Kernels carrying this
+ADR's fix print the identical line — do not read a later `ko` as a regression,
+and do not compare that probe-time message against a runtime `ethtool -k`
+table; they are not measuring the same thing.
 
 ## References
 
