@@ -84,7 +84,15 @@ tests/checks/fill-engine.sh   # sfdisk fill engine: 4Kn rescaling, GPT clamp, ab
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
 tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
+
+tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
+tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
 ```
+
+The two `*-config.sh` harnesses assert on `configs/kernel*.config` rather than
+on shell code; pass `-b` to also inspect the post-`oldconfig` `.config` in any
+`kernelsource<arch>/` present, which is the check that actually proves the
+symbol survived Kconfig.
 
 Both harness families work the same way: they copy `funcs.sh`/
 `partition-funcs.sh` into a temp sandbox, rewrite the hardcoded
@@ -190,6 +198,19 @@ and add a new ADR for any similarly hard-to-reverse decision:
   submission — which carries **permanent** CVE/hash-revocation duty
   afterward, not a one-time cost. Tracked upstream as
   FOGProject/fogproject#995.
+- **0013 — PCIe ASPM.** `CONFIG_PCIEASPM` and (on x86) `CONFIG_PCI_MMCONFIG`
+  must stay enabled, and the ASPM policy must stay `DEFAULT` or `PERFORMANCE` —
+  never a power-saving one. Both symbols are `default y` upstream and were off
+  in FOS from 2016 until this ADR; the out-of-tree Realtek vendor drivers hid
+  that by managing ASPM themselves, so switching to in-kernel `r8169` turned it
+  into a 5x deploy-throughput loss on RTL8168h under UEFI (1.2 → 6.5 GB/min,
+  measured). The trap: with `CONFIG_PCIEASPM=n`, `pci_disable_link_state()` is
+  a stub that **returns success**, so `r8169` believes the OS disabled L1, sets
+  `aspm_manageable`, and then enables ASPM and L1.2 in the chip — silently.
+  Without `CONFIG_PCI_MMCONFIG` the L1-substates extended capability is not even
+  reachable (that is what the `falling back to CSI` notice reports), and
+  `pcie_aspm=off` on the command line does nothing because the `__setup()` that
+  registers it is compiled out. Guarded by `tests/checks/pcie-aspm-config.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

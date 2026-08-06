@@ -66,8 +66,27 @@ tests/checks/secureboot.sh    # secureboot-funcs.sh: derives the right firmware
                               # a failed download writes nothing at all, and a
                               # SetupMode that does not flip 1 -> 0 is a refusal
                               # rather than a success
+tests/checks/secureboot-config.sh
+                              # configs/kernel*.config carry the Secure Boot
+                              # hardening symbols (lockdown LSM in CONFIG_LSM,
+                              # platform keyring, no CONFIG_KEXEC). See ADR-0010
+tests/checks/pcie-aspm-config.sh
+                              # configs/kernel*.config leave the kernel able to
+                              # control PCIe ASPM: CONFIG_PCIEASPM, CONFIG_PCI_
+                              # MMCONFIG on x86, a non-power-saving ASPM policy.
+                              # Without these, pci_disable_link_state() is a stub
+                              # that reports success, and r8169 enables ASPM and
+                              # L1.2 on the NIC believing the OS disabled L1 --
+                              # a ~5x deploy throughput loss. See ADR-0013
 ```
 
-Like the golden harness, these source a sandbox copy of the library with its
-hardcoded paths rewritten and the external tools stubbed, so they run on any
-host without hardware.
+Like the golden harness, the library harnesses source a sandbox copy of the
+library with its hardcoded paths rewritten and the external tools stubbed, so
+they run on any host without hardware.
+
+The two `*-config.sh` harnesses are different: they assert on the kernel
+configs rather than on shell code, and take `-b` to additionally inspect the
+post-`oldconfig` `.config` in any `kernelsource<arch>/` present. That mode is
+the one that proves anything, because `make oldconfig` silently drops symbols
+whose dependencies are unmet — a config can look correct in git and still build
+a kernel without the feature.
