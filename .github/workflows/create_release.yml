@@ -473,6 +473,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # +e explicitly: Actions runs `run:` blocks under `bash -e`, which would
+          # abort this step the moment a `gh release view` call failed -- i.e. on
+          # exactly the transient API failure the retry loop exists to survive.
+          # Errors are handled per-command below instead.
+          set +e
           set -uo pipefail
           for attempt in 1 2 3; do
             incomplete=()
