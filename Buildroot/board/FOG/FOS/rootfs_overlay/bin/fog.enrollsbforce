@@ -1,0 +1,83 @@
+#!/bin/bash
+. /usr/share/fog/lib/funcs.sh
+. /usr/share/fog/lib/secureboot-funcs.sh
+clearScreen
+displayBanner
+
+cert="/tmp/MOK.der"
+
+echo " * [TEST] Forcing Secure Boot database write (no Setup Mode check)"
+echo
+
+dots "Checking firmware state"
+state=$(sbState)
+echo "$state"
+debugPause
+
+case $state in
+    nonefi)
+        handleError "This machine booted in BIOS/CSM mode, where Secure Boot does not exist. ($0)\n   Nothing was enrolled. Switch the firmware to UEFI and run this again."
+        ;;
+    noefivars)
+        handleError "UEFI firmware was detected but efivarfs could not be mounted. ($0)\n   FOS cannot read or write EFI variables, so nothing was enrolled."
+        ;;
+esac
+
+# 32-bit UEFI is refused outright rather than degraded, same as fog.enrollsb --
+# see docs/adr/0009-secure-boot-enrolment-paths.md and FOGProject/fos#140.
+if [[ $(sbPlatformBits) == 32 ]]; then
+    handleError "This machine has 32-bit UEFI firmware, which FOG cannot enroll. ($0)\n   No Microsoft-signed 32-bit shim and no signed 32-bit iPXE exist, so it\n   cannot boot FOG under Secure Boot enforcement even with this key trusted.\n   Nothing was enrolled and nothing was changed. Leave Secure Boot off here."
+fi
+
+dots "Fetching certificate"
+if ! sbFetchCert "$cert"; then
+    echo "Failed"
+    debugPause
+    handleError "Could not download a usable certificate from ${web}service/secureboot/MOK.der ($0)\n   Secure Boot signing may not be configured on this FOG server;\n   check the Secure Boot page under FOG Configuration."
+fi
+echo "Done"
+debugPause
+
+echo " * Certificate SHA-256:"
+echo "     $(sbCertFingerprint "$cert")"
+echo
+
+if sbCertTrusted "$cert"; then
+    echo " * This certificate is already trusted by this machine. Nothing to do."
+    echo
+    . /bin/fog.nonimgcomplete
+    exit 0
+fi
+
+# TEST TASK ONLY: fog.enrollsb only calls sbEnrollDb when sbState()=='setup',
+# falling back to staging a MOK request otherwise. This script exists to find
+# out whether the signed db/KEK/PK writes also succeed as ordinary
+# authenticated variable updates outside Setup Mode -- e.g. on a machine that
+# has already enrolled this same PK/KEK once. So it always attempts the write
+# and reports the firmware state alongside the result, with no MOK fallback:
+# muddying a forced-write result with a fallback path would defeat the point
+# of the test. sbEnrollDb() itself is unchanged and still fails closed (aborts
+# on the first rejected write, per ADR-0003), so a state/key mismatch here just
+# returns 1 with nothing changed on disk -- not a partial or unsafe write.
+echo " * [TEST] Firmware state is '$state' -- attempting the direct database"
+echo "   write anyway (Setup Mode check disabled for this test task)."
+echo
+dots "Enrolling Secure Boot keys (forced)"
+if ! sbEnrollDb; then
+    echo "Failed"
+    debugPause
+    handleError "[TEST] Forced Secure Boot enrolment failed. ($0)\n   Firmware state was: $state\n   Expected on a machine whose currently-enrolled PK/KEK do not match\n   FOG's -- the write is rejected rather than applied partially.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth."
+fi
+echo "Done"
+debugPause
+
+echo
+echo "=============================================================================="
+echo " [TEST] Secure Boot database write succeeded with firmware state: $state"
+echo
+echo "   This FOG server's certificate is in the platform's db, and Microsoft's"
+echo "   certificates were enrolled alongside it."
+echo "=============================================================================="
+echo
+
+. /bin/fog.nonimgcomplete
