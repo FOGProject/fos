@@ -152,6 +152,7 @@ tests/golden/run.sh print     # dump current output to stdout, no comparison
 
 tests/checks/sector-size.sh   # validateImageSectorSize() refusal/reformat behavior
 tests/checks/fill-engine.sh   # sfdisk fill engine: 4Kn rescaling, GPT clamp, abort-on-unusable-table
+tests/checks/mbr-extended.sh  # MBR extended/logical layouts: emission order, EBR gaps, container sizing
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
 tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
@@ -284,6 +285,24 @@ and add a new ADR for any similarly hard-to-reverse decision:
   reachable (that is what the `falling back to CSI` notice reports), and
   `pcie_aspm=off` on the command line does nothing because the `__setup()` that
   registers it is compiled out. Guarded by `tests/checks/pcie-aspm-config.sh`.
+- **0014 — MBR extended partitions.** Two invariants for a DOS table carrying an
+  extended partition. First, **`procsfdisk.awk` must emit partitions in ascending
+  partition number**: sfdisk applies a script top to bottom and takes the number
+  from the device name, so a logical reaching it before its container aborts the
+  whole write. `for (name in array)` is unordered in awk and only *looked* right
+  because gawk's hash order matches insertion order for `/dev/sdaN` while N <= 9
+  — ten partitions is where it broke. Every `partition_names` traversal is now
+  ordered explicitly; the `ordered_starts` walk is pinned to `@ind_num_asc`
+  because it accumulates `curr_start` and needs asort's index order instead.
+  Second, **an extended partition is a container, never content**: Linux exposes
+  it as the ~1 KB EBR window, so imaging it and writing it back destroys the EBR
+  chain and every logical after the first disappears mid-deploy. Capture tests
+  for it *before* the `$fstype` dispatch (it has no filesystem, so
+  `fsTypeSetting` calls it `imager` and the old check below that was
+  unreachable); deploy keys its skip off the partition **type**, not off a
+  missing `.img`, because every image captured before this fix still carries one.
+  The container's size is derived from where its logicals land, never scaled.
+  Guarded by `tests/checks/mbr-extended.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
