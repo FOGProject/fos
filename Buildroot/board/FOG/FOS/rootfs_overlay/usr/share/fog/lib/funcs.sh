@@ -2646,6 +2646,25 @@ savePartition() {
     getPartType "$part"
     local ebrfilename=""
     local swapuuidfilename=""
+    # An extended partition is a container, not a filesystem. Its whole content
+    # is the EBR chain describing the logical partitions inside it, and that
+    # chain is rebuilt from the partition table at deploy -- so all this image
+    # needs is the sidecar marking "there was an extended partition here".
+    #
+    # This has to be tested before the $fstype dispatch below. An extended
+    # partition has no FS_TYPE, so fsTypeSetting always resolves it to "imager",
+    # which matches its own branch first and left the extended-partition case
+    # further down unreachable. The result was a d<disk>p<part>.img holding the
+    # 1 KB EBR window Linux exposes for the container; deploy then wrote it back
+    # over the chain sfdisk had just built, and every logical partition after
+    # the first vanished mid-restore (FOS issue #150).
+    if [[ $parttype == +(0x5|0xf) ]]; then
+        echo " * Not capturing content of extended partition"
+        debugPause
+        EBRFileName "$imagePath" "$disk_number" "$part_number"
+        touch "$ebrfilename"
+        return
+    fi
     case $fstype in
         swap)
             echo " * Saving swap partition UUID"
@@ -2678,34 +2697,24 @@ savePartition() {
             esac
             ;;
         *)
-            case $parttype in
-                0x5|0xf)
-                    echo " * Not capturing content of extended partition"
+            echo " * Using partclone.$fstype"
+            debugPause
+            imgpart="$imagePath/d${disk_number}p${part_number}.img"
+            uploadFormat "$fifoname" "$imgpart"
+            partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1 -a0
+            exitcode=$?
+            wait $formatPID 2>/dev/null
+            formatexit=$?
+            [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
+            case $exitcode in
+                0)
+                    mv ${imgpart}.000 $imgpart >/dev/null 2>&1
+                    echo " * Image Captured"
                     debugPause
-                    EBRFileName "$imagePath" "$disk_number" "$part_number"
-                    touch "$ebrfilename"
                     ;;
                 *)
-                    echo " * Using partclone.$fstype"
-                    debugPause
-                    imgpart="$imagePath/d${disk_number}p${part_number}.img"
-                    uploadFormat "$fifoname" "$imgpart"
-                    partclone.$fstype -n "Storage Location $storage, Image name $img" -cs $part -O $fifoname -Nf 1 -a0
-                    exitcode=$?
-                    wait $formatPID 2>/dev/null
-                    formatexit=$?
-                    [[ $exitcode -eq 0 && ! $formatexit -eq 0 ]] && exitcode=$formatexit
-                    case $exitcode in
-                        0)
-                            mv ${imgpart}.000 $imgpart >/dev/null 2>&1
-                            echo " * Image Captured"
-                            debugPause
-                            ;;
-                        *)
-                            local spaceAvailable=$(getServerDiskSpaceAvailable)
-                            handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
-                            ;;
-                    esac
+                    local spaceAvailable=$(getServerDiskSpaceAvailable)
+                    handleError "Failed to complete capture (${FUNCNAME[0]})\n    Args Passed: $*\n    CMD: partclone.$fstype -n \"Storage Location $storage, Image name $img\" -cs -O $fifoname -Nf 1 -a0\n    Exit code: $exitcode\n    Server Disk Space Available: $spaceAvailable"
                     ;;
             esac
             ;;
@@ -2741,6 +2750,26 @@ restorePartition() {
     getPartitionNumber "$part"
     echo " * Processing Partition: $part ($part_number)"
     debugPause
+    # Never write an image into an extended partition, whatever the image
+    # happens to contain for it. The device Linux exposes for the container is
+    # just the 1 KB EBR window at its front, so writing anything there destroys
+    # the EBR chain restoreOriginalPartitions/fillDiskWithPartitions has already
+    # rebuilt, and every logical partition after the first disappears -- the
+    # next writeImage then fails with "open /dev/sdaN error(2)".
+    #
+    # Keyed off the partition type rather than off the absence of a
+    # d<disk>p<part>.img, because every image captured before FOS issue #150 was
+    # fixed still carries one. Those are exactly the images that break, so the
+    # check has to override the file (see the ebrfilename fallback below, which
+    # only ever fires when no .img exists).
+    local parttype=""
+    getPartType "$part"
+    if [[ $parttype == +(0x5|0xf) ]]; then
+        echo " * Not deploying content of extended partition"
+        debugPause
+        runPartprobe "$disk"
+        return
+    fi
     case $imgType in
         dd)
             imgpart="$imagePath"
