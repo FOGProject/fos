@@ -88,7 +88,11 @@ tests/checks/package-mirrors.sh
                               # cached tarball whose hash no longer matches,
                               # skips a package that has no .hash, and returns 0
                               # when every source is down so Buildroot still gets
-                              # its own attempt
+                              # its own attempt. Also covers bump-package.sh:
+                              # a bump rewrites version and hashes together and
+                              # drops the superseded lines, a failed download
+                              # restores the .mk rather than leaving a half-bump,
+                              # and --dry-run writes nothing
 ```
 
 Like the golden harness, the library harnesses source a sandbox copy of the
@@ -97,8 +101,9 @@ they run on any host without hardware.
 
 `package-mirrors.sh` is the one harness that tests `build.sh` rather than
 anything shipped in the init. It follows the same sandbox-and-stub pattern —
-the functions are lifted out of `build.sh` (which would otherwise run a whole
-build when sourced), `wget` is PATH-shadowed, and the seeding cases run against
+the functions come from `package-funcs.sh` (they live there rather than in
+`build.sh`, which would run a whole build if sourced), `wget` is PATH-shadowed,
+and the seeding cases run against
 a synthetic package whose `.mk`/`.hash` describe a locally generated fixture.
 That last part is what keeps it offline: no case touches the network, and none
 depends on any upstream still serving a given release. Whether the *committed*

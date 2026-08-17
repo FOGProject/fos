@@ -58,6 +58,15 @@ kernel configs in `configs/kernel{x64,x86,arm64}.config`. Extra kernel driver
 sources/configs to merge into the kernel tree live in
 `KernelPackages/drivers/`.
 
+`bump-package.sh` moves one of FOG's own Buildroot packages to a new version,
+rewriting its `_VERSION` and its `.hash` together (see the next section):
+
+```sh
+./bump-package.sh cabextract 1.12            # bump, fetching from upstream
+./bump-package.sh cabextract 1.12 --dry-run  # report, write nothing
+./bump-package.sh --check                    # re-verify every committed hash
+```
+
 `create-usb-image.sh` builds a bootable USB image from released
 kernel/init artifacts (used by the `make_usb.yml` release workflow, not part
 of the normal dev loop). `release.sh` is used for cutting releases.
@@ -78,19 +87,27 @@ is the only source it knows about. That cost two release builds (2026-08-03 and
 2026-08-17, both cabextract) and is the usual cause of a local build failing
 behind corporate egress filtering.
 
-`seedFragileSources()` in `build.sh` is the mirror list Buildroot has nowhere to
-put. It seeds `$DL_DIR` before Buildroot looks at it, which works because
+`seedFragileSources()` is the mirror list Buildroot has nowhere to put. It lives
+in `package-funcs.sh` alongside the `.mk` parsing, because `build.sh`,
+`bump-package.sh` and the test harness all need it and `build.sh` cannot be
+sourced (it runs a whole build). It seeds `$DL_DIR` before Buildroot looks at it, which works because
 `dl-wrapper` keeps a file that is already present *when it matches the
 package's `.hash`* and exits without touching the network. It runs for a plain
 local build as well as `--fs-download-only`.
 
 Rules that matter when touching any of this:
 
-- **Bumping `<PKG>_VERSION` means updating `<PKG>.hash` in the same commit.**
-  The version determines the source filename, and Buildroot looks the hash up
-  *by filename*. Without a matching line it aborts with
-  `ERROR: No hash found for <file>` — loud, but potentially ~50 minutes into a
-  release. `tests/checks/package-mirrors.sh` catches it in seconds instead;
+- **Use `./bump-package.sh <pkg> <version>` rather than editing by hand.** The
+  version determines the source filename and Buildroot looks the hash up *by
+  filename*, so the two have to move together; without a matching line the
+  build aborts with `ERROR: No hash found for <file>` — loud, but potentially
+  ~50 minutes into a release. The helper fetches the new tarball from the
+  package's own upstream site, rewrites both files, and restores the `.mk` if
+  the download fails so the tree is never left half-bumped. It will not fall
+  back to a mirror for this: a mirror cannot establish what upstream published
+  and will not carry a release upstream has only just made, so it refuses
+  instead, with `--from <url>` to override for a copy you trust.
+  `tests/checks/package-mirrors.sh` catches a mismatch in seconds either way;
   run it after any version change.
 - **Replace stale hash lines, don't accumulate them.** Both Buildroot and
   `seedPackage()` select on the filename column, so a leftover line for an
@@ -111,6 +128,12 @@ Rules that matter when touching any of this:
   taken from a repack or regenerated locally — get the bytes from the
   `github.com/Thomas-Tsai/partclone/archive/<version>/` URL itself (or Fedora's
   lookaside, whose spec fetches exactly that URL).
+- **Rewrite the `.hash` prose yourself after a bump.** The helper replaces hash
+  lines mechanically but leaves comments alone, and some of them describe how
+  *those specific bytes* were verified — `partclone.hash` names the tag and
+  commit its archive was checked against. It warns when the old version is
+  still mentioned; take the warning seriously rather than leaving a comment
+  that describes verification which never happened for the new bytes.
 - **Keep `_SITE` on https.** Plain HTTP is what egress filtering drops, and it
   is what timed out on GitHub's runners.
 

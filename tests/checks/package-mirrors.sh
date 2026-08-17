@@ -17,9 +17,8 @@
 # ~50-minute release. seedFragileSources() is the mirror list Buildroot itself
 # has nowhere to put.
 #
-# Mechanism mirrors tests/checks/wipe.sh: extract the functions into a sandbox,
-# PATH-shadow the external tool (wget) with a deterministic stub, and exercise
-# the real functions.
+# Mechanism mirrors tests/checks/wipe.sh: source the real functions, PATH-shadow
+# the external tool (wget) with a deterministic stub, and exercise them.
 #
 # Fully offline, deliberately. The seeding cases run against a synthetic package
 # whose .mk/.hash describe a locally generated fixture, so no case here touches
@@ -43,25 +42,20 @@ pass() { echo "  PASS: $1"; }
 fail() { echo "  FAIL: $1" >&2; failures=$((failures + 1)); }
 check() { if [[ $1 == 0 ]]; then pass "$2"; else fail "$2"; fi; }
 
-# --- the code under test, lifted out of build.sh ---
-# build.sh runs a whole build when executed, so the pieces are extracted rather
-# than sourced. If any header changes shape this stops finding it, which the
-# guard below turns into a loud failure instead of a silent zero-case pass.
-{
-    sed -n '/^function dots()/,/^}/p' "$BUILD_SH"
-    sed -n '/^FOS_PACKAGE_MIRRORS=(/,/^)/p' "$BUILD_SH"
-    sed -n '/^function readPackageVars()/,/^}/p' "$BUILD_SH"
-    sed -n '/^function seedPackage()/,/^}/p' "$BUILD_SH"
-    sed -n '/^function seedFragileSources()/,/^}/p' "$BUILD_SH"
-} > "$SANDBOX/lib.sh"
-for want in 'function readPackageVars()' 'function seedPackage()' 'function seedFragileSources()' 'FOS_PACKAGE_MIRRORS=('; do
-    if ! grep -qF "$want" "$SANDBOX/lib.sh"; then
-        echo "ERROR: could not extract '$want' from build.sh" >&2
+# --- the code under test ---
+# The package helpers live in their own file precisely so this harness (and
+# bump-package.sh) can source them: build.sh runs a whole build when executed.
+LIB="$REPO/package-funcs.sh"
+[[ -f $LIB ]] || { echo "ERROR: cannot find package-funcs.sh at $LIB" >&2; exit 2; }
+# shellcheck source=../../package-funcs.sh
+source "$LIB"
+for want in readPackageVars seedPackage seedFragileSources dots; do
+    if ! declare -F "$want" >/dev/null; then
+        echo "ERROR: package-funcs.sh did not define $want" >&2
         exit 2
     fi
 done
-# shellcheck disable=SC1091
-source "$SANDBOX/lib.sh"
+[[ ${#FOS_PACKAGE_MIRRORS[@]} -gt 0 ]] || { echo "ERROR: FOS_PACKAGE_MIRRORS is empty" >&2; exit 2; }
 
 # ============================================================================
 echo "== readPackageVars() against the real package files =="
@@ -258,6 +252,65 @@ for entry in "${FOS_PACKAGE_MIRRORS[@]}"; do
     grep -qE "^${pkg^^}_SITE[[:space:]]*:?=[[:space:]]*(https://|\\\$\(call github,)" "$mk"
     check $? "$pkg.mk fetches over https, not the http that egress filtering drops"
 done
+
+# ============================================================================
+echo "== bump-package.sh =="
+# ============================================================================
+# The helper exists so a version and its hashes cannot move independently, which
+# is the one mistake the .hash files make expensive. These cases drive it with
+# the same wget stub, against a copy of the tree so nothing real is rewritten.
+
+BUMP="$REPO/bump-package.sh"
+if [[ ! -x $BUMP ]]; then
+    fail "bump-package.sh is missing or not executable"
+else
+    BUMPTREE="$SANDBOX/bumptree"
+    mkdir -p "$BUMPTREE/Buildroot"
+    cp "$REPO/package-funcs.sh" "$BUMP" "$BUMPTREE/"
+    cp -r "$PKGROOT" "$BUMPTREE/Buildroot/package"
+
+    MK="$BUMPTREE/Buildroot/package/cabextract/cabextract.mk"
+    HASH="$BUMPTREE/Buildroot/package/cabextract/cabextract.hash"
+    export STUB_LOG="$SANDBOX/log-bump"; : > "$STUB_LOG"
+
+    # A bump rewrites both files, and replaces the old hash lines rather than
+    # leaving them beside the new ones.
+    ( cd "$BUMPTREE" && ./bump-package.sh cabextract 9.9 ) > "$SANDBOX/bump.out" 2>&1
+    bumpRc=$?
+    [[ $bumpRc -eq 0 ]]; check $? "bumps a package when the new tarball is fetchable"
+    grep -q '^CABEXTRACT_VERSION=9.9' "$MK"
+    check $? "writes the new version into the .mk"
+    awk '$1 == "sha256" && $3 == "cabextract-9.9.tar.gz" { f = 1 } END { exit !f }' "$HASH"
+    check $? "writes a sha256 for the new filename"
+    ! grep -q 'cabextract-1.11.tar.gz' "$HASH"
+    check $? "removes the superseded hash lines instead of leaving them behind"
+    grep -qc '^#' "$HASH"
+    check $? "keeps the .hash comment header"
+    # The seeding and the bump must agree on which line to read, or a bumped
+    # package silently loses its mirrors.
+    ( cd "$BUMPTREE/Buildroot" && readPackageVars cabextract "package/cabextract/cabextract.mk" ) \
+        | grep -q 'cabextract-9.9.tar.gz'
+    check $? "leaves the package resolving to the new source filename"
+
+    # A failed download must not leave the tree half-bumped -- a .mk on the new
+    # version with a .hash still on the old one is exactly the broken state the
+    # helper exists to prevent.
+    before=$(cat "$MK")
+    ( cd "$BUMPTREE" && BLOCK="cabextract.org.uk" ./bump-package.sh cabextract 8.8 ) >/dev/null 2>&1
+    bumpRc=$?
+    [[ $bumpRc -ne 0 ]]; check $? "fails when the new tarball cannot be fetched"
+    [[ $(cat "$MK") == "$before" ]]
+    check $? "restores the .mk when the download fails, leaving no half-bump"
+
+    # --dry-run reports without writing.
+    before=$(cat "$MK"); beforeHash=$(cat "$HASH")
+    ( cd "$BUMPTREE" && ./bump-package.sh cabextract 7.7 --dry-run ) >/dev/null 2>&1
+    [[ $(cat "$MK") == "$before" && $(cat "$HASH") == "$beforeHash" ]]
+    check $? "--dry-run changes nothing on disk"
+
+    ( cd "$BUMPTREE" && ./bump-package.sh nosuchpkg 1.0 ) >/dev/null 2>&1
+    [[ $? -ne 0 ]]; check $? "refuses an unknown package"
+fi
 
 echo
 if [[ $failures -gt 0 ]]; then
