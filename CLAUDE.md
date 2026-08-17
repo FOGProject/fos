@@ -89,7 +89,7 @@ tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK st
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
 tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
 
-tests/checks/cabextract-mirrors.sh  # build.sh's seedCabextract() mirror fallback and hash enforcement
+tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
 
 The two `*-config.sh` harnesses assert on `configs/kernel*.config` rather than

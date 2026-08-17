@@ -1,0 +1,7 @@
+# Locally calculated from the upstream tarball, and cross-checked byte-for-byte
+# against Debian (partimage_0.6.9.orig.tar.bz2).
+#
+# Fedora is not a mirror for this one -- it has no copy of partimage 0.6.9 in
+# its lookaside cache -- so SourceForge and Debian are the only two sources.
+sha256  753a6c81f4be18033faed365320dc540fe5e58183eaadcd7a5b69b096fec6635  partimage-0.6.9.tar.bz2
+sha512  252885921b23933fdcdf0bb6efa4b82066b08ca95cc653296912d384ae875b421c1d39f347a90115315139176d4eab4a930c24919c2d38cf00ed29c764cd14d9  partimage-0.6.9.tar.bz2

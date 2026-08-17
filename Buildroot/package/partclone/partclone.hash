@@ -1,0 +1,14 @@
+# GitHub generates this tarball with `git archive`, so the bytes are whatever
+# that produces for tag 0.3.47 -- not a file upstream uploaded. Verified as
+# exactly that: the copy in the Fedora lookaside cache (whose spec fetches the
+# identical github.com/Thomas-Tsai/partclone/archive/ URL Buildroot's github
+# macro builds) extracts to the tag's tree with `.gitattributes`/`.gitignore`
+# dropped and src/version.h's $Format:%h$ substituted to 198be487, the commit
+# tag 0.3.47 points at. Only `git archive` on that tag produces that.
+#
+# Debian is not a mirror for this one: it repacks to .tar.xz.
+#
+# The sha512 is not redundant with the sha256: build.sh addresses the Fedora
+# lookaside by sha512, so dropping that line drops the mirror.
+sha256  8215844d14737d8fbb09fe1b1eafe688a8c790eafc8413a26c08e5795ac9ccd3  partclone-0.3.47.tar.gz
+sha512  acad16e894091c95f9318eba27984a7483278b6aef7d658d84719b5d2d3550df1d15f5655f62bb9e1d014440b0ffcebf8626f27d44afe97d55ff26cb2bcbe3a9  partclone-0.3.47.tar.gz

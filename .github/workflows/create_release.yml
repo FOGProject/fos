@@ -105,11 +105,12 @@ jobs:
   #
   # Narrowing the window was not enough on its own: on 2026-08-17 the same
   # package took down an experimental build again, this time with every address
-  # of www.cabextract.org.uk timing out rather than 404ing. cabextract now has
-  # actual mirrors -- see seedCabextract() in build.sh, which seeds this cache
-  # from Debian or the Fedora lookaside when upstream is unreachable, and
-  # tests/checks/cabextract-mirrors.sh. This job still earns its place: one
-  # fetch, shared by six builds, restored from cache on a re-run.
+  # of www.cabextract.org.uk timing out rather than 404ing. All five of FOG's
+  # own packages now have verified mirrors -- see seedFragileSources() in
+  # build.sh, which seeds this cache from Debian or the Fedora lookaside when
+  # upstream is unreachable, and tests/checks/package-mirrors.sh. This job still
+  # earns its place: one fetch, shared by six builds, restored from cache on a
+  # re-run.
   #
   # BR2_DL_DIR="$(HOME)/.buildroot-dl" is set in all three configs/fs*.config,
   # which is what makes the cache path below the one Buildroot actually uses.
