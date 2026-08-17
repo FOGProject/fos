@@ -239,10 +239,19 @@ for entry in "${FOS_PACKAGE_MIRRORS[@]}"; do
     grep -qE '^sha256[[:space:]]' "$hash" 2>/dev/null
     check $? "$pkg.hash carries a sha256 (seeding is skipped entirely without it)"
 
+    # The hash must be for the file this package currently resolves to. A
+    # version bump that forgets its .hash fails the build with Buildroot's
+    # "No hash found for <file>" -- loud, but ~50 minutes into a release. This
+    # catches it here instead, and also catches a bump that adds new lines while
+    # leaving stale ones behind.
+    read -r _ src _ <<< "$(readPackageVars "$pkg" "$mk")"
+    awk -v f="$src" '$1 == "sha256" && $3 == f { found = 1 } END { exit !found }' "$hash"
+    check $? "$pkg.hash has a sha256 for $src, the file its .mk resolves to"
+
     # Only packages whose table entry uses the lookaside need the sha512.
     if [[ $rest == *"@FEDORA@"* ]]; then
-        grep -qE '^sha512[[:space:]]' "$hash" 2>/dev/null
-        check $? "$pkg.hash carries a sha512 (its Fedora lookaside URL is built from it)"
+        awk -v f="$src" '$1 == "sha512" && $3 == f { found = 1 } END { exit !found }' "$hash"
+        check $? "$pkg.hash carries a sha512 for $src (its Fedora lookaside URL is built from it)"
     fi
 
     # Either a plain https site or the github macro, which resolves to https.

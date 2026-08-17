@@ -269,8 +269,13 @@ function seedPackage() {
     }
     read -r version source upstream <<< "$vars"
 
-    sha256=$(awk '$1 == "sha256" { print $2; exit }' "$pkgDir/$pkg.hash")
-    sha512=$(awk '$1 == "sha512" { print $2; exit }' "$pkgDir/$pkg.hash")
+    # Matched on the filename column, not just the algorithm: a .hash may carry
+    # lines for more than one release, and picking the first sha256 in the file
+    # would silently check the current tarball against a previous version's hash
+    # -- every mirror would "fail" and the fallback would quietly stop working
+    # while the build still passed on Buildroot's own download.
+    sha256=$(awk -v f="$source" '$1 == "sha256" && $3 == f { print $2; exit }' "$pkgDir/$pkg.hash")
+    sha512=$(awk -v f="$source" '$1 == "sha512" && $3 == f { print $2; exit }' "$pkgDir/$pkg.hash")
     if [[ -z $sha256 ]]; then
         echo " * WARNING: $pkg.hash has no sha256, leaving its download to Buildroot!"
         return 0
