@@ -29,6 +29,36 @@
 # $data is the filename of the output of sfdisk -d
 # cat $data | awk -F, '\
 
+# Comparison function for PROCINFO["sorted_in"], ordering a partition_names
+# traversal by partition number rather than by gawk's hash order.
+#
+# `for (name in partition_names)` has no defined order. That is fatal for an
+# MBR table carrying an extended partition: sfdisk applies a script line by
+# line and derives the partition number from the device name, so a logical
+# (>=5) reaching sfdisk before the extended partition that contains it fails
+# with "Extended partition does not exists. Failed to add logical partition."
+# and the whole apply is abandoned. gawk's hash order happens to match the
+# input order for /dev/sdaN with N <= 9, which is why this only surfaced on
+# tables with ten or more partitions (/dev/sda10 hashes to the front).
+# Ascending partition number is the order sfdisk needs and the order the rest
+# of this script was written assuming.
+#
+# i1/i2 are the array indices (the device names); v1/v2 are unused.
+# n1 and n2 are locally scoped.
+function by_partition_number(i1, v1, i2, v2, n1, n2) {
+    # Same extraction as the parser below, so devices like mmcblk0p10 and
+    # nvme0n1p10 order on their partition number and not on the whole string.
+    n1 = int(gensub(/^.*[^0-9]([0-9]+)/, "\\1", 1, i1));
+    n2 = int(gensub(/^.*[^0-9]([0-9]+)/, "\\1", 1, i2));
+    if (n1 < n2) {
+        return -1;
+    }
+    if (n1 > n2) {
+        return 1;
+    }
+    return 0;
+}
+
 # Checks all partitions for any overlap possibilities.
 # Requires partition_names and partitions.
 # partition_names is an array of all the partition names.
@@ -137,7 +167,15 @@ function check_overlap(partition_names, partitions, new_part_name, new_start, ne
         }
         # Overlap checks.
         if (p_type == 5 || p_type == "f") {
-            if (p_number > 4) {
+            # The partition being tested against is the extended container, so
+            # the question is containment, not overlap: a logical partition
+            # must sit wholly inside it, and anything else must sit wholly
+            # outside. The guard used to read `p_number > 4`, but p_number is
+            # the container's own number and an extended partition is always a
+            # primary (1-4) -- so the containment test never ran and a computed
+            # layout whose logicals spilled out of their container was still
+            # reported "consistent".
+            if (new_part_number > 4) {
                 if (new_start < p_start + extended_margin) {
                     printf("ERROR: new_start < p_start + extended_margin value at (%s).\n", pName);
                     return 1;
@@ -182,12 +220,13 @@ function check_overlap(partition_names, partitions, new_part_name, new_start, ne
 # p_name is locally scoped
 # p_attrs is locally scoped
 # typelabel is locally scoped
+# old_sorted_in is locally scoped
 # Global Scoped variables (meaning not needed to pass to the function:
 # unit the unit type
 # label the device label
 # labelid the device label id
 # device the device itself
-function display_output(partition_names, partitions, pName, p_device, p_start, p_size, p_type, p_flag, p_uuid, p_name, p_attrs, typelabel) {
+function display_output(partition_names, partitions, pName, p_device, p_start, p_size, p_type, p_flag, p_uuid, p_name, p_attrs, typelabel, old_sorted_in) {
     # If unit is not set, or has no value, set to sectors.
     if (!unit) {
         unit = "sectors";
@@ -216,6 +255,11 @@ function display_output(partition_names, partitions, pName, p_device, p_start, p
         printf("sector-size: %d\n", sectorsize);
     }
     printf("\n");
+    # Emit in ascending partition number. sfdisk consumes this file top to
+    # bottom, so an extended partition has to be written before any logical
+    # partition that lives inside it -- see by_partition_number().
+    old_sorted_in = PROCINFO["sorted_in"];
+    PROCINFO["sorted_in"] = "by_partition_number";
     # Iterate our partition names.
     for (pName in partition_names) {
         # Set our p_device variable.
@@ -262,6 +306,7 @@ function display_output(partition_names, partitions, pName, p_device, p_start, p
         # Write new line from partition info.
         printf("\n");
     }
+    PROCINFO["sorted_in"] = old_sorted_in;
     return 0;
 }
 
@@ -391,9 +436,19 @@ function move_partition(partition_names, partitions, args, pName, new_start, new
 # ordered_starts is locally scoped
 # old_sorted_in is locally scoped
 # curr_start is locally scoped
-function fill_disk(partition_names, partitions, args, n, fixed_partitions, original_variable, original_fixed, new_variable, extended_margin, pName, p_type, p_number, p_size, p_minsize, i, partition_starts, ordered_starts, old_sorted_in, curr_start) {
+# ext_name is locally scoped (the extended partition's device name, if any)
+# ext_end is locally scoped
+# p_end is locally scoped
+# logical_count is locally scoped
+function fill_disk(partition_names, partitions, args, n, fixed_partitions, original_variable, original_fixed, new_variable, extended_margin, pName, p_type, p_number, p_size, p_minsize, i, partition_starts, ordered_starts, old_sorted_in, curr_start, ext_name, ext_end, p_end, logical_count) {
     # Used for extended volumes (logical disks)
     extended_margin = 2;
+    # The "find the next partition" scan below infers a partition's original
+    # size from where its neighbour starts, so the partition_names traversals
+    # need a defined order -- ascending partition number, the order the dump
+    # was written in. See by_partition_number().
+    old_sorted_in = PROCINFO["sorted_in"];
+    PROCINFO["sorted_in"] = "by_partition_number";
     # Ensure we start at 0 for original sizes.
     original_variable = 0;
     # Fixed should be MIN_START.
@@ -535,6 +590,15 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         if (match(fixedList, regex)) {
             continue;
         }
+        # An extended partition holds no data of its own -- it is a container
+        # whose extent is defined by the logical partitions inside it. Scaling
+        # its captured size by the same percentage as a data partition is what
+        # made the container run off the end of the target disk. Its size is
+        # derived from where the logicals actually land, after the start
+        # positions below have been assigned.
+        if (label != "gpt" && (p_type == 5 || p_type == "f")) {
+            continue;
+        }
         # Get's the percentage increase/decrease and makes adjustment.
         p_size = new_variable * p_size / original_variable;
         # If the new size is smaller than the minsize reset the size to at least equal the min size.
@@ -543,18 +607,15 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         }
         # Ensure we're aligned.
         p_size -= (p_size % int(SECTOR_SIZE));
-        if (label != "gpt") {
-            if (p_type == 5 || p_type == "f") {
-                p_size += extended_margin;
-            }
-        }
         # Ensure the partition size is setup.
         partitions[pName, "size"] = p_size;
     }
     # Assign the new start positions.
     asort(partition_starts, ordered_starts, "@ind_num_asc");
-    # sort our stuff.
-    old_sorted_in = PROCINFO["sorted_in"];
+    # asort() indexes ordered_starts 1..n in ascending start order, and the loop
+    # below accumulates curr_start as it walks, so this traversal must follow
+    # that index order rather than the by-partition-number order used above.
+    PROCINFO["sorted_in"] = "@ind_num_asc";
     # curr-start must be set to MIN_START initially.
     curr_start = int(MIN_START);
     # Prior size should start as 0
@@ -597,8 +658,27 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
             if (p_type == "5" || p_type == "f") {
                 curr_start += int(MIN_START) - extended_margin;
                 partitions[pName, "start"] = curr_start;
+                # Remember the container so its size can be derived once every
+                # logical partition inside it has been placed.
+                ext_name = pName;
                 curr_start += extended_margin;
+                logical_count = 0;
                 continue;
+            }
+            # Every logical partition is introduced by its own EBR sector,
+            # which lives in the gap immediately before it. The first logical
+            # gets that gap from the extended partition's own placement above
+            # (the container starts MIN_START - extended_margin early, so the
+            # first logical lands MIN_START past the previous partition). Each
+            # later logical needs a fresh gap of its own -- loop one already
+            # reserves MIN_START per logical in original_fixed, but nothing was
+            # spending it, so the logicals were packed end to end with nowhere
+            # to put their EBRs and sfdisk ran out of free sectors.
+            if (p_number > 4) {
+                if (logical_count > 0) {
+                    curr_start += int(MIN_START);
+                }
+                logical_count++;
             }
         }
         p_start = curr_start;
@@ -622,10 +702,32 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
         prior_size = p_size;
         prior_start = p_start;
     }
+    # Size the extended container to exactly span the logical partitions that
+    # were just placed inside it. Doing it here rather than in the sizing loop
+    # means the container automatically follows the clamp applied to the last
+    # logical above, so it can never extend past disk_end.
+    if (label != "gpt" && ext_name != "") {
+        ext_end = 0;
+        for (pName in partition_names) {
+            if (int(partitions[pName, "number"]) <= 4) {
+                continue;
+            }
+            p_end = int(partitions[pName, "start"]) + int(partitions[pName, "size"]);
+            if (p_end > ext_end) {
+                ext_end = p_end;
+            }
+        }
+        # An extended partition with no logicals inside it keeps its captured
+        # size; there is nothing to derive an extent from.
+        if (ext_end > int(partitions[ext_name, "start"])) {
+            partitions[ext_name, "size"] = ext_end - int(partitions[ext_name, "start"]);
+        }
+    }
     # Set our lastlba
     if (firstlba) {
         lastlba = int(diskSize) - firstlba;
     }
+    PROCINFO["sorted_in"] = old_sorted_in;
     # Check for any overlaps.
     return check_all_partitions(partition_names, partitions);
 }

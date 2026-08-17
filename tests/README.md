@@ -45,6 +45,16 @@ tests/checks/fill-engine.sh   # the whole-disk fill engine (processSfdisk +
                               # alive, the GPT backup-header clamp holds, and an
                               # unusable computed table aborts instead of being
                               # written
+tests/checks/mbr-extended.sh  # MBR tables carrying an extended partition with
+                              # logicals inside it (issue #150): the emitted
+                              # table is ordered by partition number so sfdisk
+                              # never meets a logical before its container, each
+                              # logical keeps a gap for its EBR, the container is
+                              # sized from its contents rather than scaled, and
+                              # savePartition/restorePartition treat it as a
+                              # container rather than partclone'ing it. Where a
+                              # real sfdisk is present each computed table is
+                              # also applied to a sparse file
 tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # device class (NVMe/SSD/HDD) and mode
                               # (fast/normal/full), never issues an `nvme format`
