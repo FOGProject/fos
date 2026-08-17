@@ -1,6 +1,9 @@
 #!/bin/bash
 
 source ./dependencies.sh
+# Sourced by path rather than by cwd: the package helpers are also used by
+# bump-package.sh and the test harness, so they live in their own file.
+source "$(dirname "${BASH_SOURCE[0]}")/package-funcs.sh"
 
 [[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.18.38'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2026.02.1'
@@ -180,9 +183,10 @@ function makeFlags() {
     esac
 }
 
+
 function buildFilesystem() {
     local arch="$1"
-    local fsflags
+    local fsflags dlDir
     fsflags=$(makeFlags "$arch" fs)
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.xz"
     echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
@@ -239,6 +243,16 @@ function buildFilesystem() {
         make $fsflags oldconfig
     fi
     echo "Done"
+
+    # Ask Buildroot itself where downloads land rather than re-deriving
+    # BR2_DL_DIR from configs/fs$arch.config, so the seed can never write to a
+    # directory the build then ignores.
+    dlDir=$(make -s printvars VARS=DL_DIR 2>/dev/null | sed -n 's/^DL_DIR=//p')
+    if [[ -n $dlDir ]]; then
+        seedFragileSources "$dlDir"
+    else
+        echo " * WARNING: Couldn't determine Buildroot's download directory, skipping the package mirror seed!"
+    fi
 
     if [[ $fsDownloadOnly == "y" ]]; then
         echo "Downloading Buildroot source packages for $arch ..."
@@ -450,13 +464,6 @@ function buildKernel() {
     esac
     [[ ! -f $compiledfile ]] && echo 'File not found.' || { cp "$compiledfile" "$kernelfile" && signKernel "$kernelfile" && sha256sum "$kernelfile" > "${kernelfile}.sha256"; }
     cd ..
-}
-
-function dots() {
-    local pad
-    pad=$(printf "%0.1s" "."{1..60})
-    printf " * %s%*.*s" "$1" 0 $((60-${#1})) "$pad"
-    return 0
 }
 
 function addKernelPackages() {

@@ -5,7 +5,11 @@
 #############################################################
 CHNTPW_VERSION = 140201
 CHNTPW_SOURCE = chntpw-source-$(CHNTPW_VERSION).zip
-CHNTPW_SITE = http://pogostick.net/~pnh/ntpasswd
+# https, not http: plain HTTP is what corporate egress filtering drops, and
+# this is a personal page on a small host -- the least dependable single
+# source of the lot. build.sh seeds the download directory from a mirror
+# before Buildroot looks at it; see seedFragileSources() there.
+CHNTPW_SITE = https://pogostick.net/~pnh/ntpasswd
 
 define CHNTPW_EXTRACT_CMDS
 	unzip $(DL_DIR)/chntpw/$(CHNTPW_SOURCE) -d $(BUILD_DIR)

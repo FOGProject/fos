@@ -1,0 +1,11 @@
+# Locally calculated, and cross-checked byte-for-byte against the copies served
+# by Debian (cabextract_1.11.orig.tar.gz) and by the Fedora lookaside cache.
+# That agreement is what lets build.sh accept this tarball from a mirror when
+# upstream is unreachable -- without a hash file Buildroot takes whatever is
+# already sitting in the download directory on faith.
+#
+# The sha512 line is NOT redundant with the sha256 above it: build.sh builds the
+# Fedora lookaside URL out of it, because that cache is addressed by sha512.
+# Dropping it silently costs the one mirror here that is never pruned.
+sha256  b5546db1155e4c718ff3d4b278573604f30dd64c3c5bfd4657cd089b823a3ac6  cabextract-1.11.tar.gz
+sha512  416bdc5a889c3986b2a5d6ecb8526a69f2d85c34f4856da43951271ff4f31013e4197c56ea5f6b05061b511b980d5a65cb34b9b859d3013c1dbcbb89d43114f9  cabextract-1.11.tar.gz
