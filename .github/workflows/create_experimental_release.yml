@@ -321,6 +321,17 @@ jobs:
       tag_name: ${{ steps.export_tag.outputs.tag_name }}
 
     steps:
+      # The FOG App identity, scoped to this repo, matching create_release.yml
+      # and the standard set in the fog-workflows repo -- an experimental
+      # prerelease should read as the FOG bot just like an official one.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.FOG_WORKFLOWS_APPID }}
+          private-key: ${{ secrets.FOG_WORKFLOWS_PRIVATE_KEY }}
+          owner: FOGProject
+          repositories: "fos"
+
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -377,6 +388,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
+          token: ${{ steps.app-token.outputs.token }}
           name: ${{ env.RELEASE_NAME }}
           body: ${{ env.RELEASE_BODY_TEXT }}
           tag_name: ${{ env.TAG_NAME }}
@@ -395,7 +407,7 @@ jobs:
       # exactly what they published and nothing more.
       - name: Verify uploaded assets, re-uploading any that are missing or short
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # +e explicitly: Actions runs `run:` blocks under `bash -e`, which would
           # abort this step the moment a `gh release view` call failed -- i.e. on
@@ -443,3 +455,6 @@ jobs:
     uses: ./.github/workflows/make_usb.yml
     with:
       tag_name: ${{ needs.release.outputs.tag_name }}
+    # make_usb.yml mints its own App token and can only do that if the private
+    # key is passed down -- see the matching block in create_release.yml.
+    secrets: inherit

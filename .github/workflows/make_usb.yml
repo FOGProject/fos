@@ -1,9 +1,10 @@
 name: Add USB Image to Release
 
 on:
-  release:
-    types:
-      - published
+  # No `release: published` trigger, deliberately -- see the concurrency comment
+  # below. Both release workflows invoke this as a reusable workflow, so a
+  # release-event trigger would be a second, simultaneous entry point rather
+  # than the only one.
   workflow_call:
     inputs:
       tag_name:
@@ -22,16 +23,23 @@ on:
 permissions:
   contents: write
 
-# One USB build per release tag. Nothing can collide today: the release
-# published by create_release.yml is created with GITHUB_TOKEN, and a release
-# created that way deliberately does not re-trigger workflows, so the
-# `release: published` trigger and the `workflow_call` path never both fire.
-# That protection is real but invisible, and it disappears the moment the
-# release step uses a PAT -- at which point two runs would build and upload the
-# same asset to the same tag at once. Stating it here costs nothing and does not
-# depend on remembering why it was safe.
+# One USB build per release tag.
+#
+# This used to be guaranteed by something invisible: the release was created
+# with GITHUB_TOKEN, and a release created that way deliberately does not
+# re-trigger workflows, so the `release: published` trigger and the
+# `workflow_call` path could never both fire. That protection ended when the
+# release step moved to the FOG App token -- an App token re-triggers workflows
+# exactly like a PAT does, which would have started two runs building and
+# uploading the same asset to the same tag at once.
+#
+# So the `release: published` trigger is gone and `workflow_call` is the only
+# automatic entry point. Both release workflows already call this explicitly and
+# gate on its result, so nothing was lost; `workflow_dispatch` still covers
+# rebuilding the image for a tag that already exists. This group stays as the
+# backstop for the dispatch path racing a release.
 concurrency:
-  group: make-usb-${{ inputs.tag_name || github.event.release.tag_name }}
+  group: make-usb-${{ inputs.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -46,11 +54,26 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # Same FOG App identity the fog-workflows repo uses, scoped to just this
+      # repo, so the uploaded USB asset is attributed to the FOG bot rather than
+      # to github-actions[bot]. Reaching this job through `workflow_call` means
+      # the private key only arrives if the caller passes `secrets: inherit` --
+      # both release workflows do.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.FOG_WORKFLOWS_APPID }}
+          private-key: ${{ secrets.FOG_WORKFLOWS_PRIVATE_KEY }}
+          owner: FOGProject
+          repositories: "fos"
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      # Both remaining triggers supply tag_name as an input; the release-event
+      # fallback that used to be here went with the `release: published` trigger.
       - name: Set tag name
-        run: echo "TAG_NAME=${{ inputs.tag_name || github.event.release.tag_name }}" >> "$GITHUB_ENV"
+        run: echo "TAG_NAME=${{ inputs.tag_name }}" >> "$GITHUB_ENV"
 
       - name: Create USB Image
         run: |
@@ -79,6 +102,7 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
+          token: ${{ steps.app-token.outputs.token }}
           tag_name: ${{ env.TAG_NAME }}
           files: |
             /tmp/fos-usb.img
@@ -102,7 +126,7 @@ jobs:
       # release buys nothing against that.
       - name: Verify uploaded assets, re-uploading any that are missing or short
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # +e explicitly: Actions runs `run:` blocks under `bash -e`, which would
           # abort this step the moment a `gh release view` call failed -- i.e. on

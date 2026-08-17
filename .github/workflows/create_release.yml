@@ -47,6 +47,18 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      # The FOG App identity, scoped to this repo, matching the standard set in
+      # the fog-workflows repo: every job that touches GitHub gets its own token
+      # rather than falling back to GITHUB_TOKEN, so a release run reads as the
+      # FOG bot end to end instead of a mix of the bot and github-actions[bot].
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.FOG_WORKFLOWS_APPID }}
+          private-key: ${{ secrets.FOG_WORKFLOWS_PRIVATE_KEY }}
+          owner: FOGProject
+          repositories: "fos"
+
       - name: Make sure that the input text field is filled in if the input checkbox is selected and vice versa
         run: |
           is_official="${{ inputs.is_official_release }}"
@@ -70,7 +82,7 @@ jobs:
       - name: Refuse an official release whose tag already exists
         if: inputs.is_official_release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           fog_version="${{ inputs.official_fog_version }}"
           if gh release view "$fog_version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -360,6 +372,17 @@ jobs:
       tag_name: ${{ steps.export_tag.outputs.tag_name }}
 
     steps:
+      # Its own token: `steps` is job-scoped, so input_checks' token is not
+      # visible here. This is the job whose identity is most visible -- it is
+      # what stamps the tag and publishes the release.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.FOG_WORKFLOWS_APPID }}
+          private-key: ${{ secrets.FOG_WORKFLOWS_PRIVATE_KEY }}
+          owner: FOGProject
+          repositories: "fos"
+
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -435,7 +458,7 @@ jobs:
       # first, and before the upload so nothing is published either way.
       - name: Refuse if the release tag already exists
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::Release $TAG_NAME already exists -- refusing to overwrite its assets. Nothing was published."
@@ -445,6 +468,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
+          token: ${{ steps.app-token.outputs.token }}
           name: ${{ env.RELEASE_NAME }}
           body: |
             Linux kernel ${{ env.LINUX_KERNEL_VER }}
@@ -479,7 +503,7 @@ jobs:
       # half-written).
       - name: Verify uploaded assets, re-uploading any that are missing or short
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # +e explicitly: Actions runs `run:` blocks under `bash -e`, which would
           # abort this step the moment a `gh release view` call failed -- i.e. on
@@ -531,3 +555,9 @@ jobs:
     uses: ./.github/workflows/make_usb.yml
     with:
       tag_name: ${{ needs.release.outputs.tag_name }}
+    # A called workflow sees no secrets unless they are passed, and make_usb.yml
+    # needs FOG_WORKFLOWS_PRIVATE_KEY to mint its own App token. Without this the
+    # USB upload is the one step in a release that is not the FOG bot -- and it
+    # fails outright rather than falling back, since an empty private key is not
+    # a valid one.
+    secrets: inherit
