@@ -71,8 +71,9 @@ not change the `RELEASE_NAME`/tag format, FOG's Kernel Update page parses it.
 
 There is no test suite for the kernel/Buildroot build itself — the only
 tests are dev-only shell harnesses in `tests/`, covering the two shared
-libraries. They live outside `rootfs_overlay`, so they never enter the built
-init. See `tests/README.md` for full details.
+libraries, the kernel configs, and `build.sh`'s package-download fallback.
+They live outside `rootfs_overlay`, so they never enter the built init. See
+`tests/README.md` for full details.
 
 ```sh
 tests/golden/run.sh capture   # (re)write the golden fixture — run BEFORE a refactor
@@ -87,6 +88,8 @@ tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK st
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
 tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
+
+tests/checks/cabextract-mirrors.sh  # build.sh's seedCabextract() mirror fallback and hash enforcement
 ```
 
 The two `*-config.sh` harnesses assert on `configs/kernel*.config` rather than

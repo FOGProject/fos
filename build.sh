@@ -180,9 +180,81 @@ function makeFlags() {
     esac
 }
 
+# cabextract is one of FOG's own Buildroot packages, and it has exactly one
+# download site: www.cabextract.org.uk. That host is not dependable. The
+# 2026-08-03 release build died when it briefly 404'd, and the 2026-08-17
+# experimental build died when every one of its addresses timed out on port 80
+# from GitHub's runners; it is blocked outright on plenty of corporate networks
+# too. Buildroot's own backup mirror cannot cover for it, because
+# sources.buildroot.net only carries packages that exist upstream in Buildroot
+# and cabextract is not one of them -- which is why the failing logs show it
+# 404 there as well. So the package has no second source, and one bad minute on
+# one small website throws away a six-job, ~50-minute release build.
+#
+# Buildroot allows a package exactly one _SITE, so a list of mirrors has to live
+# out here instead. Seed the download directory before Buildroot looks at it:
+# dl-wrapper keeps a file that is already present when it matches the package's
+# .hash file and exits without touching the network at all. Every candidate is
+# checked against the sha256 in cabextract.hash before it is kept, so a mirror
+# cannot substitute different bytes for upstream's -- and a cached tarball that
+# no longer matches is replaced rather than trusted.
+#
+# Best effort on purpose: if every mirror fails, leave the directory alone and
+# let Buildroot run its normal download, so the error the user ends up reading
+# is Buildroot's own rather than one invented here.
+function seedCabextract() {
+    local dlDir="$1"
+    local pkgDir="../Buildroot/package/cabextract"
+    local version sha256 sha512 tarball target tmp url host
+    local -a mirrors
+
+    version=$(sed -n 's/^CABEXTRACT_VERSION[[:space:]]*=[[:space:]]*\([^[:space:]][^[:space:]]*\).*/\1/p' "$pkgDir/cabextract.mk" 2>/dev/null)
+    sha256=$(awk '$1 == "sha256" { print $2; exit }' "$pkgDir/cabextract.hash" 2>/dev/null)
+    sha512=$(awk '$1 == "sha512" { print $2; exit }' "$pkgDir/cabextract.hash" 2>/dev/null)
+    if [[ -z $version || -z $sha256 ]]; then
+        echo " * WARNING: Couldn't read cabextract's version or sha256, leaving its download to Buildroot!"
+        return 0
+    fi
+
+    tarball="cabextract-$version.tar.gz"
+    target="$dlDir/cabextract/$tarball"
+    if [[ -f $target ]] && echo "$sha256  $target" | sha256sum --check --status; then
+        return 0
+    fi
+
+    mirrors=(
+        "https://www.cabextract.org.uk/$tarball"
+        "https://deb.debian.org/debian/pool/main/c/cabextract/cabextract_$version.orig.tar.gz"
+    )
+    # The Fedora lookaside cache is content-addressed by sha512 and is never
+    # pruned, which makes it the only mirror here that cannot quietly lose this
+    # tarball the way Debian's pool does once it moves to a newer cabextract.
+    [[ -n $sha512 ]] && mirrors+=("https://src.fedoraproject.org/repo/pkgs/cabextract/$tarball/sha512/$sha512/$tarball")
+
+    mkdir -p "$dlDir/cabextract" || return 0
+    tmp=$(mktemp "$dlDir/cabextract/.$tarball.XXXXXX") || return 0
+
+    for url in "${mirrors[@]}"; do
+        host="${url#*://}"
+        host="${host%%/*}"
+        dots "Fetching cabextract from $host"
+        if wget -q --tries=2 --timeout=20 -O "$tmp" "$url" &&
+            echo "$sha256  $tmp" | sha256sum --check --status; then
+            mv -f "$tmp" "$target"
+            echo "Done"
+            return 0
+        fi
+        echo "Failed"
+    done
+
+    rm -f "$tmp"
+    echo " * WARNING: No mirror served $tarball, leaving its download to Buildroot!"
+    return 0
+}
+
 function buildFilesystem() {
     local arch="$1"
-    local fsflags
+    local fsflags dlDir
     fsflags=$(makeFlags "$arch" fs)
     brURL="https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.xz"
     echo "Preparing buildroot $BUILDROOT_VERSION on $arch build:"
@@ -239,6 +311,16 @@ function buildFilesystem() {
         make $fsflags oldconfig
     fi
     echo "Done"
+
+    # Ask Buildroot itself where downloads land rather than re-deriving
+    # BR2_DL_DIR from configs/fs$arch.config, so the seed can never write to a
+    # directory the build then ignores.
+    dlDir=$(make -s printvars VARS=DL_DIR 2>/dev/null | sed -n 's/^DL_DIR=//p')
+    if [[ -n $dlDir ]]; then
+        seedCabextract "$dlDir"
+    else
+        echo " * WARNING: Couldn't determine Buildroot's download directory, skipping the cabextract mirror seed!"
+    fi
 
     if [[ $fsDownloadOnly == "y" ]]; then
         echo "Downloading Buildroot source packages for $arch ..."

@@ -78,11 +78,28 @@ tests/checks/pcie-aspm-config.sh
                               # that reports success, and r8169 enables ASPM and
                               # L1.2 on the NIC believing the OS disabled L1 --
                               # a ~5x deploy throughput loss. See ADR-0013
+tests/checks/cabextract-mirrors.sh
+                              # build.sh's seedCabextract(): falls through
+                              # upstream -> Debian -> Fedora lookaside, refuses
+                              # a mirror serving bytes that don't match
+                              # cabextract.hash, repairs rather than trusts a
+                              # cached tarball whose hash no longer matches, and
+                              # returns 0 when every mirror is down so Buildroot
+                              # still gets its own attempt
 ```
 
 Like the golden harness, the library harnesses source a sandbox copy of the
 library with its hardcoded paths rewritten and the external tools stubbed, so
 they run on any host without hardware.
+
+`cabextract-mirrors.sh` is the one harness that tests `build.sh` rather than
+anything shipped in the init. It follows the same sandbox-and-stub pattern —
+the functions are lifted out of `build.sh` (which would otherwise run a whole
+build when sourced), `wget` is PATH-shadowed, and the sandbox gets its own
+`cabextract.mk`/`.hash` describing a locally generated fixture. That last part
+is what keeps it offline: no case touches the network, and none depends on
+upstream still serving cabextract 1.11. Whether the *committed* hash still
+matches the *real* tarball is a question only a build can answer.
 
 The two `*-config.sh` harnesses are different: they assert on the kernel
 configs rather than on shell code, and take `-b` to additionally inspect the
