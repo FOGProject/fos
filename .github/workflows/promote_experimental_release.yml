@@ -183,12 +183,21 @@ jobs:
             --prerelease=false \
             --latest
 
+      # Asks what /releases/latest actually resolves to, rather than reading a
+      # field off the release. That is the thing the installer resolves, so it
+      # is the thing worth confirming -- and `gh release view` has no field for
+      # it: there is no isLatest, and asking for one exits 1 with a list of
+      # valid fields, which is how the first run of this workflow reported
+      # failure on a promotion that had entirely succeeded.
       - name: Confirm what landed
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ inputs.tag }}
         run: |
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json tagName,name,isPrerelease,isLatest \
-            -q '"tag=\(.tagName) name=\(.name) prerelease=\(.isPrerelease) latest=\(.isLatest)"' \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+          landed=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" \
+            -q '"tag=\(.tag_name) name=\(.name) prerelease=\(.prerelease)"')
+          echo "$landed" | tee -a "$GITHUB_STEP_SUMMARY"
+          if ! grep -q "tag=$TAG " <<<"$landed "; then
+            echo "::error::$TAG was edited but /releases/latest still resolves elsewhere: $landed"
+            exit 1
+          fi
