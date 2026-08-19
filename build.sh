@@ -193,7 +193,7 @@ function buildFilesystem() {
     if [[ ! -d fssource$arch ]]; then
         if [[ ! -f buildroot-$BUILDROOT_VERSION.tar.xz ]]; then
             dots "Downloading buildroot source package"
-            wget -q "$brURL" && echo "Done"
+            wget -q --tries=3 --waitretry=10 --read-timeout=60 "$brURL" && echo "Done"
             if [[ $? -ne 0 ]]; then
                 echo "Failed"
                 exit 1
@@ -360,7 +360,7 @@ function buildKernel() {
     [[ -d kernelsource$arch ]] && rm -rf "kernelsource$arch"
     if [[ ! -f linux-$KERNEL_VERSION.tar.xz ]]; then
         dots "Downloading kernel source"
-        wget -q "$kernelURL" && echo "Done"
+        wget -q --tries=3 --waitretry=10 --read-timeout=60 "$kernelURL" && echo "Done"
         if [[ $? -ne 0 ]]; then
             echo "Failed"
             exit 1
