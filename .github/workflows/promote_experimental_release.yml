@@ -1,0 +1,190 @@
+name: Promote Experimental to Latest
+
+# Marks an existing experimental build as the latest release, without
+# rebuilding anything.
+#
+# WHY: the only way to produce a latest release was to run the full build,
+# which takes the better part of an hour on a good day and rebuilds bytes that
+# have already been built and tested. Testing an experimental build and then
+# throwing it away to build the same thing again is both slow and a change of
+# artefact -- what ships is not what was tested. This promotes the exact
+# assets that were tested.
+#
+# WHAT PROMOTION ACTUALLY IS: GitHub's "latest" pointer, which a prerelease
+# never gets. The FOG installer resolves
+# https://github.com/FOGProject/fos/releases/latest/download/<asset>, so
+# flipping the prerelease flag and marking the release latest is the whole of
+# it -- no asset is moved or re-uploaded.
+#
+# THE TAG IS NOT RENAMED, and cannot be: a tag is the name of a commit and
+# `gh release edit` has no way to move one. The release keeps its EXP_ tag and
+# gains the "Latest from <date>" title. Nothing parses the tag -- the
+# installer resolves by release, and Route::kernelOrInitJson() passes tag_name
+# through for display -- but it DOES parse the first three characters of the
+# NAME, which is why the title is rewritten: 'lat' labels the row "(devel)"
+# on the Kernel Update page, where 'exp' would keep labelling it
+# "(experimental)" after it had stopped being one.
+#
+# THE ASSET CHECK IS THE POINT OF THIS FILE. create_experimental_release.yml
+# lets you build any subset -- inits only, one architecture -- and most
+# experimental runs are exactly that. The 2026-08-17 build carried three init
+# files and no kernels at all. Promoting one of those would leave
+# releases/latest/download serving a hole, and every install pulling the
+# missing asset would fail on a URL that looks right. So this refuses unless
+# the release carries the complete set a latest release is expected to have,
+# each one actually uploaded and non-empty.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: string
+        description: "Experimental tag to promote (e.g. EXP_20260819-125105)"
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+# One promotion at a time. Two runs racing would fight over which release
+# holds the latest pointer, and the loser leaves a release titled "Latest
+# from ..." that is not latest.
+concurrency:
+  group: promote-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # The FOG App identity, scoped to this repo, matching create_release.yml:
+      # a release change should read as the FOG bot rather than
+      # github-actions[bot].
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.FOG_WORKFLOWS_APPID }}
+          private-key: ${{ secrets.FOG_WORKFLOWS_PRIVATE_KEY }}
+          owner: FOGProject
+          repositories: "fos"
+
+      - name: Check the release is an experimental one that exists
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName >/dev/null 2>&1; then
+            echo "::error::No release tagged $TAG."
+            exit 1
+          fi
+          prerelease=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isPrerelease -q .isPrerelease)
+          if [[ "$prerelease" != "true" ]]; then
+            echo "::error::$TAG is not a prerelease, so there is nothing to promote. If you meant to move the latest pointer to an older release, do it in the UI deliberately."
+            exit 1
+          fi
+
+      # The Kernel Update page reads the kernel and Buildroot versions out of
+      # the release BODY (Route::kernelOrInitJson greps it for "Linux kernel"
+      # and "Buildroot"), and skips any release where either is absent. A
+      # promoted release missing them is invisible there while still being
+      # what every installer downloads -- so this is checked before, not
+      # discovered after.
+      - name: Check the body carries the kernel and Buildroot versions
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json body -q .body)
+          missing=()
+          grep -q 'Linux kernel [0-9]' <<<"$body" || missing+=("Linux kernel <version>")
+          grep -q 'Buildroot [0-9]' <<<"$body" || missing+=("Buildroot <version>")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::$TAG's release notes are missing: ${missing[*]}. The Kernel Update page skips a release whose body does not carry both."
+            exit 1
+          fi
+
+      # Every asset a latest release is expected to serve. Both architectures
+      # of both artefacts, the 32-bit builds, their checksums, and the USB
+      # image -- which comes from make_usb.yml and is therefore the one most
+      # likely to be absent. If it is, run "Add USB Image to Release" against
+      # this tag first rather than promoting a release that cannot serve it.
+      - name: Check every asset a latest release must serve is present
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          required=(
+            arm_Image arm_Image.sha256
+            bzImage bzImage.sha256
+            bzImage32 bzImage32.sha256
+            arm_init.cpio.gz arm_init.cpio.gz.sha256
+            init.xz init.xz.sha256
+            init_32.xz init_32.xz.sha256
+            fos-usb.img fos-usb.img.sha256
+          )
+          # state and size as well as the name: an interrupted upload leaves
+          # an asset that is listed, named right, and truncated or empty.
+          assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets -q '.assets[] | "\(.name)\t\(.state)\t\(.size)"')
+          bad=()
+          for name in "${required[@]}"; do
+            line=$(grep -P "^\Q$name\E\t" <<<"$assets" || true)
+            if [[ -z "$line" ]]; then
+              bad+=("$name: missing")
+              continue
+            fi
+            state=$(cut -f2 <<<"$line")
+            size=$(cut -f3 <<<"$line")
+            [[ "$state" == "uploaded" ]] || bad+=("$name: state=$state")
+            [[ "$size" -gt 0 ]] || bad+=("$name: zero bytes")
+          done
+          if [[ ${#bad[@]} -gt 0 ]]; then
+            for problem in "${bad[@]}"; do
+              echo "::error::$TAG cannot be promoted -- $problem"
+            done
+            echo "A latest release must carry every kernel, init and the USB image; an experimental build is usually a subset. Nothing was changed."
+            exit 1
+          fi
+
+      # DO NOT change the name format. FOG parses its first three characters
+      # for the Kernel Update page's Type column; "Latest from <date>" is what
+      # create_release.yml writes and what 'lat' matches.
+      #
+      # The body is rewritten as well as the title. An experimental build
+      # opens with "WARNING! This is an experimental releases. Backup your
+      # previous kernels/inits before installing these." -- which is the
+      # opposite of true once this is the release every installer downloads.
+      # The two version lines are kept verbatim because the Kernel Update page
+      # parses them, and a provenance line replaces the warning so the release
+      # still says where its bytes came from.
+      - name: Promote
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json body -q .body)
+          {
+            grep -E '^(Linux kernel|Buildroot) [0-9]' <<<"$body"
+            echo
+            echo "Promoted from experimental build $TAG after testing; the assets are that build's, unchanged."
+          } > promoted-notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "Latest from $(date -u '+%Y-%m-%d')" \
+            --notes-file promoted-notes.md \
+            --prerelease=false \
+            --latest
+
+      - name: Confirm what landed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,name,isPrerelease,isLatest \
+            -q '"tag=\(.tagName) name=\(.name) prerelease=\(.isPrerelease) latest=\(.isLatest)"' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
