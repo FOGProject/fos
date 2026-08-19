@@ -16,14 +16,18 @@ name: Promote Experimental to Latest
 # flipping the prerelease flag and marking the release latest is the whole of
 # it -- no asset is moved or re-uploaded.
 #
-# THE TAG IS NOT RENAMED, and cannot be: a tag is the name of a commit and
-# `gh release edit` has no way to move one. The release keeps its EXP_ tag and
-# gains the "Latest from <date>" title. Nothing parses the tag -- the
-# installer resolves by release, and Route::kernelOrInitJson() passes tag_name
-# through for display -- but it DOES parse the first three characters of the
-# NAME, which is why the title is rewritten: 'lat' labels the row "(devel)"
-# on the Kernel Update page, where 'exp' would keep labelling it
-# "(experimental)" after it had stopped being one.
+# THE TAG IS DELIBERATELY NOT RENAMED. `gh release edit --tag` could do it,
+# so this is a choice rather than a limitation: the EXP_ tag is the one whose
+# asset URLs the tester has already been pulling from, and renaming it breaks
+# every one of those links while leaving the original ref behind. The release
+# keeps its EXP_ tag and gains the "Latest from <date>" title.
+#
+# Nothing parses the tag -- the installer resolves by release, and
+# Route::kernelOrInitJson() passes tag_name through for display -- but it DOES
+# parse the first three characters of the NAME, which is why the title is
+# rewritten: 'lat' labels the row "(devel)" on the Kernel Update page, where
+# 'exp' would keep labelling it "(experimental)" after it had stopped being
+# one.
 #
 # THE ASSET CHECK IS THE POINT OF THIS FILE. create_experimental_release.yml
 # lets you build any subset -- inits only, one architecture -- and most
