@@ -71,6 +71,9 @@ if [[ -n $mode && $mode != +(*debug*) && -z $type ]]; then
         enrollsb)
             fog.enrollsb
             ;;
+        enrollsbforce)
+            fog.enrollsbforce
+            ;;
         *)
             handleError "Fatal Error: Unknown mode :: $mode ($0)\n   Args Passed: $*"
             ;;
