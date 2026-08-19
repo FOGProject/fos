@@ -1621,6 +1621,7 @@ handleError() {
     local str="$1"
     local parts=""
     local part=""
+    local report=""
     echo "##############################################################################"
     echo "#                                                                            #"
     echo "#                         An error has been detected!                        #"
@@ -1628,6 +1629,33 @@ handleError() {
     echo "##############################################################################"
     echo "Init Version: $initversion"
     echo -e "$str\n"
+    #
+    # Tell the server. Until fogproject#1206 this function reported nothing at
+    # all -- it printed this banner and exited -- so a real imaging failure
+    # (bad image, mount failure, partition error) was invisible to FOG. The
+    # task simply stopped progressing, HOST_IMAGE_FAIL could not fire, and the
+    # notification plugins registered for it had never run on any server. The
+    # only failure FOG ever heard about was a storage node problem, through
+    # fog.checkmount -> blame.php, and that re-queues rather than fails.
+    #
+    # Best effort, and deliberately so. This must not change anything the
+    # person standing in front of the machine sees or waits for: it is time
+    # bounded, its output is discarded, and its exit status is ignored. A
+    # server that predates the endpoint answers 404 and nothing happens here.
+    #
+    # printf %b first so the "\n" the callers embed in their message becomes a
+    # real newline; the server flattens control characters back to spaces, and
+    # would otherwise be handed the two literal characters.
+    #
+    if [[ -n $web ]]; then
+        report=$(printf '%b' "$str" 2>/dev/null) || report="$str"
+        curl -Lks --max-time 5 \
+            --data-urlencode "mac=$mac" \
+            --data-urlencode "sysuuid=$sysuuid" \
+            --data-urlencode "error=$report" \
+            --data-urlencode "script=${0##*/}" \
+            "${web}service/taskerror.php" &>/dev/null || :
+    fi
     echo "Kernel variables and settings:"
     cat /proc/cmdline | sed 's/ad.*=.* //g'
     #
