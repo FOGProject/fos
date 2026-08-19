@@ -55,6 +55,15 @@ tests/checks/mbr-extended.sh  # MBR tables carrying an extended partition with
                               # container rather than partclone'ing it. Where a
                               # real sfdisk is present each computed table is
                               # also applied to a sparse file
+tests/checks/error-report.sh  # the failure report handleError() sends to
+                              # service/taskerror.php (fogproject#1206): it goes
+                              # to the right URL with mac, sysuuid and the
+                              # message, it is time bounded and url-encoded, the
+                              # "\n" the callers embed is expanded before
+                              # sending, nothing it does reaches the operator's
+                              # console, a failed report still lets handleError
+                              # reach its reboot notice, and no $web means no
+                              # attempt at all
 tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # device class (NVMe/SSD/HDD) and mode
                               # (fast/normal/full), never issues an `nvme format`

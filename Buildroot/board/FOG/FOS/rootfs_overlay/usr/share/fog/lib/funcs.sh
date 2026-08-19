@@ -1614,6 +1614,45 @@ correctVistaMBR() {
     checkStatus $? "done" "Could not apply fixed MBR (${FUNCNAME[0]})\n   Args Passed: $*"
     debugPause
 }
+# Tells the FOG server that something went wrong, and carries on regardless
+#
+# Until fogproject#1206 neither handleError nor handleWarning reported anything
+# at all -- they printed a banner and, for an error, exited -- so a real
+# imaging failure (bad image, mount failure, partition error) was invisible to
+# FOG. The task simply stopped progressing, HOST_IMAGE_FAIL could not fire, and
+# the notification plugins registered for it had never run on any server. The
+# only failure FOG ever heard about was a storage node problem, through
+# fog.checkmount -> blame.php, and that re-queues rather than fails.
+#
+# The server records both types against the task in `taskLog` and in its own
+# log; only an error fires the failure event, because a warning means this
+# machine carried on.
+#
+# Best effort, and deliberately so. This must not change anything the person
+# standing in front of the machine sees or waits for: it is time bounded, its
+# output is discarded, and its exit status is ignored. A server that predates
+# the endpoint answers 404 and nothing happens here.
+#
+# $1 is the report type, error or warning
+# $2 is the message, as it was passed to the handler
+reportToServer() {
+    local type="$1"
+    local str="$2"
+    local report=""
+    [[ -z $web ]] && return 0
+    # printf %b first so the "\n" the callers embed in their message becomes a
+    # real newline; the server flattens control characters back to spaces, and
+    # would otherwise be handed the two literal characters.
+    report=$(printf '%b' "$str" 2>/dev/null) || report="$str"
+    curl -Lks --max-time 5 \
+        --data-urlencode "mac=$mac" \
+        --data-urlencode "sysuuid=$sysuuid" \
+        --data-urlencode "type=$type" \
+        --data-urlencode "text=$report" \
+        --data-urlencode "script=${0##*/}" \
+        "${web}service/taskerror.php" &>/dev/null || :
+    return 0
+}
 # Prints an error with visible information
 #
 # $1 is the string to inform what went wrong
@@ -1628,6 +1667,7 @@ handleError() {
     echo "##############################################################################"
     echo "Init Version: $initversion"
     echo -e "$str\n"
+    reportToServer error "$str"
     echo "Kernel variables and settings:"
     cat /proc/cmdline | sed 's/ad.*=.* //g'
     #
@@ -1671,6 +1711,7 @@ handleWarning() {
     echo "#                                                                            #"
     echo "##############################################################################"
     echo -e "$str"
+    reportToServer warning "$str"
     echo "##############################################################################"
     echo "#                                                                            #"
     echo "#                          Will continue in 1 minute                         #"
