@@ -1,13 +1,15 @@
 #!/bin/bash
 #
-# Assertion harness for the failure report handleError() sends.
+# Assertion harness for the reports handleError() and handleWarning() send.
 #
 #   tests/checks/error-report.sh   # run all cases, exit non-zero on any failure
 #
 # handleError() used to print its banner and exit, reporting nothing to the
 # server, so a real imaging failure was invisible to FOG: HOST_IMAGE_FAIL could
 # not fire and the notification plugins registered for it had never run
-# (fogproject#1206). It now POSTs to service/taskerror.php.
+# (fogproject#1206). Both handlers now POST to service/taskerror.php through
+# reportToServer(), tagged error or warning: the server records either against
+# the task, and only an error is a failure.
 #
 # What matters here is not that the report arrives -- that is the server's
 # harness -- but that trying to send it cannot change what the person standing
@@ -94,6 +96,24 @@ run_handle_error() {
     )" 2>&1
 }
 
+# run_handle_warning -- the same, but handleWarning returns rather than exiting,
+# so the subshell is only for symmetry. usleep is stubbed, so its minute is free.
+run_handle_warning() {
+    rm -f "$SANDBOX/curl.called" "$SANDBOX/curl.argv"
+    OUT="$(
+        set +u
+        export PATH="$STUBBIN:$PATH"
+        export SANDBOX="$SANDBOX"
+        export FAKE_CURL_RC
+        . "$SANDBOX/funcs.sh" >/dev/null 2>&1
+        web="$CASE_WEB"
+        mac="$CASE_MAC"
+        sysuuid="$CASE_UUID"
+        isdebug=""
+        handleWarning "$1"
+    )" 2>&1
+}
+
 CASE_WEB="http://fog.example/fog/"
 CASE_MAC="02:00:00:00:0E:11"
 CASE_UUID="4c4c4544-0044-0000-8000-000000000000"
@@ -106,8 +126,9 @@ why=""
 arg_present "http://fog.example/fog/service/taskerror.php" || why="${why:+$why; }wrong or missing endpoint URL"
 arg_present "mac=02:00:00:00:0E:11" || why="${why:+$why; }mac not sent"
 arg_present "sysuuid=4c4c4544-0044-0000-8000-000000000000" || why="${why:+$why; }sysuuid not sent"
-arg_present "error=Could not mount images folder (fog.mount)" || why="${why:+$why; }error text not sent as one argument"
-note "reports to service/taskerror.php with mac, sysuuid and the message" "$why"
+arg_present "text=Could not mount images folder (fog.mount)" || why="${why:+$why; }report text not sent as one argument"
+arg_present "type=error" || why="${why:+$why; }not tagged as an error, so the server cannot tell it from a warning"
+note "reports to service/taskerror.php with mac, sysuuid, type and the message" "$why"
 
 # 2. Bounded, and encoded rather than concatenated into the body.
 why=""
@@ -120,7 +141,7 @@ note "the call is time bounded and its fields are encoded" "$why"
 #    characters would put a visible backslash-n in an admin's notification.
 FAKE_CURL_RC=0
 run_handle_error 'Could not mount images folder ($0)\n   Args Passed: --target /images'
-sent="$(grep -F -- 'error=' "$SANDBOX/curl.argv" | head -1)"
+sent="$(grep -F -- 'text=' "$SANDBOX/curl.argv" | head -1)"
 why=""
 [[ $sent == *'\n'* ]] && why="the literal two characters \\n were sent instead of a newline"
 [[ $(grep -c . <<< "$(printf '%s' "$sent")") -lt 1 ]] && why="${why:+$why; }nothing was sent"
@@ -157,6 +178,36 @@ why=""
 [[ -f $SANDBOX/curl.called ]] && why="curl was called with no \$web set"
 [[ $OUT != *"An error has been detected"* ]] && why="${why:+$why; }the banner was not printed"
 note "no \$web means no attempt" "$why"
+
+# 7. A warning reports too, tagged as one. The server keys the notification off
+#    this: an error fires HOST_IMAGE_FAIL, a warning only records, because the
+#    machine carried on. Sending a warning untagged would announce a failed
+#    deploy for a task that went on to succeed.
+CASE_WEB="http://fog.example/fog/"
+FAKE_CURL_RC=0
+run_handle_warning "Could not determine the disk size (getDiskSize)"
+why=""
+[[ -f $SANDBOX/curl.called ]] || why="curl was not called at all"
+arg_present "type=warning" || why="${why:+$why; }not tagged as a warning, so the server would treat it as a failure"
+arg_present "text=Could not determine the disk size (getDiskSize)" || why="${why:+$why; }report text not sent as one argument"
+arg_present "http://fog.example/fog/service/taskerror.php" || why="${why:+$why; }wrong or missing endpoint URL"
+note "handleWarning reports, tagged warning" "$why"
+
+# 8. And it changes nothing about what the operator sees or how long they wait.
+why=""
+[[ $OUT != *"A warning has been detected"* ]] && why="the warning banner was not printed"
+[[ $OUT != *"Could not determine the disk size"* ]] && why="${why:+$why; }the message itself stopped being printed"
+[[ $OUT != *"Will continue in 1 minute"* ]] && why="${why:+$why; }handleWarning did not reach its continue notice"
+[[ $OUT == *"curl stdout must not reach the console"* ]] && why="${why:+$why; }curl stdout is printed to the operator"
+note "the warning banner and wait are unaffected" "$why"
+
+# 9. A failing curl must not stop a warning from being one -- the machine is
+#    still going to carry on imaging.
+FAKE_CURL_RC=7
+run_handle_warning "Could not determine the disk size (getDiskSize)"
+why=""
+[[ $OUT != *"Will continue in 1 minute"* ]] && why="handleWarning did not finish after curl failed"
+note "a failed warning report does not stop handleWarning finishing" "$why"
 
 echo
 echo "$PASS passed, $FAIL failed"
