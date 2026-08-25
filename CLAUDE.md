@@ -159,14 +159,15 @@ tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK st
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
 tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
+tests/checks/initrd-format.sh       # each arch's kernel can unpack the init build.sh ships
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
 
-The two `*-config.sh` harnesses assert on `configs/kernel*.config` rather than
-on shell code; pass `-b` to also inspect the post-`oldconfig` `.config` in any
-`kernelsource<arch>/` present, which is the check that actually proves the
-symbol survived Kconfig.
+The three config harnesses (`*-config.sh` and `initrd-format.sh`) assert on
+`configs/kernel*.config` rather than on shell code; pass `-b` to also inspect
+the post-`oldconfig` `.config` in any `kernelsource<arch>/` present, which is
+the check that actually proves the symbol survived Kconfig.
 
 Both harness families work the same way: they copy `funcs.sh`/
 `partition-funcs.sh` into a temp sandbox, rewrite the hardcoded
@@ -303,7 +304,6 @@ and add a new ADR for any similarly hard-to-reverse decision:
   missing `.img`, because every image captured before this fix still carries one.
   The container's size is derived from where its logicals land, never scaled.
   Guarded by `tests/checks/mbr-extended.sh`.
-
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
 - Both libraries hardcode `/usr/share/fog/lib` as their own path and expect to
