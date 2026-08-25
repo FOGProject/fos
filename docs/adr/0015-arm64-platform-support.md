@@ -11,8 +11,27 @@ fragment survives Kconfig's own `oldconfig` (checked with
 `.config`, which is the only check that means anything per ADR-0010), and the
 build emits `arm_Image` plus device trees for Pi 2 through Pi 5.
 
-What is not proven: that a Raspberry Pi boots it. Treat this ADR as unfinished
-until someone reports back.
+Also proven, under `qemu-system-aarch64 -M virt` (QEMU 10.2, 2026-08-25),
+booting the **released** `arm_init.cpio.gz` from FOG 1.6 — the same bytes that
+shipped, not a rebuild:
+
+- The released `arm_Image` produces **no console output at all** on that
+  machine. There is no PL011 driver in it, so there is nothing to print to.
+  That is the second bug in this ADR, demonstrated.
+- The kernel from this branch unpacks the same gzip initramfs ("Trying to
+  unpack rootfs image as initramfs… Freeing initrd memory: 52576K… Run /init
+  as init process") and boots through to FOS userspace: syslogd, klogd, udevd,
+  haveged, then `S40network`.
+- With a virtio NIC attached it enumerates PCI, brings up eth0 and takes a DHCP
+  lease. Worth noting that `CONFIG_PCI_HOST_GENERIC` was off before this
+  change, so the released kernel has no PCI bus on that machine and therefore
+  no NIC at all.
+
+What is **not** proven: any of the Broadcom code paths. QEMU's `raspi4b` model
+is too incomplete to serve — it disables `bcm2711-pcie`, `bcm2711-genet-v5`,
+`bcm2711-rng200` and `bcm2711-thermal` out of the DTB and never reaches a
+console. Real Pi hardware is the only way to validate that half, and nobody on
+the project has one. Treat this ADR as unfinished until someone reports back.
 
 Prompted by FOG forums topic 18229, where someone tried to capture a Pi 4 over
 U-Boot, found FOS's arm64 kernel had no driver for the Pi's onboard NIC, and
