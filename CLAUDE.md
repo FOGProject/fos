@@ -303,6 +303,35 @@ and add a new ADR for any similarly hard-to-reverse decision:
   missing `.img`, because every image captured before this fix still carries one.
   The container's size is derived from where its logicals land, never scaled.
   Guarded by `tests/checks/mbr-extended.sh`.
+- **0015 — Wi-Fi (proposed, unstarted).** Splits into two halves with opposite
+  answers. **Wi-Fi network boot is not FOG's to fix**: upstream iPXE's whole
+  802.11 driver set is `ath5k`/`ath9k`/`rtl818x`/`prism2`, maintainers have
+  said modern parts are "unlikely to get any support" because they need binary
+  blobs, and FOG's build disables it anyway (`IWMGMT_CMD` commented out in both
+  `fog-ipxe` config trees; zero `net80211` objects in the guarded
+  `tools/linked-objects/` baselines — the `eap*.o` present are *wired* 802.1X).
+  The only wireless first stage is the platform firmware's own UEFI Wi-Fi,
+  which FOG's existing `snponly.efi` rides unmodified. **Wi-Fi imaging in FOS
+  is feasible** but carries a chipset support matrix this repo doesn't
+  currently owe for any device class. Four things decide the design:
+  `CONFIG_MODULES=n` forces every driver built into `bzImage`; FOS boots a
+  ramdisk root, *not* an initramfs, so a built-in driver probing at
+  `device_initcall` may not see `/lib/firmware` at all — `CONFIG_EXTRA_FIRMWARE`
+  is the route already proven here and the Buildroot route must be verified by
+  a real build before anyone designs around it; three size ceilings (256 M ext2,
+  the cross-repo `ramdisk_size=275000`, the 128 MB USB FAT image) that firmware
+  blobs threaten; and `S40network:39-44`'s carrier gate, which skips any
+  interface that never reports `carrier=1` and so drops a wlan NIC before it can
+  associate (the `curl "${web}"/index.php` test at :48-54 must be **kept**, not
+  replaced by an association check). Credentials are a *network-model* choice,
+  not a code one: an open/OWE MAC-ACL'd imaging SSID needs only a non-secret
+  SSID name and sidesteps the bootstrap entirely, while PSK lands squarely in
+  ADR-0011's `web=` class. Don't hide the SSID (probing reveals it; hurts DFS
+  scanning), don't run it unencrypted if OWE is available (over-the-air image
+  capture is the one way this is worse than wired), and note that a MAC ACL
+  inverts badly for *first-touch registration*. Multicast is refused on
+  wireless per the 0003/0007 precedent. Host identity needs no schema change —
+  `getHostByMacAddresses()` already resolves from any additional MAC.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
