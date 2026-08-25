@@ -159,11 +159,16 @@ fi
 apply_for_real "resize output applies to a real disk" "$DISK80"
 
 # 2. The resize itself still lands on the requested partition, and only on it.
-if [[ $(psize /dev/sda6) -eq $(( 10000000 / 512 )) && $(psize /dev/sda5) -eq 21116928 \
+#    10000000 bytes is not a whole number of 512-byte sectors, and the byte ->
+#    sector conversion rounds UP (ADR-0016): the filesystem has already been
+#    shrunk to that byte size, so flooring would leave the partition smaller
+#    than the filesystem inside it. Hence (bytes + 511) / 512, not bytes / 512.
+WANTSDA6=$(( (10000000 + 511) / 512 ))
+if [[ $(psize /dev/sda6) -eq $WANTSDA6 && $(psize /dev/sda5) -eq 21116928 \
       && $(psize /dev/sda10) -eq 49217536 ]]; then
     pass "resize shrinks only the target logical partition"
 else
-    fail "resize target" "sda6=$(psize /dev/sda6) sda5=$(psize /dev/sda5) sda10=$(psize /dev/sda10)"
+    fail "resize target" "sda6=$(psize /dev/sda6) (want $WANTSDA6) sda5=$(psize /dev/sda5) sda10=$(psize /dev/sda10)"
 fi
 
 # ---------------------------------------------------------------------------

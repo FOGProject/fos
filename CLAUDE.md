@@ -152,6 +152,7 @@ tests/golden/run.sh print     # dump current output to stdout, no comparison
 
 tests/checks/sector-size.sh   # validateImageSectorSize() refusal/reformat behavior
 tests/checks/fill-engine.sh   # sfdisk fill engine: 4Kn rescaling, GPT clamp, abort-on-unusable-table
+tests/checks/resize-engine.sh # capture-time shrink: 4Kn units, last-lba passthrough, round-up (ADR-0016)
 tests/checks/mbr-extended.sh  # MBR extended/logical layouts: emission order, EBR gaps, container sizing
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
@@ -321,6 +322,23 @@ and add a new ADR for any similarly hard-to-reverse decision:
   server half does not exist** — FOG emits iPXE, not U-Boot `boot.scr`, so a Pi
   still cannot be imaged end to end. Guarded by
   `tests/checks/arm64-platform-config.sh`.
+- **0016 — sector units in the resize path.** `processSfdisk()` converted
+  `blockdev --getsz`'s 512-byte units into the disk's logical-sector unit for
+  `action=filldisk` only, so the capture-time shrink read a 4Kn disk as eight
+  times its real size; and `resize_partition()` divided its **byte** argument by
+  `SECTOR_SIZE`, which is an *alignment quantum*, not a sector size — the two
+  coincide only on 512-byte disks, which is why this survived for years. The raw
+  logical sector size now travels as its own `LOGICAL_SECTOR_SIZE`: **do not
+  merge it back into `SECTOR_SIZE`.** The conversion rounds **up**, because the
+  filesystem has already been shrunk to that byte count. Third invariant: a
+  capture-time shrink **never recomputes `last-lba`** — it describes where the
+  disk ends, `sfdisk -d` read it from that same disk, and shrinking a partition
+  does not move it; `fill_disk()`'s identical-looking assignment is a different
+  case and stays. The trap this ADR exists for: none of this was a regression.
+  The same broken table was computed on every 4Kn capture for years, and
+  ADR-0003's fail-loud apply is the only reason anyone found out — so reverting
+  to an older init re-hides it rather than fixing it. Guarded by
+  `tests/checks/resize-engine.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

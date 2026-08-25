@@ -327,7 +327,8 @@ makeSwapSystem() {
     debugPause
 }
 # $1 is the partition device (e.g. /dev/sda1)
-# $2 is the new desired size in 1024 (1k) blocks
+# $2 is the new desired size in BYTES (funcs.sh passes the shrunk filesystem
+#    size; procsfdisk.awk divides it by the disk's logical sector size)
 # $3 is the image path (e.g. /net/dev/foo)
 resizeSfdiskPartition() {
     local part="$1"
@@ -410,7 +411,7 @@ fillSfdiskWithPartitions() {
 #	foo.sfdisk = sfdisk -d output
 #	resize = action
 #	/dev/sda1 = partition to modify
-#	100000 = 1024 byte blocks size to make it
+#	100000 = size in BYTES to make it
 #	output: new sfdisk -d like output
 #
 # processSfdisk foo.sfdisk move /dev/sda1 100000
@@ -449,27 +450,34 @@ processSfdisk() {
     [[ -z $target ]] && handleError "Device (disk or partition) not passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $size ]] && handleError "No desired size passed (${FUNCNAME[0]})\n   Args Passed: $*"
     local disk_size=$(blockdev --getsz ${disk})
-    # A whole-disk fill restores an image whose partition offsets/sizes were captured
-    # in the image's logical sector unit. Two awk inputs must track that unit or the
-    # fill math misbehaves on non-512 (e.g. 4Kn) targets:
-    #   diskSize    - blockdev --getsz always reports 512-byte units; convert it into
-    #                 the target's logical-sector unit, else every resizable partition
-    #                 inflates (~8x on 4Kn) and runs off the end of the disk.
-    #   SECTOR_SIZE - the fill engine uses this ONLY as a size-alignment quantum
-    #                 (p_size -= p_size % SECTOR_SIZE). 512 sectors = 256 KiB at
-    #                 512-byte sectors; feed that same 256 KiB granularity in the
-    #                 target's unit so a small resizable partition isn't rounded to 0
-    #                 (a 1 MiB bios_grub is 256 sectors on 4Kn; a 4096-sector quantum
-    #                 would zero it and corrupt the table).
-    # No-op on 512-byte-sector disks: getss=512 makes both identities
-    # (disk_size*512/512 = disk_size; 512*512/512 = 512).
-    if [[ $action == filldisk ]]; then
-        local logsectorsize=$(blockdev --getss ${disk} 2>/dev/null)
-        if [[ -n $logsectorsize && $logsectorsize -gt 0 ]]; then
-            disk_size=$(( disk_size * 512 / logsectorsize ))
-            sectorsize=$(( 512 * 512 / logsectorsize ))
-        fi
-    fi
+    # Every action here computes against a partition table whose offsets and sizes are
+    # expressed in the disk's LOGICAL sector unit, so three awk inputs have to track that
+    # unit or the arithmetic quietly means something else on a non-512 (e.g. 4Kn) disk:
+    #   diskSize            - blockdev --getsz always reports 512-byte units; convert it
+    #                         into the disk's logical-sector unit, else filldisk inflates
+    #                         every resizable partition (~8x on 4Kn) off the end of the
+    #                         disk, and resize's own bounds checks compare against a
+    #                         number 8x too large to ever catch anything.
+    #   SECTOR_SIZE         - the fill engine uses this ONLY as a size-alignment quantum
+    #                         (p_size -= p_size % SECTOR_SIZE). 512 sectors = 256 KiB at
+    #                         512-byte sectors; feed that same 256 KiB granularity in the
+    #                         disk's unit so a small resizable partition isn't rounded to 0
+    #                         (a 1 MiB bios_grub is 256 sectors on 4Kn; a 4096-sector
+    #                         quantum would zero it and corrupt the table).
+    #   LOGICAL_SECTOR_SIZE - the raw logical sector size, which is what the resize action
+    #                         divides its byte-count argument by to get a sector count.
+    #                         Deliberately NOT SECTOR_SIZE: overloading one variable with
+    #                         an alignment quantum and a unit divisor is what hid the 4Kn
+    #                         resize bug for years, because on a 512-byte disk the two
+    #                         values are equal. See ADR-0016.
+    # This whole block ran for filldisk only until ADR-0016, so resize got 512-byte units
+    # on a 4Kn disk and emitted a last-lba past the end of it.
+    # No-op on 512-byte-sector disks: getss=512 makes all three identities
+    # (disk_size*512/512 = disk_size; 512*512/512 = 512; the divisor is 512).
+    local logsectorsize=$(blockdev --getss ${disk} 2>/dev/null)
+    [[ -n $logsectorsize && $logsectorsize -gt 0 ]] || logsectorsize=512
+    disk_size=$(( disk_size * 512 / logsectorsize ))
+    sectorsize=$(( 512 * 512 / logsectorsize ))
     local minstart=$(awk -F'[ ,]+' '/start/{if ($4) print $4}' $data | sort -n | head -1)
     local chunksize=""
     getPartBlockSize "$disk" "chunksize"
@@ -485,6 +493,7 @@ processSfdisk() {
     #local awkArgs="-v SECTOR_SIZE=$chunksize -v CHUNK_SIZE=$chunksize -v MIN_START=$minstart"
     awkArgs="$awkArgs -v action=$action -v target=$target -v sizePos=$size"
     awkArgs="$awkArgs -v diskSize=$disk_size"
+    awkArgs="$awkArgs -v LOGICAL_SECTOR_SIZE=$logsectorsize"
     [[ -n $fixed ]] && awkArgs="$awkArgs -v fixedList=$fixed"
     # process with external awk script
     if [[ -r $data ]]; then
@@ -587,7 +596,7 @@ hasGPT() {
 # resizePartition function
 #
 # $1 is the partition device (e.g. /dev/sda1)
-# $2 is the new desired size in 1024 (1k) blocks
+# $2 is the new desired size in BYTES
 # $3 is the image path (e.g. /net/dev/foo)
 resizePartition() {
     local part="$1"
