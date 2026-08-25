@@ -110,6 +110,17 @@ tests/checks/initrd-format.sh
                               # is off on every arch: the init is the root
                               # filesystem and has no /lib/modules, so an =m
                               # driver is a driver that silently isn't there
+tests/checks/arm64-platform-config.sh
+                              # configs/kernelarm64.config describes an actual
+                              # ARM platform: ARCH_BCM2835 (Pi 3/4/5), the
+                              # VideoCore firmware+mailbox+clock chain, SD card
+                              # (sdhci-iproc, sdhost, DMA), NICs (genet,
+                              # lan78xx, smsc95xx, macb for Pi 5's RP1),
+                              # PCIE_BRCMSTB, the SoC watchdog FOS reboots
+                              # through, and the RP1 overlay symbols -- plus
+                              # ACPI, PCI_HOST_GENERIC and PL011 for non-Pi
+                              # arm64. Also that build.sh builds dtbs.
+                              # See ADR-0015
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
