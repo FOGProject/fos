@@ -1,5 +1,7 @@
 # Sector units belong to every sfdisk action, and last-lba belongs to the disk
 
+Reported as GH-159.
+
 Capturing a resizable image from a 4Kn disk aborted with sfdisk's `Last LBA
 specified by script is out of range`, reported as
 `sfdisk failed to apply the partition table to /dev/vda (applySfdiskPartitions)`.
