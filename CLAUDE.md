@@ -159,14 +159,16 @@ tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK st
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
 tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
+tests/checks/initrd-format.sh       # each arch's kernel can unpack the init build.sh ships
+tests/checks/arm64-platform-config.sh  # arm64 kernel describes a real ARM platform (ADR-0015)
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
 
-The two `*-config.sh` harnesses assert on `configs/kernel*.config` rather than
-on shell code; pass `-b` to also inspect the post-`oldconfig` `.config` in any
-`kernelsource<arch>/` present, which is the check that actually proves the
-symbol survived Kconfig.
+The four config harnesses (`*-config.sh` and `initrd-format.sh`) assert on
+`configs/kernel*.config` rather than on shell code; pass `-b` to also inspect
+the post-`oldconfig` `.config` in any `kernelsource<arch>/` present, which is
+the check that actually proves the symbol survived Kconfig.
 
 Both harness families work the same way: they copy `funcs.sh`/
 `partition-funcs.sh` into a temp sandbox, rewrite the hardcoded
@@ -303,6 +305,22 @@ and add a new ADR for any similarly hard-to-reverse decision:
   missing `.img`, because every image captured before this fix still carries one.
   The container's size is derived from where its logicals land, never scaled.
   Guarded by `tests/checks/mbr-extended.sh`.
+- **0015 — arm64 platform support.** `configs/kernelarm64.config` was added in
+  2018 by someone who said they could not test it, and eight years of `make
+  oldconfig` carried it forward without ever adding an ARM platform: no
+  `CONFIG_ARCH_BCM`, no ACPI, no `PCI_HOST_GENERIC`, no PL011 UART. It could
+  not boot a Raspberry Pi and had no console on an arm64 server either. Now
+  carries Broadcom/Pi support (Pi 3 through Pi 5, `ARCH_BCM2835` being the
+  umbrella for BCM2837/2711/2712) plus the generic arm64 symbols, merged as a
+  fragment onto the existing config rather than rebased on mainline's
+  `defconfig` — because FOS builds `CONFIG_MODULES=n` and `olddefconfig` drops
+  `=m` symbols instead of promoting them. `build.sh` also builds `dtbs` and
+  publishes `arm_dtbs.tar.gz`. Two symbols were dropped silently by Kconfig on
+  the first pass (`SERIAL_8250_BCM2835AUX` wants `SERIAL_8250_SHARE_IRQ`,
+  `DMA_BCM2835` wants `DMADEVICES`), which is the ADR-0010 trap again. **The
+  server half does not exist** — FOG emits iPXE, not U-Boot `boot.scr`, so a Pi
+  still cannot be imaged end to end. Guarded by
+  `tests/checks/arm64-platform-config.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

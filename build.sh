@@ -354,7 +354,11 @@ function buildKernel() {
     local kflags ktarget
     kflags=$(makeFlags "$arch" kernel)
     ktarget=bzImage
-    [[ $arch == arm64 ]] && ktarget=Image
+    # arm64 also builds dtbs. A device tree is not optional on a board without
+    # EFI/ACPI -- the kernel has no other way to be told what hardware it is
+    # on -- and the Pi's own firmware DTB is only available when U-Boot passes
+    # it through, which not every boot path does. Costs one make target.
+    [[ $arch == arm64 ]] && ktarget="Image dtbs"
     kernelURL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-$KERNEL_VERSION.tar.xz"
     echo "Preparing kernel $KERNEL_VERSION on $arch build:"
     [[ -d kernelsource$arch ]] && rm -rf "kernelsource$arch"
@@ -463,7 +467,42 @@ function buildKernel() {
             ;;
     esac
     [[ ! -f $compiledfile ]] && echo 'File not found.' || { cp "$compiledfile" "$kernelfile" && signKernel "$kernelfile" && sha256sum "$kernelfile" > "${kernelfile}.sha256"; }
+    [[ $arch == arm64 ]] && packageDtbs "$arch"
     cd ..
+}
+
+# Publish the device trees built alongside the arm64 Image as one tarball.
+#
+# Paths are kept relative to arch/arm64/boot/dts, so a Pi 4's tree unpacks to
+# broadcom/bcm2711-rpi-4-b.dtb -- the same layout every distro and every
+# U-Boot netboot script already expects.
+#
+# `make dtbs` builds only the platforms the config enables, so this tracks the
+# kernel rather than the source tree: today that is the twelve Broadcom trees
+# (Pi 2 through Pi 5) and 51 KB, and it grows by itself if another ARCH_* is
+# ever turned on.
+#
+# Must be called from dist/.
+function packageDtbs() {
+    local arch="$1"
+    local dtsdir="../kernelsource$arch/arch/arm64/boot/dts"
+    local dtbfile='arm_dtbs.tar.gz'
+    if [[ ! -d $dtsdir ]] || [[ -z $(find "$dtsdir" -name '*.dtb' -print -quit) ]]; then
+        echo " * WARNING: No device trees found under $dtsdir, skipping $dtbfile"
+        return
+    fi
+    dots "Packaging device trees"
+    # Names go to tar over a pipe rather than as arguments: the arm64 tree
+    # builds on the order of a thousand dtbs and a command line is finite.
+    if (cd "$dtsdir" && find . -name '*.dtb' -printf '%P\n' | sort) \
+            | tar czf "$dtbfile" -C "$dtsdir" -T -; then
+        sha256sum "$dtbfile" > "${dtbfile}.sha256"
+        echo "Done"
+    else
+        echo "Failed"
+        rm -f "$dtbfile"
+        exit 1
+    fi
 }
 
 function addKernelPackages() {

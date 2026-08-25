@@ -97,6 +97,30 @@ tests/checks/pcie-aspm-config.sh
                               # that reports success, and r8169 enables ASPM and
                               # L1.2 on the NIC believing the OS disabled L1 --
                               # a ~5x deploy throughput loss. See ADR-0013
+tests/checks/initrd-format.sh
+                              # the init image build.sh publishes for each arch
+                              # (rootfs.ext2.xz on x64/x86, rootfs.cpio.gz on
+                              # arm64) is one that arch's kernel can actually
+                              # decompress: CONFIG_RD_<fmt>/CONFIG_DECOMPRESS_
+                              # <fmt> present, and fs<arch>.config really emits
+                              # that image type and compression. The two ends
+                              # had drifted -- the released arm64 kernel shipped
+                              # with RD_GZIP off against a gzip init, which
+                              # cannot boot at all. Also asserts CONFIG_MODULES
+                              # is off on every arch: the init is the root
+                              # filesystem and has no /lib/modules, so an =m
+                              # driver is a driver that silently isn't there
+tests/checks/arm64-platform-config.sh
+                              # configs/kernelarm64.config describes an actual
+                              # ARM platform: ARCH_BCM2835 (Pi 3/4/5), the
+                              # VideoCore firmware+mailbox+clock chain, SD card
+                              # (sdhci-iproc, sdhost, DMA), NICs (genet,
+                              # lan78xx, smsc95xx, macb for Pi 5's RP1),
+                              # PCIE_BRCMSTB, the SoC watchdog FOS reboots
+                              # through, and the RP1 overlay symbols -- plus
+                              # ACPI, PCI_HOST_GENERIC and PL011 for non-Pi
+                              # arm64. Also that build.sh builds dtbs.
+                              # See ADR-0015
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
