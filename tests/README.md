@@ -75,6 +75,20 @@ tests/checks/error-report.sh  # the failure report handleError() sends to
                               # console, a failed report still lets handleError
                               # reach its reboot notice, and no $web means no
                               # attempt at all
+tests/checks/server-post-reporting.sh
+                              # postToServer() and the two completion scripts
+                              # (fogproject#1380): a connect failure, an HTTP
+                              # >= 400, a 2xx with an EMPTY body and a real
+                              # answer are told apart rather than all printing
+                              # as one blank "Error returned:", an empty 200
+                              # points at the PHP error log because a PHP fatal
+                              # is not catchable server-side, a multi-line body
+                              # survives the -w status split, and -- the case
+                              # that matters -- the caller can still read
+                              # serverReason after the call, since $(postToServer
+                              # ...) runs in a subshell that discards it. Both
+                              # call sites are anchored whole-line for the same
+                              # reason
 tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # device class (NVMe/SSD/HDD) and mode
                               # (fast/normal/full), never issues an `nvme format`

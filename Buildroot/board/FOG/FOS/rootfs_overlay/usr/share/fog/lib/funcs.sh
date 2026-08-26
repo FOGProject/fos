@@ -1653,6 +1653,69 @@ reportToServer() {
         "${web}service/taskerror.php" &>/dev/null || :
     return 0
 }
+# POSTs to a FOG service endpoint and says what actually came back.
+#
+# The completion scripts wait for a literal "##" and print whatever they got
+# when it does not arrive. That reported an EMPTY string as the error whenever
+# the server died mid-request, so "Error returned:" was followed by nothing at
+# all and there was nothing to diagnose from the client -- which is exactly how
+# fogproject GH-1380 presented: a capture that had already been renamed into
+# place retried until it gave up, while the server was taking an uncatchable
+# PHP memory-exhaustion fatal on every attempt.
+#
+# Four outcomes have to be told apart, and used to look identical:
+#
+#   curl could not connect       - transport, nothing reached the server
+#   HTTP >= 400                  - it answered, and refused
+#   HTTP 2xx with an empty body  - it accepted and returned nothing, which for
+#                                  PHP means a fatal error, and the reason is in
+#                                  the web server's PHP error log, NOT here
+#   HTTP 2xx with a body         - a real message; print it
+#
+# Sets three variables and returns 0 only when the exchange produced a body:
+#
+#   serverBody    - the response body, empty if there was none
+#   serverStatus  - the HTTP status, 000 when curl never connected
+#   serverReason  - a human-readable description of what went wrong, empty on
+#                   success
+#
+# It sets variables rather than echoing them because a caller needs BOTH the
+# body and the description, and `x=$(postToServer ...)` runs in a subshell where
+# any variable it set is discarded. Call it directly and read the three.
+#
+# -w appends the status on its own line so an empty body stays distinguishable
+# from a failed request; the body is everything before that last newline, so
+# multi-line replies survive intact.
+#
+# $1 is the URL to post to
+# $2 is the already-encoded post data
+postToServer() {
+    local url="$1"
+    local data="$2"
+    local raw=""
+    local rc=0
+    [[ -z $url ]] && handleError "No url passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    serverBody=""
+    serverStatus="000"
+    serverReason=""
+    raw=$(curl -Lks -w $'\n%{http_code}' --data "$data" "$url" 2>/dev/null)
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        serverReason="could not reach $url (curl exit $rc)"
+        return 1
+    fi
+    serverStatus="${raw##*$'\n'}"
+    serverBody="${raw%$'\n'*}"
+    if [[ $serverStatus -ge 400 || $serverStatus -eq 0 ]]; then
+        serverReason="HTTP $serverStatus from $url"
+        return 1
+    fi
+    if [[ -z ${serverBody//[[:space:]]/} ]]; then
+        serverReason="HTTP $serverStatus from $url with an EMPTY body -- the server accepted the request and answered with nothing. That is what a PHP fatal error looks like from here; the reason is in the web server's PHP error log, not on this screen."
+        return 1
+    fi
+    return 0
+}
 # Prints an error with visible information
 #
 # $1 is the string to inform what went wrong

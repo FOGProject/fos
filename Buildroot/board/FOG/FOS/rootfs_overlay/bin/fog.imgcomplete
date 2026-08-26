@@ -19,24 +19,28 @@ count=0
 res=""
 dots "Updating Database"
 while [[ $res != "##" ]]; do
-    res=$(curl -Lks --data "$poststring" ${web}service/$php_post 2>/dev/null)
-    if [[ $res != "##" && $count -lt 10 ]]; then
-        echo "Failed"
-        debugPause
-        printf " * Error returned: %s" "$res"
-        echo
-        debugPause
-        dots "Reattempting to update database"
-    fi
+    # Called directly, NOT in $( ), because it sets serverBody/serverReason and
+    # a subshell would discard both. This used to print $res as the error, so an
+    # empty reply was reported as an empty error and there was nothing to
+    # diagnose from here -- see fogproject GH-1380.
+    postToServer "${web}service/$php_post" "$poststring"
+    res="$serverBody"
+    [[ $res == "##" ]] && break
+    echo "Failed"
+    debugPause
+    printf " * Error returned: %s" "${serverReason:-$res}"
+    echo
+    debugPause
     if [[ $count -ge 10 ]]; then
-        echo "Failed"
-        debugPause
-        printf " * Error returned: %s" "$res"
-        echo
-        debugPause
         handleError "Could not complete tasking ($0)\n   Args Passed: $*"
     fi
     let count+=1
+    # Backing off matches fog.nonimgcomplete, which has always slept between
+    # attempts. Without it this retried eleven times as fast as the server could
+    # fail, which during GH-1380 meant eleven memory-exhaustion fatals back to
+    # back against a server that needed a moment more than it was given.
+    usleep 5000000
+    dots "Reattempting to update database"
 done
 echo "Done"
 debugPause
