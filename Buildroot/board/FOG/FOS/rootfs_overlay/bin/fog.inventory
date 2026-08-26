@@ -97,11 +97,18 @@ fi
 poststring="mac=${mac}&sysman=${sysman64}&sysproduct=${sysproduct64}&sysversion=${sysversion64}&sysserial=${sysserial64}&sysuuid=${sysuuid64}&systype=${systype64}&biosversion=${biosversion64}&biosvendor=${biosvendor64}&biosdate=${biosdate64}&mbman=${mbman64}&mbproductname=${mbproductname64}&mbversion=${mbversion64}&mbserial=${mbserial64}&mbasset=${mbasset64}&cpuman=${cpuman64}&cpuversion=${cpuversion64}&cpucurrent=${cpucurrent64}&cpumax=${cpumax64}&mem=${mem64}&hdinfo=${hdinfo64}&caseman=${caseman64}&casever=${casever64}&caseserial=${caseserial64}&caseasset=${caseasset64}&gpuvendors=${inventory_graphics_vendor64}&gpuproducts=${inventory_graphics_product64}"
 count=0
 res=""
+sent=0
 while [[ -z $res ]]; do
     dots "Attempting to send inventory"
-    res=$(curl -Lks --data "$poststring" ${web}service/inventory.php 2>/dev/null)
+    callServer "${web}service/inventory.php" "$poststring"
+    res="$serverBody"
     if [[ $count -ge 10 ]]; then
         echo "Failed"
+        debugPause
+        # Says why it gave up. It used to break in silence, and the
+        # unconditional "Done" below then reported the inventory as sent when
+        # eleven attempts had just failed.
+        echo " * Inventory was not recorded: ${serverReason:-no reply from the server}"
         debugPause
         break
     fi
@@ -110,6 +117,15 @@ while [[ -z $res ]]; do
         usleep 2000000
     fi
 done
-echo "Done"
+# Gated on the operation, not printed regardless. Inventory is not fatal -- a
+# deploy carries on without it, which is why this breaks rather than
+# handleError-ing -- but reporting success for something that did not happen is
+# how a missing inventory goes unnoticed until someone looks for the host.
+[[ -n $res ]] && sent=1
+if [[ $sent -eq 1 ]]; then
+    echo "Done"
+else
+    echo " * Continuing without inventory"
+fi
 debugPause
 [[ $deployed -eq 1 ]] && . /bin/fog.nonimgcomplete $mac

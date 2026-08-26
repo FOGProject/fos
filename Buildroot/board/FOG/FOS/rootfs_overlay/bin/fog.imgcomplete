@@ -23,7 +23,7 @@ while [[ $res != "##" ]]; do
     # a subshell would discard both. This used to print $res as the error, so an
     # empty reply was reported as an empty error and there was nothing to
     # diagnose from here -- see fogproject GH-1380.
-    postToServer "${web}service/$php_post" "$poststring"
+    callServer "${web}service/$php_post" "$poststring"
     res="$serverBody"
     [[ $res == "##" ]] && break
     echo "Failed"

@@ -73,7 +73,8 @@ if [[ -f /sys/firmware/acpi/tables/MSDM ]]; then
     productKey=$(tail -c+57 /sys/firmware/acpi/tables/MSDM | base64)
 fi
 while [[ -z $res ]]; do
-    res=$(curl -Lks --data "sysserial=${sysserial}&sysuuid=${sysuuid}&mac=$mac&productKey=${productKey}" ${web}service/auto.register.php 2>/dev/null)
+    callServer "${web}service/auto.register.php" "sysserial=${sysserial}&sysuuid=${sysuuid}&mac=$mac&productKey=${productKey}"
+    res="$serverBody"
     case $count in
         [0-8])
             let count+=1
@@ -82,7 +83,9 @@ while [[ -z $res ]]; do
         9)
             echo "Failed"
             debugPause
-            handleError "Cannot register host. ($0)\n   Args Passed: $*"
+            # Was "Cannot register host." and nothing else, for every cause:
+            # server down, server refusing, server answering with nothing.
+            handleError "Cannot register host: ${serverReason:-no reason reported} ($0)\n   Args Passed: $*"
             ;;
     esac
 done

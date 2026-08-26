@@ -23,12 +23,16 @@ dots "Looking for images"
 count=0
 imgret=""
 while [[ -z $imgret ]]; do
-    imgret=$(curl -Lks --data "action=imagelookup&key=${dmi64}" ${web}service/capone.php 2>/dev/null)
+    callServer "${web}service/capone.php" "action=imagelookup&key=${dmi64}"
+    imgret="$serverBody"
     [[ -n $imgret ]] && continue
     if [[ $count -ge 10 ]]; then
         echo "Failed"
         debugPause
-        handleError "Count not find an Image definition ($0)\n   Args Passed: $*"
+        # "Count not" was a typo for "Cannot", and the message blamed a
+        # missing image definition for what is just as often a server that
+        # could not be reached -- the reply is empty either way.
+        handleError "Cannot find an Image definition: ${serverReason:-the server returned no image for this machine} ($0)\n   Args Passed: $*"
     fi
     let count+=1
     usleep 5000000

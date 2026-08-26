@@ -6,7 +6,15 @@ if [[ $boottype == usb && ! -z $web ]]; then
     sysuuid=${sysuuid,,}
     mac=$(getMACAddresses)
     base64mac=$(echo $mac | base64)
-    token=$(curl -Lks --data "mac=$base64mac" "${web}status/hostgetkey.php")
+    callServer "${web}status/hostgetkey.php" "mac=$base64mac"
+    token="$serverBody"
+    # Said nothing at all when the key could not be fetched. The next call then
+    # posts an empty hosttoken, and whatever comes back is written to
+    # /tmp/hinfo.txt and SOURCED -- so a failure here surfaced much later, as
+    # missing kernel arguments rather than as a failed request.
+    [[ -z $token ]] && echo " * Could not get this host's key: ${serverReason:-the server returned no key}"
+    # Left as a raw curl deliberately: -o writes a file rather than returning a
+    # body, which is not what callServer is for.
     curl -Lks -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$mac&hosttoken=${token}" "${web}service/hostinfo.php" -A ''
     [[ -f /tmp/hinfo.txt ]] && . /tmp/hinfo.txt
 fi

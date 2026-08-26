@@ -54,12 +54,18 @@ checkin() {
     local count=0
     local res=""
     local waittime=0
+    # No bail-out, and that is deliberate: a host waiting its turn in a queue
+    # must keep waiting however long that takes. What was NOT deliberate is that
+    # a dead server looked identical to a queue position -- $res was empty, so
+    # this printed " *  (In line for 5s)" forever with nothing to diagnose.
+    # serverReason distinguishes them; the waiting behaviour is unchanged.
     while [[ $res != "##@GO" ]]; do
-        res=$(curl -Lks --data "$poststring" ${web}service/$php_post 2>/dev/null)
+        callServer "${web}service/$php_post" "$poststring"
+        res="$serverBody"
         if [[ $res != "##@GO" ]]; then
             echo "Failed"
             debugPause
-            echo -n " * $res (In line for "
+            echo -n " * ${serverReason:-$res} (In line for "
             sec2string "$waittime"
             echo ")"
             let waittime+=5
