@@ -162,6 +162,8 @@ tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-
 tests/checks/initrd-format.sh       # each arch's kernel can unpack the init build.sh ships
 tests/checks/arm64-platform-config.sh  # arm64 kernel describes a real ARM platform (ADR-0015)
 
+tests/checks/nfs-mount-type.sh       # FOS's NFS mounts name -t nfs instead of relying on busybox inference
+
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
 

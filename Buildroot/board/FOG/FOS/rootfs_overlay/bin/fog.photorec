@@ -18,7 +18,8 @@ fi
 echo "Done"
 debugPause
 dots "Mounting File System"
-mount -o nolock $storage /images >/tmp/mount-output 2>&1
+# -t nfs is load-bearing, see the comment in fog.mount.
+mount -t nfs -o nolock $storage /images >/tmp/mount-output 2>&1
 case $? in
     0)
         echo "Done"
