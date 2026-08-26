@@ -9,7 +9,14 @@
 #
 # Usage Passed in Variables:
 #
-# SECTOR_SIZE The default sector size. Currently set to 512
+# SECTOR_SIZE The size-alignment quantum, in sectors -- NOT the sector size,
+#             despite the name. 512 on a 512-byte-sector disk (= 256 KiB), 64 on
+#             a 4Kn one (the same 256 KiB). Only ever used as `x % SECTOR_SIZE`.
+# LOGICAL_SECTOR_SIZE
+#             The disk's logical sector size in bytes (512, 4096, ...). This is
+#             the unit the whole table is expressed in, and the divisor that turns
+#             resize's byte-count argument into a sector count. Distinct from
+#             SECTOR_SIZE on purpose: see ADR-0016. Defaults to 512.
 # CHUNK_SIZE  The default block size for the disk/partition being used. Typically 512
 # MIN_START   The minimum start position for the first partition. Typically 2048.
 # action      The action to perform with the script.
@@ -337,8 +344,14 @@ function resize_partition(partition_names, partitions, args, pName, new_start, n
         }
         # Set our p_start position to the current start.
         new_start = int(partitions[pName, "start"]);
-        # Ensure start postition is aligned properly.
-        new_size = int(sizePos) / int(SECTOR_SIZE);
+        # sizePos is a BYTE count -- funcs.sh passes the size it just shrank the
+        # filesystem to -- and this table is in logical sectors, so the divisor is
+        # the logical sector size. It is NOT SECTOR_SIZE, which is an alignment
+        # quantum that only equals the sector size on a 512-byte disk; dividing by
+        # it on a 4Kn disk produced a size 8x too large. Rounding is UP, because
+        # the filesystem is already sizePos bytes: a partition rounded down would
+        # be smaller than the filesystem inside it. See ADR-0016.
+        new_size = int((int(sizePos) + int(LOGICAL_SECTOR_SIZE) - 1) / int(LOGICAL_SECTOR_SIZE));
         # Check the overlap.
         overlap = check_overlap(partition_names, partitions, target, new_start, new_size);
         # If there was an issue in checking overlap, skip.
@@ -360,9 +373,16 @@ function resize_partition(partition_names, partitions, args, pName, new_start, n
         partitions[target, "start"] = new_start;
         partitions[target, "size"] = new_size;
     }
-    if (lastlba) {
-        lastlba = int(diskSize) - int(firstlba);
-    }
+    # last-lba is deliberately NOT recomputed here. It describes where the disk
+    # ends, sfdisk -d read it from the disk we are about to write back to, and
+    # shrinking one partition does not move the end of a disk. Recomputing it as
+    # diskSize - firstlba emitted a last-lba past the end of a 4Kn disk (diskSize
+    # arrived in 512-byte units) and made sfdisk refuse the whole table; on a
+    # 512-byte disk it silently reserved 1 MiB of tail that the true value
+    # (diskSize - 34 on GPT) does not, which fail-loud would now abort on for any
+    # image whose last partition reached into it. fill_disk()'s own assignment is
+    # a different case and stays: there we are building a table for a disk whose
+    # size we were told, and its clamp has to agree with what it emits. ADR-0016.
     return 0;
 }
 
@@ -742,6 +762,13 @@ BEGIN {
     # sizePos;
     # diskSize;
     # fixedList;
+    # LOGICAL_SECTOR_SIZE;
+    # processSfdisk always passes this; defaulted so the script stays runnable by
+    # hand, and so an older caller cannot turn the resize divisor into a division
+    # by zero.
+    if (!LOGICAL_SECTOR_SIZE) {
+        LOGICAL_SECTOR_SIZE = 512;
+    }
     label = "";
     unit = "";
     partitions[0] = "";

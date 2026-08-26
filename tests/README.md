@@ -45,6 +45,17 @@ tests/checks/fill-engine.sh   # the whole-disk fill engine (processSfdisk +
                               # alive, the GPT backup-header clamp holds, and an
                               # unusable computed table aborts instead of being
                               # written
+tests/checks/resize-engine.sh # the capture-time shrink (processSfdisk +
+                              # resizeSfdiskPartition + resize_partition in the
+                              # awk), the deploy engine's sibling: the disk's own
+                              # last-lba is passed through rather than recomputed,
+                              # the byte-count argument is divided by the LOGICAL
+                              # sector size (not the alignment quantum) so a 4Kn
+                              # shrink asks for an eighth as many sectors rather
+                              # than eight times too many, that division rounds up
+                              # so a partition is never smaller than the
+                              # filesystem already shrunk into it, and a valid 4Kn
+                              # shrink reaches the sfdisk write (ADR-0016)
 tests/checks/mbr-extended.sh  # MBR tables carrying an extended partition with
                               # logicals inside it (issue #150): the emitted
                               # table is ordered by partition number so sfdisk
