@@ -12,6 +12,11 @@ while :; do
     cat /dev/null > $tmpfile 2>/dev/null
     [[ -z $mac ]] && continue
     status=$(echo $status | base64)
+    # Deliberately NOT callServer, and $res is deliberately never read. This is
+    # a best-effort progress ping every three seconds for the life of the task;
+    # reporting each failure would paint the console over the top of the imaging
+    # output it exists to report on, and a missed progress update costs nothing.
+    # The completion scripts are where a failure actually matters.
     res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&status=$status" ${web}service/progress.php 2>/dev/null)
     usleep 3000000
 done

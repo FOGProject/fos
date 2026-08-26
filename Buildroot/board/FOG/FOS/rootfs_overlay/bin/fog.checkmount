@@ -5,7 +5,11 @@ dots "Checking Mounted File System"
 if [[ ! -f /images/.mntcheck ]]; then
     count=0
     while [[ $blame != '##' ]]; do
-        blame=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&type=$type" ${web}service/blame.php 2>/dev/null)
+        # $blame was reported verbatim in the handleError below, so a server
+        # that answered with nothing produced "Error during failure
+        # notification: " -- an error message about an error, carrying neither.
+        callServer "${web}service/blame.php" "sysuuid=${sysuuid}&mac=$mac&type=$type"
+        blame="${serverBody:-$serverReason}"
         case $count in
             [0-8])
                 let count+=1
@@ -14,7 +18,7 @@ if [[ ! -f /images/.mntcheck ]]; then
             9)
                 echo "Failed"
                 debugPause
-                handleError "Error during failure notification: $blame ($0)\n   Args Passed: $*"
+                handleError "Error during failure notification: ${serverReason:-$blame} ($0)\n   Args Passed: $*"
                 ;;
         esac
     done

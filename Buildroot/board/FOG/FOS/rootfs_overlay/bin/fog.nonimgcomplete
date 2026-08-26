@@ -12,7 +12,7 @@ while [[ $res != "##" ]]; do
     # not even the empty "Error returned:" its sibling managed -- so eleven
     # attempts could go by with no clue why. Same reporting as fog.imgcomplete
     # now; see fogproject GH-1380.
-    postToServer "${web}service/Post_Wipe.php" "sysuuid=${sysuuid}&mac=$mactosend"
+    callServer "${web}service/Post_Wipe.php" "sysuuid=${sysuuid}&mac=$mactosend"
     res="$serverBody"
     [[ $res == "##" ]] && break
     echo "Failed"

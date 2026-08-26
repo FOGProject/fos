@@ -76,19 +76,27 @@ tests/checks/error-report.sh  # the failure report handleError() sends to
                               # reach its reboot notice, and no $web means no
                               # attempt at all
 tests/checks/server-post-reporting.sh
-                              # postToServer() and the two completion scripts
-                              # (fogproject#1380): a connect failure, an HTTP
-                              # >= 400, a 2xx with an EMPTY body and a real
-                              # answer are told apart rather than all printing
-                              # as one blank "Error returned:", an empty 200
-                              # points at the PHP error log because a PHP fatal
-                              # is not catchable server-side, a multi-line body
-                              # survives the -w status split, and -- the case
-                              # that matters -- the caller can still read
-                              # serverReason after the call, since $(postToServer
-                              # ...) runs in a subshell that discards it. Both
-                              # call sites are anchored whole-line for the same
-                              # reason
+                              # callServer() and every script that talks to the
+                              # FOG server (fogproject#1380): a connect failure,
+                              # an HTTP >= 400, a 2xx with an EMPTY body and a
+                              # real answer are told apart rather than all
+                              # printing as one blank "Error returned:", and the
+                              # three get distinct return codes so a caller can
+                              # tell a dead server from an endpoint that answers
+                              # nothing on purpose. An empty 200 points at the
+                              # PHP error log because a PHP fatal is not
+                              # catchable server-side; a multi-line body survives
+                              # the -w status split; trailing newlines are
+                              # stripped, because every caller compares the reply
+                              # against a bare sentinel ("##") and used to get
+                              # that stripping free from $(curl ...). GET when no
+                              # data is passed, POST when there is. And -- the
+                              # case that matters -- the caller can still read
+                              # serverReason after the call, since $(callServer
+                              # ...) runs in a subshell that discards it, so no
+                              # call site anywhere in the overlay may wrap it,
+                              # and raw curl may read a reply only in the
+                              # exceptions named in the check
 tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # device class (NVMe/SSD/HDD) and mode
                               # (fast/normal/full), never issues an `nvme format`

@@ -169,6 +169,8 @@ for disk in $disks; do
             let cnt+=1
             echo " * File id: $cnt"
             dots "Sending file id"
+            # Fire and forget: nothing reads a reply, so there is no reply to
+            # misreport and callServer would add nothing.
             curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&string=$b64&mode=$avmode" ${web}service/av.php 2>/dev/null
             case $? in
                 0)

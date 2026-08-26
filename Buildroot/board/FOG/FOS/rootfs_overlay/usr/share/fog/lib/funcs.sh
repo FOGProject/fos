@@ -26,7 +26,11 @@ clearScreen() {
 }
 # Displays the nice banner along with the running version
 displayBanner() {
-    version=$(curl -Lks ${web}service/getversion.php 2>/dev/null)
+    # Cosmetic -- the banner just shows a blank version when this fails, and a
+    # banner is no place to raise an error -- but it goes through callServer so
+    # there is exactly one way FOS talks to the server.
+    callServer "${web}service/getversion.php"
+    version="$serverBody"
     echo "   =================================="
     echo "   ===        ====    =====      ===="
     echo "   ===  =========  ==  ===   ==   ==="
@@ -1653,52 +1657,57 @@ reportToServer() {
         "${web}service/taskerror.php" &>/dev/null || :
     return 0
 }
-# POSTs to a FOG service endpoint and says what actually came back.
+# Calls a FOG service endpoint and says what actually came back.
 #
-# The completion scripts wait for a literal "##" and print whatever they got
-# when it does not arrive. That reported an EMPTY string as the error whenever
-# the server died mid-request, so "Error returned:" was followed by nothing at
-# all and there was nothing to diagnose from the client -- which is exactly how
-# fogproject GH-1380 presented: a capture that had already been renamed into
-# place retried until it gave up, while the server was taking an uncatchable
-# PHP memory-exhaustion fatal on every attempt.
+# Every FOS script used to do this by hand:
 #
-# Four outcomes have to be told apart, and used to look identical:
+#     res=$(curl -Lks --data "$poststring" ${web}service/whatever.php 2>/dev/null)
 #
-#   curl could not connect       - transport, nothing reached the server
-#   HTTP >= 400                  - it answered, and refused
-#   HTTP 2xx with an empty body  - it accepted and returned nothing, which for
-#                                  PHP means a fatal error, and the reason is in
-#                                  the web server's PHP error log, NOT here
-#   HTTP 2xx with a body         - a real message; print it
+# which collapses four very different outcomes into one empty string: curl could
+# not connect, the server refused, the server accepted and returned nothing, or
+# the server genuinely replied with nothing. Callers then reported the empty
+# string as the error, so the console said "Error returned:" with nothing after
+# it -- or, more often, said nothing at all and retried until it gave up. That
+# is how fogproject GH-1380 presented, and the same shape was in every other
+# call site (GH-1380 follow-up sweep).
 #
-# Sets three variables and returns 0 only when the exchange produced a body:
+# Sets three variables and answers with THREE outcomes, because "the call
+# failed" and "the call worked and the answer was empty" are different questions
+# and some callers legitimately treat an empty answer as a no:
 #
-#   serverBody    - the response body, empty if there was none
-#   serverStatus  - the HTTP status, 000 when curl never connected
-#   serverReason  - a human-readable description of what went wrong, empty on
-#                   success
+#   return 0  a body came back           serverBody set, serverReason empty
+#   return 1  the call failed            transport, or HTTP >= 400
+#   return 2  answered 2xx, empty body   for PHP this means a fatal error, but a
+#                                        few endpoints answer empty on purpose,
+#                                        so the caller decides which it is
+#
+#   serverBody    the response body, empty if there was none
+#   serverStatus  the HTTP status, 000 when curl never connected
+#   serverReason  a human-readable description, empty only on return 0
+#
+# GET when $2 is omitted or empty, POST otherwise -- the two are the same
+# exchange and splitting them would duplicate all of the parsing below.
 #
 # It sets variables rather than echoing them because a caller needs BOTH the
-# body and the description, and `x=$(postToServer ...)` runs in a subshell where
-# any variable it set is discarded. Call it directly and read the three.
+# body and the description, and `x=$(callServer ...)` runs in a subshell where
+# every variable it set is discarded. Call it directly and read the three.
 #
-# -w appends the status on its own line so an empty body stays distinguishable
-# from a failed request; the body is everything before that last newline, so
-# multi-line replies survive intact.
-#
-# $1 is the URL to post to
-# $2 is the already-encoded post data
-postToServer() {
+# $1 is the URL
+# $2 is the already-encoded post data, or empty for a GET
+callServer() {
     local url="$1"
-    local data="$2"
+    local data="${2-}"
     local raw=""
     local rc=0
     [[ -z $url ]] && handleError "No url passed (${FUNCNAME[0]})\n   Args Passed: $*"
     serverBody=""
     serverStatus="000"
     serverReason=""
-    raw=$(curl -Lks -w $'\n%{http_code}' --data "$data" "$url" 2>/dev/null)
+    if [[ -n $data ]]; then
+        raw=$(curl -Lks -w $'\n%{http_code}' --data "$data" "$url" 2>/dev/null)
+    else
+        raw=$(curl -Lks -w $'\n%{http_code}' "$url" 2>/dev/null)
+    fi
     rc=$?
     if [[ $rc -ne 0 ]]; then
         serverReason="could not reach $url (curl exit $rc)"
@@ -1706,13 +1715,23 @@ postToServer() {
     fi
     serverStatus="${raw##*$'\n'}"
     serverBody="${raw%$'\n'*}"
+    # Trailing newlines are stripped to match what every caller had before, when
+    # the body came straight out of `res=$(curl ...)` -- command substitution
+    # strips them, and the callers compare the result against a bare sentinel
+    # ("##", "##@GO", "#!ok"). Without this a server that ends its reply with a
+    # newline yields "##\n", every == "##" test fails, and a run that actually
+    # SUCCEEDED retries until it gives up. Only the -w status line is guaranteed
+    # to be newline-separated; anything before it belongs to the body.
+    while [[ ${serverBody} == *$'\n' ]]; do
+        serverBody="${serverBody%$'\n'}"
+    done
     if [[ $serverStatus -ge 400 || $serverStatus -eq 0 ]]; then
         serverReason="HTTP $serverStatus from $url"
         return 1
     fi
     if [[ -z ${serverBody//[[:space:]]/} ]]; then
         serverReason="HTTP $serverStatus from $url with an EMPTY body -- the server accepted the request and answered with nothing. That is what a PHP fatal error looks like from here; the reason is in the web server's PHP error log, not on this screen."
-        return 1
+        return 2
     fi
     return 0
 }
@@ -3618,7 +3637,19 @@ restoreLVMPartition() {
         # The sender must emit this partition's LV files in sidecar order
         # (docs/adr/0007); against an older server the receivers would join
         # the wrong file's session, so refuse before the target is touched.
-        local servercaps=$(curl -Lks "${web}service/getversion.php?caps=1" 2>/dev/null)
+        # The CALL is checked before its answer is interpreted. This used to
+        # read the body straight out of $( ), so a server that could not be
+        # reached produced an empty $servercaps, which does not contain "mclvm",
+        # and the operator was told their server was too old to multicast LVM --
+        # a claim about the server's VERSION drawn from what may have been a
+        # dead network. Same shape as fogproject GH-1266. The refusal itself is
+        # unchanged: without a positive mclvm we still stop before touching the
+        # target, because joining the wrong file's session is worse.
+        local servercaps=""
+        if ! callServer "${web}service/getversion.php?caps=1"; then
+            handleError "Cannot confirm the FOG server supports multicast deploy of LVM images: ${serverReason} (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
+        servercaps="$serverBody"
         [[ $servercaps != *mclvm* ]] && handleError "The FOG server does not support multicast deploy of LVM images; update the server or deploy unicast (${FUNCNAME[0]})\n   Args Passed: $*"
     fi
     local part_number=0

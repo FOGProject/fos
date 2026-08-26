@@ -166,10 +166,20 @@ EOF
 
 # curl answers the multicast capability probe with the fake server's
 # response (a version string for an old server, a token list for a new one).
+#
+# The probe goes through callServer(), which asks for -w '\n%{http_code}' and
+# reads the status off the LAST line, so the stub has to emit one. Without it
+# the whole reply is taken as the status, compares as 0, and every capable-server
+# case fails as an unreachable server -- which is what happened when the probe
+# was converted. FAKE_HTTPCODE lets a case drive the refusal path deliberately.
 cat > "$STUBBIN/curl" <<'EOF'
 #!/bin/bash
-echo "curl $*" >> "$CALLS"
+# Newlines are folded out of the argv before logging: -w carries a literal
+# newline, which would split the record across two lines and leave the URL on
+# a line that no longer starts with "curl", so assert_call could never see it.
+echo "curl ${*//$'\n'/ }" >> "$CALLS"
 printf '%s' "$FAKE_SERVERCAPS"
+printf '\n%s' "${FAKE_HTTPCODE:-200}"
 exit 0
 EOF
 
@@ -309,7 +319,7 @@ run() {
         export FAKE_VG FAKE_PVUUID FAKE_PVSIZE FAKE_PVCOUNT FAKE_VGUUID FAKE_EXTENT
         export FAKE_LAYOUTS FAKE_LVS FAKE_SWAPUUID
         export FAKE_PESTART FAKE_PARTSIZE FAKE_FREE FAKE_EXTMIN FAKE_BLOCKSIZE
-        export FAKE_SERVERCAPS
+        export FAKE_SERVERCAPS FAKE_HTTPCODE
         . "$SANDBOX/funcs.sh"
         handleError() { echo "ABORT: $*"; exit 1; }
         imgFormat=5
@@ -591,7 +601,28 @@ restored=$(grep '^partclone.restore' "$CALLS" | sed -n 's#.*fakevg/\([a-z_0-9]*\
 [[ $restored == "root home " ]] \
     && ok "LVs restored in sidecar line order" \
     || ko "restore order wrong: '$restored' (want 'root home ')"
+
 assert_call "swap still regenerated locally, not multicast" "mkswap" "-U SWAPUUID-test"
+
+# 30. Multicast deploy where the caps probe never reaches the server. The
+# refusal is unchanged -- nothing may be touched without a positive mclvm --
+# but the operator must be told the CALL failed, not that their server is too
+# old. The old code read the body out of $( ) with no status, so an unreachable
+# server produced an empty $servercaps, which does not contain "mclvm", and the
+# message blamed the server's version for what was a dead network. Same shape
+# as fogproject GH-1266.
+new_case 30
+lvm_image2
+FAKE_SERVERCAPS="mclvm"
+FAKE_HTTPCODE=500
+run 'restoreLVMPartition /dev/sdb3 1 "$IMGDIR" yes'
+FAKE_HTTPCODE=""
+assert_out "unreachable server still refuses" "ABORT:"
+assert_out "the refusal names the failed call" "Cannot confirm"
+assert_out "and gives the HTTP status" "HTTP 500"
+assert_not_out "it does not blame the server version" "does not support multicast deploy"
+assert_no_call "nothing is touched" "pvcreate"
+assert_no_call "no receiver is opened" "udp-receiver"
 
 # 10. A sidecar from a newer FOS (unknown format version) refuses.
 new_case 10
