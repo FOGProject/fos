@@ -12,12 +12,18 @@ if [[ ! -d /images ]]; then
     fi
 fi
 umount /images >/dev/null 2>&1
+# The filesystem type is not optional here. busybox mount only infers NFS when
+# the source parses as host:/path; for anything else it walks every block-backed
+# filesystem in /proc/filesystems and tries each one, and every one of them
+# rejects 'nolock' as an unknown parameter. A malformed or empty storage= then
+# reports a cascade of unrelated local-filesystem errors instead of one NFS
+# failure, which is what made forums topic 18229 so hard to read.
 case $type in
     up)
-        mount -o nolock,proto=tcp,rsize=32768,wsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
+        mount -t nfs -o nolock,proto=tcp,rsize=32768,wsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
         ;;
     down)
-        mount -o nolock,proto=tcp,rsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
+        mount -t nfs -o nolock,proto=tcp,rsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
         ;;
 esac
 case $? in

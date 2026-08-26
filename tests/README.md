@@ -132,6 +132,17 @@ tests/checks/arm64-platform-config.sh
                               # ACPI, PCI_HOST_GENERIC and PL011 for non-Pi
                               # arm64. Also that build.sh builds dtbs.
                               # See ADR-0015
+tests/checks/nfs-mount-type.sh
+                              # every FOS mount carrying the NFS-only option
+                              # list also names -t nfs. busybox mount infers
+                              # NFS from the SOURCE ("host:/path"), not from
+                              # the options, and the init ships no mount.nfs
+                              # helper -- so an empty or malformed storage=
+                              # silently falls through to a walk of every
+                              # block-backed filesystem in /proc/filesystems,
+                              # each one rejecting 'nolock'. The console then
+                              # blames ext2/ext4/vfat/f2fs for a bad NFS path.
+                              # See forums topic 18229
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
