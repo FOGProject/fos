@@ -1,0 +1,35 @@
+name: Tests
+
+# A pull_request trigger can only fire from the repository the PR is opened
+# against, so this stub has to live here even though every other shared FOG
+# workflow lives in FOGProject/fog-workflows. It is deliberately short: all of
+# the logic is in the reusable workflow, so fixing the runner does not mean
+# editing this file.
+#
+# For pull_request events GitHub reads workflows from the merge of head into
+# base, so one copy on `master` covers every PR opened against it -- the
+# contributor's branch needs nothing.
+#
+# Not a push trigger, and not out of caution: fogproject's equivalent was
+# push-triggered once and the workflow it called pushed a commit back, which
+# re-triggered the stub and put ~30 commits on dev-branch in 20 minutes. This
+# one calls a workflow that writes nothing at all, but the trigger stays a PR
+# trigger so that stays true by construction rather than by review.
+#
+# Added because fos's other four workflows are all release or
+# workflow_dispatch, so until now not one of the fifteen assertion harnesses in
+# tests/ had ever run on a pull request.
+
+on:
+  pull_request:
+
+jobs:
+  suite:
+    # Named because the job KEY is what GitHub puts in the middle of a called
+    # workflow's check name, so an unnamed `suite:` renders every check as
+    # "Tests / suite / tests". `fos` rather than something generic because
+    # fog-workflows hosts fogproject-tests.yml and fog-plugins-tests.yml
+    # alongside this one, and which project's suite is running is the useful
+    # thing for this segment to say.
+    name: fos
+    uses: FOGProject/fog-workflows/.github/workflows/fos-tests.yml@main
