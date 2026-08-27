@@ -341,6 +341,25 @@ and add a new ADR for any similarly hard-to-reverse decision:
   ADR-0003's fail-loud apply is the only reason anyone found out — so reverting
   to an older init re-hides it rather than fixing it. Guarded by
   `tests/checks/resize-engine.sh`.
+- **0017 — arm64 display / vc4.** FOS builds no DRM anywhere and attaches
+  `fbcon` to a framebuffer the *firmware* set up — `FB_EFI`/`FB_VESA` off EFI
+  GOP on a PC, which is guaranteed there. On a Pi it is not: mainline's
+  `bcm2711-rpi-4-b.dtb` that `arm_dtbs.tar.gz` ships has the
+  `brcm,bcm2711-hdmi0/1` nodes only vc4 binds to and **no**
+  `simple-framebuffer`, and the node the VideoCore firmware would inject into
+  *its own* DTB is suppressed as soon as `config.txt` enables `vc4-kms-v3d` —
+  which current Raspberry Pi OS ships enabled. A Pi therefore had no console at
+  all, and a healthy boot was indistinguishable from an early hang, which is
+  what made forums topic 18229 unreadable. `CONFIG_DRM_VC4` now builds in, at a
+  measured `Image` cost of +1,067,008 bytes (+3.8%); `DRM_V3D` stays off, being
+  the 3D accelerator. The trap this ADR exists for is ADR-0010's again and it
+  fired twice: `DRM_VC4` `depends on SND && SND_SOC` (HDMI audio is integral)
+  and on `PM`, all three excluded by FOS, and missing any one makes
+  `oldconfig` drop the driver **silently** — so assert it is *linked*
+  (`nm vmlinux | grep vc4_`), never merely configured. Validated on real
+  hardware 2026-08-27: first end-to-end FOS capture on a Raspberry Pi, which
+  also first-exercised ADR-0015 and the `mount -t nfs` fix off QEMU. Guarded by
+  `tests/checks/arm64-platform-config.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
