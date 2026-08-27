@@ -99,6 +99,31 @@ REQUIRED=(
     CONFIG_MISC_RP1=y
     CONFIG_COMMON_CLK_RP1=y
     CONFIG_PINCTRL_RP1=y
+
+    # Display. Everywhere else FOS builds without DRM and leans on a
+    # framebuffer the firmware set up -- FB_EFI/FB_VESA off EFI GOP on a PC.
+    # That does not survive on a Pi: our own bcm2711-rpi-4-b.dtb carries
+    # brcm,bcm2711-hdmi0/1 but no simple-framebuffer node, and the node the
+    # VideoCore firmware would otherwise inject is suppressed the moment
+    # config.txt enables the vc4-kms-v3d overlay -- which current Raspberry Pi
+    # OS ships enabled. The result is a board with no console at all, which is
+    # indistinguishable from an early hang and is exactly how forums topic
+    # 18229 presented. See docs/adr/0017-arm64-display-vc4.md.
+    #
+    # DRM_VC4 depends on SND && SND_SOC (HDMI audio is integral to the driver)
+    # and on PM. Miss any one and Kconfig drops DRM_VC4 without a word, so they
+    # are listed here for the same reason SHARE_IRQ is listed above -- both
+    # were dropped exactly this way while writing the change.
+    #
+    # DRM_V3D is deliberately absent: it is the 3D accelerator and buys a
+    # console nothing.
+    CONFIG_DRM=y
+    CONFIG_DRM_VC4=y
+    CONFIG_DRM_FBDEV_EMULATION=y
+    CONFIG_FRAMEBUFFER_CONSOLE=y
+    CONFIG_PM=y
+    CONFIG_SND=y
+    CONFIG_SND_SOC=y
 )
 
 fails=0
