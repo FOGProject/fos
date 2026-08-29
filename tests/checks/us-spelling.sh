@@ -82,9 +82,27 @@ fi
 # git ls-files --cached --others --exclude-standard, not a find: tracked files,
 # plus new ones a developer has written but not staged, minus anything ignored.
 mapfile -t files < <(git -C "$ROOT" ls-files --cached --others --exclude-standard -- "${SCOPE[@]}" 2>/dev/null)
-if [[ ${#files[@]} -eq 0 ]]; then
-    # Loud, not skipped.
-    printf 'FAIL: could not enumerate files under %s.\n' "$ROOT" >&2
+
+# Per SCOPE entry, not just a total. git exits 0 quite happily on a checkout
+# where a path has moved or where an ignore rule now swallows it, and the result
+# would be "0 file(s) scanned, no UK spellings in scope" -- green, and
+# meaningless. A total still passes when one directory of the four drops out, so
+# the floor is per path.
+empty=()
+for want in "${SCOPE[@]}"; do
+    found=0
+    for f in "${files[@]}"; do
+        if [[ $f == "$want" || $f == "$want"/* ]]; then
+            found=1
+            break
+        fi
+    done
+    [[ $found -eq 0 ]] && empty+=("$want")
+done
+if [[ ${#empty[@]} -gt 0 ]]; then
+    printf 'FAIL: these scope paths matched no files -- moved, renamed or\n' >&2
+    printf 'newly ignored? Fix SCOPE; do not delete the entry to go green.\n' >&2
+    printf '  %s\n' "${empty[@]}" >&2
     exit 1
 fi
 
