@@ -2517,7 +2517,7 @@ wipeDisk() {
     # Validate the mode before dispatching anywhere: an unknown or empty mode is
     # a malformed task, and guessing a destructive action on one is its own
     # hazard. Must stay ahead of the nvme branch below, which would otherwise
-    # erase on any mode it doesn't recognise.
+    # erase on any mode it doesn't recognize.
     case $mode in
         fast|normal|full) ;;
         *)

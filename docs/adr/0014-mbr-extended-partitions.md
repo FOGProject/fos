@@ -45,7 +45,7 @@ requires and what the rest of the script was written assuming. Two traversals
 needed care rather than a blanket setting:
 
 - `fill_disk()`'s "find the next partition" scan infers a partition's original
-  size from where its neighbour starts, so it needs the same by-number order.
+  size from where its neighbor starts, so it needs the same by-number order.
 - the `ordered_starts` walk that assigns new start positions accumulates
   `curr_start` as it goes and must follow `asort()`'s ascending *index* order.
   It was relying on hash order too, so it is now pinned explicitly to

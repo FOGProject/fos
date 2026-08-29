@@ -41,10 +41,10 @@ esac
 # nothing signed to boot, irreversibly from the client's side.
 #
 # Checked before the certificate fetch and before the already-trusted
-# short-circuit: no db contents make enrolment useful here, so there is no state
+# short-circuit: no db contents make enrollment useful here, so there is no state
 # in which continuing tells the admin something more useful than this does.
 if [[ $(sbPlatformBits) == 32 ]]; then
-    handleError "This machine has 32-bit UEFI firmware, which FOG cannot enrol. ($0)\n   No Microsoft-signed 32-bit shim and no signed 32-bit iPXE exist, so it\n   cannot boot FOG under Secure Boot enforcement even with this key trusted.\n   Nothing was enrolled and nothing was changed. Leave Secure Boot off here."
+    handleError "This machine has 32-bit UEFI firmware, which FOG cannot enroll. ($0)\n   No Microsoft-signed 32-bit shim and no signed 32-bit iPXE exist, so it\n   cannot boot FOG under Secure Boot enforcement even with this key trusted.\n   Nothing was enrolled and nothing was changed. Leave Secure Boot off here."
 fi
 
 dots "Fetching certificate"
@@ -93,12 +93,12 @@ if [[ $state == setup ]]; then
         echo "Failed"
         debugPause
         # Deliberately spells out the state the machine is left in. A partial
-        # enrolment stops before the PK write, so the platform is still in Setup
+        # enrollment stops before the PK write, so the platform is still in Setup
         # Mode and still boots exactly what it booted before -- that is worth
-        # saying, because "Secure Boot enrolment failed" otherwise reads like
+        # saying, because "Secure Boot enrollment failed" otherwise reads like
         # the machine may now be unbootable, and someone will make an
         # unnecessary trip to the firmware screen to check.
-        handleError "Automatic Secure Boot enrolment failed. ($0)\n   This machine is still in Setup Mode and still boots as it did before;\n   nothing has been made unbootable.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth --\n   the FOG server needs efitools installed to produce them."
+        handleError "Automatic Secure Boot enrollment failed. ($0)\n   This machine is still in Setup Mode and still boots as it did before;\n   nothing has been made unbootable.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth --\n   the FOG server needs efitools installed to produce them."
     fi
     echo "Done"
     debugPause
@@ -126,18 +126,18 @@ if [[ -z $password ]]; then
     handleError "Could not determine a one-time password for the MOK request. ($0)"
 fi
 
-dots "Staging MOK enrolment request"
+dots "Staging MOK enrollment request"
 if ! sbStageMok "$cert" "$password"; then
     echo "Failed"
     debugPause
-    handleError "The MOK enrolment request was NOT staged. ($0)\n   Do not reboot expecting a MokManager prompt; nothing is pending.\n   See the messages above for what ran."
+    handleError "The MOK enrollment request was NOT staged. ($0)\n   Do not reboot expecting a MokManager prompt; nothing is pending.\n   See the messages above for what ran."
 fi
 echo "Done"
 debugPause
 
 echo
 echo "=============================================================================="
-echo " A Secure Boot enrolment request is now pending on this machine."
+echo " A Secure Boot enrollment request is now pending on this machine."
 echo
 echo "   ONE-TIME PASSWORD:   $password"
 echo

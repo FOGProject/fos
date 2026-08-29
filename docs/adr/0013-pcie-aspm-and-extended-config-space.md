@@ -39,7 +39,7 @@ threshold, so ASPM was effectively switched off for the entire duration of an
 image regardless of what the kernel did or did not support.
 
 Commit `bc9ee24` ("Switch x64/arm64 kernels to in-kernel r8169…", ADR-less,
-refs FOGProject/fos#108) dropped the vendor drivers in favour of the in-kernel
+refs FOGProject/fos#108) dropped the vendor drivers in favor of the in-kernel
 `r8169`. That was the right call for the MAC-brick bug it fixed, but it removed
 the cover that had been hiding the missing symbols.
 
@@ -156,7 +156,7 @@ honouring `rtl_aspm_is_safe()` for boards whose vendor has certified ASPM 1.2
 as safe (OCP `0xc0b2`). `PERFORMANCE` would disable ASPM on every link on every
 machine regardless of driver. That is a defensible choice for a short-lived,
 mains-powered imaging init and is the obvious escalation if other NICs turn out
-to have the same problem, but it is a larger behavioural change across the
+to have the same problem, but it is a larger behavioral change across the
 whole fleet to fix a bug that the smaller one fixes, so it is not the default
 today.
 
@@ -174,7 +174,7 @@ have made this bug appear on legacy boots too.
   its `0x070f` (ASPM entry latency) and `0x0890` (ZRXDC timeout) writes.
 - Other drivers that call `pci_disable_link_state()` — several NIC and NVMe
   drivers do — get a real answer instead of a stub's lie for the first time on
-  FOS. This is a fleet-wide behavioural change and the main reason to watch the
+  FOS. This is a fleet-wide behavioral change and the main reason to watch the
   first release carrying it.
 - Extended config space becoming visible means AER/L1SS/other extended
   capabilities are now parsed at enumeration. `CONFIG_PCIEAER` stays off, so

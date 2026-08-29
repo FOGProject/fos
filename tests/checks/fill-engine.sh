@@ -9,7 +9,7 @@
 # The golden harness (tests/golden/) proves one fixed table stays byte-identical;
 # it can't express the invariants that matter when the target geometry differs
 # from the captured image. This harness drives the REAL awk through the REAL
-# shell entry points to lock three behaviours that have no other in-tree coverage:
+# shell entry points to lock three behaviors that have no other in-tree coverage:
 #
 #   1. Sector-size awareness (processSfdisk, filldisk only). blockdev --getsz
 #      always reports 512-byte units; on a 4Kn (getss=4096) target the disk size

@@ -464,7 +464,7 @@ function fill_disk(partition_names, partitions, args, n, fixed_partitions, origi
     # Used for extended volumes (logical disks)
     extended_margin = 2;
     # The "find the next partition" scan below infers a partition's original
-    # size from where its neighbour starts, so the partition_names traversals
+    # size from where its neighbor starts, so the partition_names traversals
     # need a defined order -- ascending partition number, the order the dump
     # was written in. See by_partition_number().
     old_sorted_in = PROCINFO["sorted_in"];

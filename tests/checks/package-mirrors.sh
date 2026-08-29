@@ -5,7 +5,7 @@
 #   tests/checks/package-mirrors.sh   # run all cases, exit non-zero on any failure
 #
 # What is under test is "which mirror did we fall through to, and did we refuse
-# bytes that don't match the hash" -- pass/fail behaviour a golden output stream
+# bytes that don't match the hash" -- pass/fail behavior a golden output stream
 # can't express, so this is a checks/ harness rather than a golden case.
 #
 # The regression that motivated it: all five of FOG's own Buildroot packages
@@ -91,7 +91,7 @@ expect_vars partclone 0.3.47 partclone-0.3.47.tar.gz \
     https://github.com/Thomas-Tsai/partclone/archive/0.3.47/partclone-0.3.47.tar.gz
 
 # ============================================================================
-echo "== seedPackage() behaviour =="
+echo "== seedPackage() behavior =="
 # ============================================================================
 # Against a synthetic package, so these cases stay offline and independent of
 # what any real upstream is serving today.

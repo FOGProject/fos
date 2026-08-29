@@ -227,8 +227,8 @@ and add a new ADR for any similarly hard-to-reverse decision:
   `--ses` flag must never be issued (it doesn't guarantee erasure); prefer
   `sanitize` when supported, falling back to `format --ses=1` only when no
   sanitize is in progress or unrecoverably failed.
-- **0009 — Secure Boot enrolment.** shim's `MokList` is a boot-services-only
-  variable, so the running OS *cannot* enrol a MOK — only MokManager can, behind
+- **0009 — Secure Boot enrollment.** shim's `MokList` is a boot-services-only
+  variable, so the running OS *cannot* enroll a MOK — only MokManager can, behind
   a physical-presence password. `secureboot-funcs.sh`/`fog.enrollsb` therefore
   **stage** a request and must never report that they enrolled anything. The
   automatable path is writing `db` while the platform is in **Setup Mode**; note
@@ -247,7 +247,7 @@ and add a new ADR for any similarly hard-to-reverse decision:
   (`CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y`) — activating it is downstream-only
   work gated on the vendor-shim question. `CONFIG_LSM` is set explicitly rather
   than left to `oldconfig`, because an LSM missing from the ordered list never
-  initialises, and `CONFIG_LOAD_UEFI_KEYS` is what imports the firmware's `db`
+  initializes, and `CONFIG_LOAD_UEFI_KEYS` is what imports the firmware's `db`
   and `MokList` into the platform keyring. The trap this ADR exists for:
   `make oldconfig` **silently drops** any symbol whose dependencies are unmet,
   so a config can look right in git and produce a kernel missing lockdown
@@ -267,7 +267,7 @@ and add a new ADR for any similarly hard-to-reverse decision:
   `keymap`, `mdraid`, `chkdsk`, `mc`, `setmacto`) aren't server-known data at
   all and need their own design pass. See the ADR for the full analysis.
 - **0012 — Microsoft-signed FOG shim (proposed, unstarted).** The only way to
-  remove Secure Boot enrolment entirely rather than automate it further —
+  remove Secure Boot enrollment entirely rather than automate it further —
   gated on ADR-0011's redesign actually shipping, and on the still-inactive
   ADR-0010 lockdown patch. `ipxe/shim` cannot be repurposed for this (it
   trusts exactly one thing, derives its second stage from its own filename,

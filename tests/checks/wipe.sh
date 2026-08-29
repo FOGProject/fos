@@ -4,7 +4,7 @@
 #
 #   tests/checks/wipe.sh        # run all cases, exit non-zero on any failure
 #
-# The behaviour under test is "which erase primitive did we actually issue, and
+# The behavior under test is "which erase primitive did we actually issue, and
 # did we refuse when it failed" -- a pass/fail assertion a single golden output
 # stream can't express, so this is a sibling to the golden harness rather than a
 # case inside it. See docs/adr/0008-secure-wipe-by-device-class.md
@@ -354,7 +354,7 @@ new_case
 run_case "empty mode -> refuse, touch nothing" /dev/sda "" fail "" "shred"
 
 # 21. Mode validation must sit AHEAD of the nvme dispatch. nvmeSecureErase treats
-# any mode it doesn't recognise as "not full, not fast" and issues a format
+# any mode it doesn't recognize as "not full, not fast" and issues a format
 # --ses=1, so an unknown mode on an NVMe target would erase the drive even though
 # the same mode refuses on /dev/sda. Guards that asymmetry.
 new_case

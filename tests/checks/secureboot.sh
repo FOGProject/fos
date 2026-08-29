@@ -161,7 +161,7 @@ if [[ -n $FAKE_DD_FAIL && ${out##*/} == "$FAKE_DD_FAIL"-* ]]; then
 fi
 /usr/bin/dd "$@" || exit 1
 # Writing a PK is what takes a platform out of Setup Mode. Modelling that here
-# is the only way to test that sbEnrollDb confirms the enrolment from the
+# is the only way to test that sbEnrollDb confirms the enrollment from the
 # firmware rather than from dd's exit status.
 if [[ ${out##*/} == PK-* && -z $FAKE_PK_KEEPS_SETUP ]]; then
     guid="8be4df61-93ca-11d2-aa0d-00e098032b8c"
@@ -341,7 +341,7 @@ check "absent SetupMode -> falls through to SecureBoot" "$(lib 'sbState')" "enfo
 # anything about what a given firmware does.
 
 # 9a. The ordinary case. Every other case in this file relies on this default,
-# so a regression that made 64-bit read as anything else would refuse enrolment
+# so a regression that made 64-bit read as anything else would refuse enrollment
 # on the hardware the feature is actually for.
 new_case; make_firmware 1 0 64
 check "fw_platform_size 64 -> 64" "$(lib 'sbPlatformBits')" "64"
@@ -404,7 +404,7 @@ check "fingerprint is colon-separated uppercase SHA-256 of the DER" \
 # --- already-trusted detection ---
 
 # 14. A key already in the MOK list must short-circuit, or every run sends a
-# technician to a blue screen to re-enrol something already trusted.
+# technician to a blue screen to re-enroll something already trusted.
 new_case; make_firmware 0 1; FAKE_KEY_ENROLLED=1; export FAKE_KEY_ENROLLED
 check "already-enrolled MOK is detected" \
     "$(lib 'sbCertTrusted "$SANDBOX/fp.der" && echo trusted || echo untrusted')" "trusted"
@@ -510,7 +510,7 @@ check "22. failing import refuses" \
     "$(lib 'sbStageMok "$SANDBOX/fp.der" hunter2 >/dev/null && echo ok || echo refused')" "refused"
 
 # 23. THE silent-failure guard. mokutil exits 0 but staged nothing. Trusting the
-# exit status here reports a pending enrolment that does not exist, and the
+# exit status here reports a pending enrollment that does not exist, and the
 # technician reboots into a normal boot with no explanation.
 new_case; make_firmware 0 1; FAKE_IMPORT_NOOP=1; export FAKE_IMPORT_NOOP
 check "23. import exits 0 but stages nothing -> refuse" \
@@ -549,14 +549,14 @@ fi
 
 # --- the Setup Mode (db) path ---
 
-# 27. A signed variable update is recognised by its
+# 27. A signed variable update is recognized by its
 # EFI_VARIABLE_AUTHENTICATION_2 header, not by being non-empty.
 new_case; make_firmware 1 0
 check "27. a well-formed .auth is accepted" \
     "$(lib 'sbFetchAuthVar db "$SANDBOX/x.auth" && echo ok || echo refused')" "ok"
 
 # 28. An HTML error page is longer than the header it would have to match, so a
-# size check alone would pass it. A client that wrote one into db would enrol
+# size check alone would pass it. A client that wrote one into db would enroll
 # nothing and report success.
 new_case; make_firmware 1 0; FAKE_AUTH_FAIL=db; export FAKE_AUTH_FAIL
 check "28. an HTML error page is not mistaken for a .auth" \
@@ -650,7 +650,7 @@ else
 fi
 
 # 37. Every blob is downloaded BEFORE any is written. A web server hiccup partway
-# through should cost nothing; leaving a platform mid-enrolment over one is a
+# through should cost nothing; leaving a platform mid-enrollment over one is a
 # far worse trade than re-running the fetch.
 new_case; make_firmware 1 0; FAKE_AUTH_FAIL=PK; export FAKE_AUTH_FAIL
 GOT="$(lib 'sbEnrollDb && echo ok || echo refused')"
@@ -685,7 +685,7 @@ check "39. writes succeed but SetupMode stays 1 -> refuse" \
 
 # 40. Happy path: all three written, firmware left Setup Mode.
 new_case; make_firmware 1 0
-check "40. enrolment succeeds when the firmware leaves Setup Mode" \
+check "40. enrollment succeeds when the firmware leaves Setup Mode" \
     "$(lib 'sbEnrollDb && echo ok || echo refused')" "ok"
 
 echo "----"

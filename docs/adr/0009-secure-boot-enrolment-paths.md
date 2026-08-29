@@ -1,9 +1,9 @@
-# Secure Boot enrolment: only Setup Mode scales, because FOS cannot bootstrap its own trust
+# Secure Boot enrollment: only Setup Mode scales, because FOS cannot bootstrap its own trust
 
 FOG generates a Secure Boot signing key by default and signs the FOS kernels
 with it on every install and upgrade. What it has never had is a way to get that
 certificate **trusted on more than a handful of machines**. Both existing routes
-end at a human at a keyboard: the USB enrolment kit (`fog-enroll-mok.sh` on a
+end at a human at a keyboard: the USB enrollment kit (`fog-enroll-mok.sh` on a
 stock Ubuntu/Debian live image) and PXE menu item 14, which chains MokManager
 directly and still needs `MOK.der` on local FAT media because MokManager has no
 network stack.
@@ -14,13 +14,13 @@ originally got wrong.
 
 ## The governing constraint: trust cannot bootstrap itself
 
-**Whatever performs the enrolment must already be trusted by the firmware.**
+**Whatever performs the enrollment must already be trusted by the firmware.**
 Every viable design is a different answer to "trusted by what?", and every
 non-viable design is one that forgot to ask.
 
 Two independent walls enforce this.
 
-### Wall 1 — MOK enrolment always requires a human
+### Wall 1 — MOK enrollment always requires a human
 
 `mokutil --import` writes the `MokNew` UEFI variable, which is
 runtime-accessible. `MokList` — the store shim actually consults when deciding
@@ -29,14 +29,14 @@ cannot write it after ExitBootServices. Only MokManager, executing in boot
 services before the OS starts, can promote `MokNew` into `MokList`, and it
 demands a one-time password as proof that a human is present.
 
-That is shim's entire security model. If the OS could enrol a key silently,
+That is shim's entire security model. If the OS could enroll a key silently,
 Secure Boot would mean nothing, because the first thing any malware would do is
-enrol its own. There is no `--yes` flag and there should not be one. Any future
+enroll its own. There is no `--yes` flag and there should not be one. Any future
 change that appears to have found a way around this has almost certainly found a
 bug; report it upstream rather than depend on it.
 
 **Consequence for this codebase:** `sbStageMok()` is named for what it does. It
-stages a request. It does not enrol anything, no message in `fog.enrollsb` may
+stages a request. It does not enroll anything, no message in `fog.enrollsb` may
 claim it did, and the task reports "pending", not "enrolled".
 
 #### Rejected: a Microsoft-signed generic UEFI Shell writing `MokList` directly
@@ -70,10 +70,10 @@ hashes via `dbx` over time.
   stop working — or get flagged by security tooling watching for this exact
   behavior — at a time FOG does not control.
 
-The real, legitimate versions of "close the enrolment gap further" are Path 1
+The real, legitimate versions of "close the enrollment gap further" are Path 1
 below (Setup Mode, or a signed update once FOG already owns the platform's
 `PK`/`KEK`), Path 2 (out-of-band BMC), or — the only way to remove the
-enrolment step entirely — FOGProject/fogproject#995, tracked in
+enrollment step entirely — FOGProject/fogproject#995, tracked in
 [ADR-0012](0012-fog-vendor-shim-signed-by-microsoft.md).
 
 ### Wall 2 — FOS itself is not loadable until the key is already trusted
@@ -103,7 +103,7 @@ loads fine right up to the point where FOG's own artefacts are checked against a
 MokList that does not yet contain FOG's certificate, and both are refused.
 
 So FOS can never be the thing that establishes trust in FOG's key on a machine
-that is enforcing Secure Boot. The task that would enrol the key cannot run on
+that is enforcing Secure Boot. The task that would enroll the key cannot run on
 the machine that needs it enrolled.
 
 ## The three paths that survive, ranked
@@ -162,14 +162,14 @@ silently, so each has a dedicated assertion in the harness:
   available in this file.
 
 All three blobs are downloaded before any is written: a web server hiccup should
-cost a retry, not leave a platform mid-enrolment.
+cost a retry, not leave a platform mid-enrollment.
 
 #### An alternate front-end: user-supplied WinPE
 
-A site that would rather not PXE-boot FOS for the enrolment step — or prefers
+A site that would rather not PXE-boot FOS for the enrollment step — or prefers
 a Windows-native workflow — has another way to drive the exact same mechanism.
 WinPE boots via Windows Boot Manager, verified directly against Microsoft's
-certificates already in `db`. No shim, no `MokList`, nothing to enrol just to
+certificates already in `db`. No shim, no `MokList`, nothing to enroll just to
 get WinPE running. Windows exposes an officially supported equivalent of
 `sbWriteEfiAuthVar()`/`sbEnrollDb()` for this exact purpose: the
 `Set-SecureBootUEFI` PowerShell cmdlet, which writes the same signed
@@ -245,7 +245,7 @@ run" check.
 
 The password is not a secret. It authenticates nothing at rest; it exists so the
 person answering MokManager is demonstrably the person who requested the
-enrolment. `$sbmokpw` sets one password fleet-wide.
+enrollment. `$sbmokpw` sets one password fleet-wide.
 
 ## Fail loud, per ADR-0003
 
@@ -265,9 +265,9 @@ into efivarfs that the firmware then declines to apply. `sbEnrollDb()` therefore
 re-reads `SetupMode` and requires it to have flipped `1 → 0` before reporting
 success: that is the firmware confirming it accepted the `PK`, and it is the only
 confirmation available before a reboot (`SecureBoot` stays `0` until the next
-POST computes it). An enrolment that failed part-way stops before the `PK` write,
+POST computes it). An enrollment that failed part-way stops before the `PK` write,
 so the machine is still in Setup Mode and still boots whatever it booted before —
-`fog.enrollsb` says so explicitly, because "Secure Boot enrolment failed"
+`fog.enrollsb` says so explicitly, because "Secure Boot enrollment failed"
 otherwise reads like the machine may now be unbootable.
 
 ## Why the `db` baseline is Microsoft's certificates
@@ -281,7 +281,7 @@ recording each source URL and sha256.
 The decisive reason is **not** Windows compatibility, it is FOG itself. The chain
 measured above is `shimx64.efi` → signed iPXE → FOG-signed kernel, and that shim
 is signed by **Microsoft Corporation UEFI CA 2011**. A `db` without that CA
-breaks FOG's own Secure Boot PXE boot — we would enrol the key and break the
+breaks FOG's own Secure Boot PXE boot — we would enroll the key and break the
 thing we enrolled it for.
 
 **Rejected as the baseline: capturing each machine's factory keyset.** No answer
@@ -351,7 +351,7 @@ the firmware afterwards held exactly what it should:
 - `PK` — this server's PK alone
 
 Secure Boot was then switched **on**, and the same machine PXE-booted FOG's
-signed chain: `bzImage... ok`, `init.xz... ok`, where before enrolment both were
+signed chain: `bzImage... ok`, `init.xz... ok`, where before enrollment both were
 refused with `Verification failed: Security Policy Violation`. That is the whole
 feature demonstrated in one line.
 

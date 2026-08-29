@@ -74,7 +74,7 @@ Two habits follow, and neither is optional here:
 ## Validation
 
 Confirmed on real hardware by the reporter, 2026-08-27, against
-`EXP_20260827-114033`: HDMI initialised, FOS reached userspace, and Partclone
+`EXP_20260827-114033`: HDMI initialized, FOS reached userspace, and Partclone
 captured `/dev/sda` to the FOG server. That is the first end-to-end FOS imaging
 run on a Raspberry Pi, and it also became the first real-hardware exercise of
 ADR-0015's platform support and of the `mount -t nfs` fix, both of which had
