@@ -60,7 +60,7 @@ debugPause
 # running a kernel this same server signed and served, so a server that could
 # hand us the wrong certificate could equally have handed us the wrong kernel.
 # The value of it is that it matches what the Secure Boot page displays and
-# what sbReport stores against the host, so an enrolment can be audited after
+# what sbReport stores against the host, so an enrollment can be audited after
 # the fact -- "enrolled in March" says nothing about whether this machine
 # trusts what the server is serving today, and a fingerprint does.
 fingerprint=$(sbCertFingerprint "$cert")
