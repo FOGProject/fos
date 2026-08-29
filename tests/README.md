@@ -118,6 +118,18 @@ tests/checks/secureboot.sh    # secureboot-funcs.sh: derives the right firmware
                               # a failed download writes nothing at all, and a
                               # SetupMode that does not flip 1 -> 0 is a refusal
                               # rather than a success
+tests/checks/secureboot-enrolment-report.sh
+                              # sbReport() tells the FOG server WHICH of
+                              # fog.enrollsb's three exits was reached -- all
+                              # three otherwise end in the same argument-free
+                              # completion POST and look identical from the
+                              # server. Pins that a staged MOK is reported as
+                              # 'mok' and never as an enrolment (turning Secure
+                              # Boot on after that lie stops the machine
+                              # booting), that every exit reports BEFORE
+                              # completing the task, and that a server that is
+                              # unreachable, 404s or answers nothing never
+                              # fails the task the enrolment already finished
 tests/checks/secureboot-config.sh
                               # configs/kernel*.config carry the Secure Boot
                               # hardening symbols (lockdown LSM in CONFIG_LSM,

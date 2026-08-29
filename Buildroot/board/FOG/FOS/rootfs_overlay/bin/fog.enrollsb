@@ -56,18 +56,26 @@ fi
 echo "Done"
 debugPause
 
-# Printed for the record, not as a security gate: FOS is already running a
-# kernel this same server signed and served, so a server that could hand us the
-# wrong certificate could equally have handed us the wrong kernel. The value of
-# showing it is that it matches what the Secure Boot page displays, so an
-# enrolment can be audited after the fact.
+# Shown and reported for the record, not as a security gate: FOS is already
+# running a kernel this same server signed and served, so a server that could
+# hand us the wrong certificate could equally have handed us the wrong kernel.
+# The value of it is that it matches what the Secure Boot page displays and
+# what sbReport stores against the host, so an enrolment can be audited after
+# the fact -- "enrolled in March" says nothing about whether this machine
+# trusts what the server is serving today, and a fingerprint does.
+fingerprint=$(sbCertFingerprint "$cert")
 echo " * Certificate SHA-256:"
-echo "     $(sbCertFingerprint "$cert")"
+echo "     $fingerprint"
 echo
 
 if sbCertTrusted "$cert"; then
     echo " * This certificate is already trusted by this machine. Nothing to do."
     echo
+    # Reported even though this task enrolled nothing. "This machine already
+    # trusts the certificate the server is serving today" is the answer the
+    # administrator was after; recording nothing would leave the host looking
+    # never-enrolled and invite the same task again on the next sweep.
+    sbReport "trusted" "$fingerprint"
     . /bin/fog.nonimgcomplete
     exit 0
 fi
@@ -108,6 +116,7 @@ if [[ $state == setup ]]; then
     echo "=============================================================================="
     echo
 
+    sbReport "db" "$fingerprint"
     . /bin/fog.nonimgcomplete
     exit 0
 fi
@@ -147,4 +156,8 @@ echo " and nothing has been enrolled."
 echo "=============================================================================="
 echo
 
+# "mok", NOT "db": nothing is enrolled yet and will not be until a human works
+# through MokManager. The server records this as pending for exactly that
+# reason -- see ADR 0029 decision 6.
+sbReport "mok" "$fingerprint"
 . /bin/fog.nonimgcomplete
