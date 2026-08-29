@@ -239,7 +239,7 @@ run_case "nvme full, sanitize completes with forced dealloc -> ok" /dev/nvme0n1 
 # 8b. A confirmed sanitize must never be followed by a format. The drive is
 # already erased; the only reason to issue one would be a misread log.
 new_case; FAKE_SANICAP=2; FAKE_SSTAT_SEQ="2 2 1"
-run_case "nvme full, sanitize completes -> no format afterwards" /dev/nvme0n1 full ok "" "format"
+run_case "nvme full, sanitize completes -> no format afterward" /dev/nvme0n1 full ok "" "format"
 
 # 9. Unreadable sanitize log AFTER the sanitize started. The regression this
 # harness missed: the log parse failed on the first poll, the code called that

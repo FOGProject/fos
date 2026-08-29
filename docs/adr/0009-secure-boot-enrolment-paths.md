@@ -99,7 +99,7 @@ Could not boot: Error 0x7f04819a
 ```
 
 **iPXE verifies the kernel *and* the initrd through shim.** The signed chain
-loads fine right up to the point where FOG's own artefacts are checked against a
+loads fine right up to the point where FOG's own artifacts are checked against a
 MokList that does not yet contain FOG's certificate, and both are refused.
 
 So FOS can never be the thing that establishes trust in FOG's key on a machine
@@ -215,7 +215,7 @@ one. Its honest scope is: **machines that currently have Secure Boot off and are
 going to have it turned on.**
 
 That is a real and common case — plenty of sites disable Secure Boot precisely so
-they can use FOG, and want it back on afterwards. There, the task stages the key
+they can use FOG, and want it back on afterward. There, the task stages the key
 with no USB media, no live image and no fingerprint transcription, and the tech
 confirms once at MokManager. That is a genuine improvement on the USB kit for
 that case, and nothing more.
@@ -344,7 +344,7 @@ it current.
 
 **Path 1 validated end to end on 2026-08-03** (VirtualBox 7.2 EFI, platform keys
 cleared to enter Setup Mode). The task enrolled with nobody at the keyboard, and
-the firmware afterwards held exactly what it should:
+the firmware afterward held exactly what it should:
 
 - `db` — Microsoft's five db CAs plus FOG's signing certificate
 - `KEK` — Microsoft's two KEK CAs plus this server's KEK

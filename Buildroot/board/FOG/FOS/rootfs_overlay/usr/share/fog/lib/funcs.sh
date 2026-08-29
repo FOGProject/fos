@@ -2532,7 +2532,7 @@ wipeDisk() {
         echo " *** WARNING: $disk is a solid-state device (class: $class) ***"
         echo "   Overwriting an SSD is NOT a guaranteed erase: wear levelling and"
         echo "   over-provisioning keep copies of your data in blocks that no"
-        echo "   overwrite can address. Data may remain recoverable afterwards."
+        echo "   overwrite can address. Data may remain recoverable afterward."
         echo "   Use the drive's own secure erase (ATA sanitize/secure erase) for a"
         echo "   guaranteed wipe of this device."
         echo ""

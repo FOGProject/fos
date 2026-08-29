@@ -192,6 +192,14 @@ tests/checks/package-mirrors.sh
                               # drops the superseded lines, a failed download
                               # restores the .mk rather than leaving a half-bump,
                               # and --dry-run writes nothing
+tests/checks/us-spelling.sh   # FOS's own source carries US spellings. A
+                              # whole-tree scan rather than a diff, because a
+                              # diff-scoped check needs a base ref a shallow
+                              # clone does not have -- and would then pass for a
+                              # reason unrelated to spelling, silently. Two
+                              # patterns: word/camelCase, and ALL CAPS with a
+                              # tighter right edge, so the five-letter UK form
+                              # does not fire inside ENROLL_SECUREBOOT
 ```
 
 Like the golden harness, the library harnesses source a sandbox copy of the
