@@ -28,7 +28,7 @@ committed fixture), make the change, run `check` again — it must still pass.
 
 ## checks/ — assertion harnesses
 
-Pass/fail assertions for behaviour that a single golden output stream can't
+Pass/fail assertions for behavior that a single golden output stream can't
 express (e.g. "does this function abort or not?"). Each script runs a battery of
 cases and exits non-zero if any fail.
 

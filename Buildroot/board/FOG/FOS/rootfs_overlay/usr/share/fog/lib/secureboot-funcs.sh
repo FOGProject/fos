@@ -1,5 +1,5 @@
 #!/bin/bash
-# Secure Boot enrolment helpers.
+# Secure Boot enrollment helpers.
 #
 # Deliberately a separate library rather than more of funcs.sh: this shares no
 # state, no vocabulary and no failure modes with the imaging engine, and
@@ -9,8 +9,8 @@
 # shim's MokList is a BOOT-SERVICES-ONLY variable, so the running OS cannot
 # write it -- only MokManager, in boot services, can promote MokNew into
 # MokList, and it demands the one-time password as proof of physical presence.
-# So nothing here "enrols a MOK". It STAGES a request that a human then
-# confirms at the MokManager screen. Fully automatic enrolment is the db path
+# So nothing here "enrolls a MOK". It STAGES a request that a human then
+# confirms at the MokManager screen. Fully automatic enrollment is the db path
 # (Setup Mode), which is Phase 2 and lands beside this.
 
 # The EFI global variable namespace. SetupMode, SecureBoot, PK and KEK live
@@ -95,7 +95,7 @@ sbState() {
 #
 # Why FOS cares at all: no Microsoft-signed 32-bit shim and no signed 32-bit
 # iPXE exist, so there is no Secure Boot chain an ia32 machine can boot. See the
-# refusal in bin/fog.enrollsb for what that means for enrolment.
+# refusal in bin/fog.enrollsb for what that means for enrollment.
 #
 # The kernel has exposed fw_platform_size on every EFI boot since 4.14 and FOS
 # runs 6.x, so on UEFI it is always readable. "unknown" therefore means a BIOS
@@ -231,7 +231,7 @@ sbCertInDb() {
 # Two stores, because a machine can be trusting this certificate by either
 # route: the Setup Mode path puts it in db with no MOK entry at all, and the
 # staged-MOK path puts it in MokList with nothing in db. Missing either one
-# sends a technician to a blue screen to re-enrol something already trusted.
+# sends a technician to a blue screen to re-enroll something already trusted.
 #
 # THIS FUNCTION GOT IT WRONG ONCE, AND ONLY HARDWARE CAUGHT IT. It used to grep
 # `mokutil --db` for the certificate's SHA-256. mokutil prints a **SHA1**
@@ -258,7 +258,7 @@ sbCertTrusted() {
     esac
     return 1
 }
-# Stage a MOK enrolment request, without prompting.
+# Stage a MOK enrollment request, without prompting.
 #
 # mokutil normally reads the one-time password from the terminal, which is
 # useless in a task. --generate-hash=<pw> prints the SHA-512 crypt string
@@ -269,7 +269,7 @@ sbCertTrusted() {
 #
 # The password is NOT a secret. It authenticates nothing at rest; it exists so
 # that whoever answers MokManager after the reboot is demonstrably the same
-# person who asked for the enrolment. It therefore has to be shown to the
+# person who asked for the enrollment. It therefore has to be shown to the
 # technician, which is the caller's job.
 #
 # $1 path to the DER certificate
@@ -408,7 +408,7 @@ sbWriteEfiAuthVar() {
     [[ -s $path ]] || return 1
     return 0
 }
-# Enrol this server's certificate into the platform's Secure Boot databases.
+# Enroll this server's certificate into the platform's Secure Boot databases.
 #
 # Order is db, then KEK, then PK, and it is not interchangeable. Writing PK is
 # what takes the platform OUT of Setup Mode; from that moment every further
@@ -426,7 +426,7 @@ sbWriteEfiAuthVar() {
 sbEnrollDb() {
     local var guid authfile
     # Fetch all three BEFORE writing any. A download that fails halfway would
-    # otherwise leave the platform mid-enrolment for no better reason than a
+    # otherwise leave the platform mid-enrollment for no better reason than a
     # web server hiccup, and the fetch is free to retry while a partial write
     # is not.
     for var in db KEK PK; do

@@ -66,7 +66,7 @@ dots "Enrolling Secure Boot keys (forced)"
 if ! sbEnrollDb; then
     echo "Failed"
     debugPause
-    handleError "[TEST] Forced Secure Boot enrolment failed. ($0)\n   Firmware state was: $state\n   Expected on a machine whose currently-enrolled PK/KEK do not match\n   FOG's -- the write is rejected rather than applied partially.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth."
+    handleError "[TEST] Forced Secure Boot enrollment failed. ($0)\n   Firmware state was: $state\n   Expected on a machine whose currently-enrolled PK/KEK do not match\n   FOG's -- the write is rejected rather than applied partially.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth."
 fi
 echo "Done"
 debugPause

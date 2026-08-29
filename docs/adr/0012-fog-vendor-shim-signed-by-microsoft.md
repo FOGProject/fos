@@ -3,7 +3,7 @@
 ## Status
 
 Proposed. Research recorded, no work started. This is the only route that
-removes Secure Boot enrolment entirely rather than automating it further; it
+removes Secure Boot enrollment entirely rather than automating it further; it
 is a multi-month, ongoing-cost undertaking and should be weighed as one before
 anyone starts.
 
@@ -16,7 +16,7 @@ the right API. All of them exist because FOG's certificate has to become
 trusted *somewhere*, and only Microsoft's signature is trusted everywhere by
 default. A shim of FOG's own, signed by Microsoft with FOG's certificate baked
 in as the vendor certificate, is the only way to make a FOG-signed kernel boot
-out of the box on stock hardware with no enrolment step at all.
+out of the box on stock hardware with no enrollment step at all.
 
 This is tracked upstream as FOGProject/fogproject#995 (successor to the
 now-closed #962, which did the initial investigation). Nothing here has been
@@ -60,7 +60,7 @@ imaging logic in an unsigned initrd. There is no FOS kernel anywhere in that
 chain, iPXE is dropped entirely, and the project is archived with unfinished
 docs. It demonstrates that *a* signed chain can be made to boot something,
 not that FOG's own kernel can be trusted anywhere without either MOK/Setup
-Mode enrolment or exactly the shim-signing work this ADR describes.
+Mode enrollment or exactly the shim-signing work this ADR describes.
 
 ## Remaining checklist, from #995
 
@@ -91,20 +91,20 @@ the last item does not go away:
 
 ## A clarification worth stating explicitly
 
-#962/#995 record that fleet-scale `db` enrolment via firmware tooling is
+#962/#995 record that fleet-scale `db` enrollment via firmware tooling is
 "mostly a dead end" as a *general* answer on stock OEM hardware: `db`/`dbx`
 updates must be signed by the currently-trusted `PK`/`KEK`, and on unmodified
 OEM firmware that key belongs to Microsoft or the OEM, not FOG. Dell genuinely
 exposes programmable custom-mode `PK`/`KEK`/`db` import via Dell Command |
 Configure and iDRAC; Lenovo's ThinkBIOS Config can clear `PK` into Setup Mode
-but unattended cert push is unconfirmed; HP consumer lines have no enrolment
+but unattended cert push is unconfirmed; HP consumer lines have no enrollment
 mode at all, and HP commercial is unconfirmed.
 
 This is a **different scenario** from a machine that has already been through
 ADR-0009 Path 1, where FOG's own `PK`/`KEK` is now the one installed — on such
 a machine FOG legitimately holds the signing key for future `db` updates, and
 those updates are a signature check, not a firmware-tooling problem. The two
-should not be conflated: "fleet-scale enrolment on stock OEM hardware is a
+should not be conflated: "fleet-scale enrollment on stock OEM hardware is a
 dead end" and "a FOG-owned platform can take further signed updates with no
 Setup Mode revisit" are both true, about different machines.
 
@@ -126,7 +126,7 @@ Setup Mode revisit" are both true, about different machines.
   Microsoft — settle the UKI question first"
 - FOGProject/fogproject#962 (closed) — the parent tracking issue; source of
   the `ipxe/shim` and `foguefi` findings and the OEM-tooling survey
-- [ADR-0009](0009-secure-boot-enrolment-paths.md) — the enrolment paths this
+- [ADR-0009](0009-secure-boot-enrolment-paths.md) — the enrollment paths this
   would eventually make unnecessary for new installs
 - [ADR-0010](0010-secure-boot-kernel-hardening.md) — the lockdown-activation
   patch this depends on

@@ -10,7 +10,7 @@
 # release or dispatch, so until now not one of these assertions had ever run
 # anywhere but on a maintainer's laptop.
 #
-# Modelled on fogproject's tests/run-all.sh, deliberately: the two projects are
+# Modeled on fogproject's tests/run-all.sh, deliberately: the two projects are
 # maintained by the same people and a suite that reports differently in each is
 # a suite people read less carefully.
 #

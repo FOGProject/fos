@@ -74,7 +74,7 @@ checkConfig() {
             fails=$((fails + 1))
         fi
     done
-    # The lockdown LSM only initialises if it is in the ordered LSM list.
+    # The lockdown LSM only initializes if it is in the ordered LSM list.
     if ! grep -q '^CONFIG_LSM=.*lockdown' "$file"; then
         echo "FAIL [$label] CONFIG_LSM does not include lockdown"
         fails=$((fails + 1))

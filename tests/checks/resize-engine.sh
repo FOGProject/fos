@@ -271,7 +271,7 @@ else
     fail "4Kn shrink applied table" "last-lba in written table: '${appliedlast:-none}' vs disk $DISK4K"
 fi
 
-# 6. A failing sfdisk write still aborts (ADR-0003) -- the behaviour that turned
+# 6. A failing sfdisk write still aborts (ADR-0003) -- the behavior that turned
 #    this silent no-op into a visible failure in the first place.
 FAKE_SFDISK_RC=1 resize_case "resizeSfdiskPartition aborts when sfdisk refuses the table" \
     "$SANDBOX/d.4k" "$GETSZ4K" 4096 /dev/vda4 "$BYTES30G" abort yes

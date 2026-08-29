@@ -31,7 +31,7 @@ The guard is gone. Every action gets the rescale, because every action compares
 against `diskSize`: `check_overlap()` uses it as the bound for "does this
 partition fit on the disk", and with a value eight times too large that check
 cannot fail no matter how wrong the layout is. The rescale is an exact no-op on
-512-byte-sector disks (`disk_size * 512 / 512`), so this is not a behaviour
+512-byte-sector disks (`disk_size * 512 / 512`), so this is not a behavior
 change there.
 
 ### 2. `SECTOR_SIZE` and `LOGICAL_SECTOR_SIZE` are different numbers
@@ -99,13 +99,13 @@ look identical and are not.
   of `tests/checks/fill-engine.sh`. It pins the passthrough, the divisor, the
   rounding direction, and that a valid 4Kn shrink reaches the sfdisk write.
 - `tests/checks/mbr-extended.sh`'s resize case had encoded the old flooring
-  behaviour (`10000000 / 512`) and now expects the rounded-up value. It is the
+  behavior (`10000000 / 512`) and now expects the rounded-up value. It is the
   only in-tree assertion the rounding change moved.
 
 ## Alternatives rejected
 
 **Revert ADR-0003's fail-loud apply.** It would restore the observed "working"
-March behaviour, and that behaviour is a 4Kn capture that quietly does not
+March behavior, and that behavior is a 4Kn capture that quietly does not
 shrink. The refusal was the only reason anyone found out.
 
 **Reuse `SECTOR_SIZE` for the divisor by moving the existing rescale out of the

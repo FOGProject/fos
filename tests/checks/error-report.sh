@@ -22,7 +22,7 @@
 # the external tools with deterministic stubs. curl is the stub that matters --
 # it records its argv rather than making a request.
 #
-# One thing here is asserted as behaviour rather than as implementation: no FOS
+# One thing here is asserted as behavior rather than as implementation: no FOS
 # script sets errexit today, so the `|| :` on the curl is defensive and cannot
 # be isolated by a case. Case 5 pins what actually matters instead -- that
 # handleError still reaches its reboot notice when the report fails -- which

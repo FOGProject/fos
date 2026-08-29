@@ -16,7 +16,7 @@ secure erase operation requested"**. That reformats the namespace's LBA metadata
 and returns in seconds, but the NVMe specification does not require the
 controller to erase user data. Many drives do deallocate blocks on format, and a
 deallocated read commonly returns zeros — which is exactly why this looked
-correct in testing. That behaviour is implementation-defined per drive, not
+correct in testing. That behavior is implementation-defined per drive, not
 guaranteed, and "reads back as zeros" is not "the data is gone from the NAND".
 Every NVMe wipe FOG has performed through this path should be assumed
 non-erasing.
@@ -64,7 +64,7 @@ Class comes from `diskClass()`: `*nvme*` by name, otherwise the kernel's
 say. `unknown` is treated as possibly-flash — it gets the SSD warning — because
 the failure that matters is assuming flash is a platter, not the reverse.
 
-`fast` is honestly labelled a metadata-only wipe on every non-NVMe class. It
+`fast` is honestly labeled a metadata-only wipe on every non-NVMe class. It
 destroys the partition table so the disk looks blank; it never claims to be a
 secure erase. On NVMe it is a real erase, because a crypto erase is both
 instantaneous and complete.
@@ -129,7 +129,7 @@ all. The correct primitive is ATA SANITIZE (`hdparm --sanitize-block-erase` /
 `--sanitize-crypto-scramble`) or ATA Secure Erase.
 
 We did not implement it here, and the overwrite remains. Two reasons. First,
-removing the existing behaviour without a working replacement would leave SATA
+removing the existing behavior without a working replacement would leave SATA
 SSD users with less than they have today. Second — and this is the substantive
 one — **the obstacle has already been investigated twice, and it is not merely
 awkward.**
@@ -190,7 +190,7 @@ sanitize-log parse fails 5, and allowing a format fallback after a sanitize has
 started fails 3.
 
 That last control guards a non-obvious ordering constraint found while writing
-these tests. `nvmeSecureErase()` treats any mode it does not recognise as
+these tests. `nvmeSecureErase()` treats any mode it does not recognize as
 "neither full nor fast" and issues `format --ses=1`, so with the validation
 placed after the class dispatch — the natural reading order — an unknown mode
 refused on `/dev/sda` but *erased* `/dev/nvme0n1`. The mode check must stay ahead

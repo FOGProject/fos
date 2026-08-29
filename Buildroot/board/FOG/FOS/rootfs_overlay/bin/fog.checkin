@@ -58,7 +58,7 @@ checkin() {
     # must keep waiting however long that takes. What was NOT deliberate is that
     # a dead server looked identical to a queue position -- $res was empty, so
     # this printed " *  (In line for 5s)" forever with nothing to diagnose.
-    # serverReason distinguishes them; the waiting behaviour is unchanged.
+    # serverReason distinguishes them; the waiting behavior is unchanged.
     while [[ $res != "##@GO" ]]; do
         callServer "${web}service/$php_post" "$poststring"
         res="$serverBody"

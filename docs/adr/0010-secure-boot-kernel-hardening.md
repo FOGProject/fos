@@ -9,7 +9,7 @@ is recorded below so the next person does not have to rediscover it.
 ## Context
 
 A site that mandates UEFI Secure Boot must sign the FOS kernel with its own key
-and enrol that key per machine. FOG automates the signing
+and enroll that key per machine. FOG automates the signing
 (`build.sh --sign-key`, plus the installer side in FOGProject/fogproject), but
 signing only gets the kernel *loaded*. It says nothing about what the kernel
 then permits.
@@ -48,7 +48,7 @@ architecture configs, but **do not force lockdown on**:
 - `CONFIG_SECURITY_LOCKDOWN_LSM=y` and `_EARLY=y`. The early variant matters
   because some boot parameters are parsed before LSM init would otherwise run.
 - `CONFIG_LSM="lockdown,integrity"`. An LSM that is built but absent from the
-  ordered list never initialises. Set explicitly rather than left for
+  ordered list never initializes. Set explicitly rather than left for
   `oldconfig` to default, because the upstream default string names LSMs this
   kernel does not build.
 - `CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y` — see below.
@@ -74,7 +74,7 @@ back to `/dev/mem` would start failing for users who gained nothing in return.
 
 Distributions all resolve this the same way: build the LSM in, leave it
 inactive, and activate it at boot **only when the firmware reports Secure Boot
-is on**. That is the behaviour FOS wants.
+is on**. That is the behavior FOS wants.
 
 ## The part that is not done, and what it actually takes
 
@@ -136,7 +136,7 @@ what it leaves open before implementation can start.
 ## Consequences
 
 - The configs are inert for now: lockdown is compiled in but never activated,
-  so behaviour is unchanged for every existing user. That is the point — this
+  so behavior is unchanged for every existing user. That is the point — this
   lands the reviewable, testable half without a flag day.
 - `CONFIG_SECURITY=y` pulls a lot of new Kconfig into the build. The three
   configs are hand-edited and `make oldconfig` **silently drops symbols whose
