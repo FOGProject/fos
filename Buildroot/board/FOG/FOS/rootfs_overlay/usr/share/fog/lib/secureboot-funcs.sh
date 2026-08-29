@@ -152,7 +152,7 @@ sbCertFingerprint() {
     [[ -z $cert ]] && handleError "No certificate passed (${FUNCNAME[0]})\n   Args Passed: $*"
     sha256sum "$cert" 2>/dev/null | awk '{print toupper($1)}' | sed 's/../&:/g;s/:$//'
 }
-# Tell the server what this enrolment actually did.
+# Tell the server what this enrollment actually did.
 #
 # WHY THIS IS NOT INFERRED FROM THE TASK COMPLETING
 #
@@ -166,15 +166,15 @@ sbCertFingerprint() {
 #   mok      a request was STAGED. The machine is NOT enrolled and will not
 #            boot with Secure Boot on until a human confirms it at MokManager
 #
-# Recording the third as an enrolment is a lie an administrator acts on: they
+# Recording the third as an enrollment is a lie an administrator acts on: they
 # turn Secure Boot on in firmware and the machine stops booting. So the outcome
 # is reported by the only party that knows it, which is this one.
 #
 # Best-effort by design. A server too old to have the endpoint answers 404 and
-# a server that never hears us changes nothing -- in both cases the enrolment
+# a server that never hears us changes nothing -- in both cases the enrollment
 # itself already happened and the task must still complete. So this NEVER calls
 # handleError and never fails the task; it says what it did and moves on. The
-# record is a convenience for the administrator, not a step in the enrolment.
+# record is a convenience for the administrator, not a step in the enrollment.
 #
 # $1 the result: db, trusted or mok
 # $2 the certificate's SHA-256 fingerprint
@@ -193,9 +193,9 @@ sbReport() {
         "mac=${mactosend}&result=${result}&cert=${cert}&sbstate=$(sbState)"
     [[ $serverBody == "##ok" ]] && return 0
     # Said out loud rather than swallowed. It is not a failure of the
-    # enrolment, and the wording has to make that clear, or the next person
+    # enrollment, and the wording has to make that clear, or the next person
     # reads it as one and goes looking at firmware that is perfectly fine.
-    echo " * Note: the enrolment succeeded but could not be recorded on the"
+    echo " * Note: the enrollment succeeded but could not be recorded on the"
     echo "   FOG server (${serverReason:-${serverBody:-no answer}})."
     echo "   Set it by hand on the host's General tab if you need the record."
     return 0

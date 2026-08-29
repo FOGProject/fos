@@ -2,9 +2,9 @@
 #
 # Assertion harness for sbReport() and the three exits that call it.
 #
-#   tests/checks/secureboot-enrolment-report.sh
+#   tests/checks/secureboot-enrollment-report.sh
 #
-# What it proves: that a Secure Boot enrolment task tells the FOG server WHICH
+# What it proves: that a Secure Boot enrollment task tells the FOG server WHICH
 # of its three outcomes it reached, and that failing to tell it never fails the
 # task.
 #
@@ -18,18 +18,18 @@
 #   mok      a request was STAGED. The machine is NOT enrolled and will not
 #            boot with Secure Boot on until a human confirms it at MokManager
 #
-# Recording the third as an enrolment is a lie an administrator acts on: they
+# Recording the third as an enrollment is a lie an administrator acts on: they
 # turn Secure Boot on in firmware and the machine stops booting. Case 4 is the
 # one that holds that shut, and it is anchored on the whole call line -- a grep
 # for "sbReport" alone passes when the argument has been changed to "db", which
 # is the exact regression worth catching.
 #
-# The other half is that this must never be able to fail a task. The enrolment
+# The other half is that this must never be able to fail a task. The enrollment
 # has already happened by the time sbReport runs; a server that is too old to
 # have the endpoint answers 404, and one that is unreachable answers nothing.
 # In both cases the machine is enrolled and the task must still complete. So
 # sbReport returns 0 unconditionally, says on screen what went wrong, and says
-# it in words that do not read as an enrolment failure -- cases 5 to 8.
+# it in words that do not read as an enrollment failure -- cases 5 to 8.
 #
 # Mechanism mirrors tests/checks/server-post-reporting.sh: source sandbox
 # copies of funcs.sh (for callServer) and secureboot-funcs.sh with their
@@ -127,7 +127,7 @@ note "2. the report is a POST carrying its body" "$err"
 # --- 3. nothing is posted when there is nothing to say --------------------
 # Guards against a half-populated row: a blank fingerprint stored against a
 # host reads as "enrolled, certificate unknown", which is worse than no record
-# because it cannot be told apart from a real enrolment whose cert was cleared.
+# because it cannot be told apart from a real enrollment whose cert was cleared.
 for args in '"db" ""' '"" "AA:BB"'; do
     rm -f "$SANDBOX/curl.argv"
     eval "out=\$(FAKE_CODE=200 FAKE_BODY='##ok' drive $args)"
@@ -139,7 +139,7 @@ done
 
 # --- 4-8. a failure to record must never fail the task --------------------
 # Each arm returns 0 and says something. The wording matters as much as the
-# status: "enrolment failed" sends the next person to a firmware screen that is
+# status: "enrollment failed" sends the next person to a firmware screen that is
 # perfectly fine, so the message has to name the RECORDING as the thing that
 # did not happen.
 for arm in "unreachable:FAKE_CURL_RC=7" "http404:FAKE_CODE=404" \
@@ -151,8 +151,8 @@ for arm in "unreachable:FAKE_CURL_RC=7" "http404:FAKE_CODE=404" \
     err=""
     [[ $out == *"RC=0"* ]] || err="rc not 0 -- this would fail the task"
     grep -qi 'could not be recorded' <<<"$out" || err="$err; said nothing"
-    grep -qi 'enrolment succeeded' <<<"$out" \
-        || err="$err; does not say the enrolment itself was fine"
+    grep -qi 'enrollment succeeded' <<<"$out" \
+        || err="$err; does not say the enrollment itself was fine"
     note "4. $name: reports the problem and still returns 0" "$err"
 done
 
@@ -177,7 +177,7 @@ for want in 'sbReport "trusted" "$fingerprint"' \
 done
 note "10. all three exits report their own outcome" "$err"
 
-# --- 11. the staged-MOK exit must not claim an enrolment ------------------
+# --- 11. the staged-MOK exit must not claim an enrollment ------------------
 # THE assertion in this file. Everything else is plumbing; this is the one that
 # stops FOG telling an administrator a machine is enrolled when it is not.
 err=""
@@ -188,9 +188,9 @@ note "11. the staged-MOK exit reports 'mok', never 'db'" "$err"
 
 # --- 12. the report happens BEFORE the task is completed ------------------
 # Order is load-bearing: fog.nonimgcomplete is what clears the task, and a
-# report that arrives after it is refused -- the endpoint requires the enrolment
+# report that arrives after it is refused -- the endpoint requires the enrollment
 # task to still be in flight, so that a caller who merely knows a MAC cannot
-# stamp an enrolment onto a host that was never asked to enrol.
+# stamp an enrollment onto a host that was never asked to enroll.
 err=""
 last_report=""
 while read -r n line; do
