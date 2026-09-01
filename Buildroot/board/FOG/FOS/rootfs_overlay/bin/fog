@@ -53,9 +53,6 @@ if [[ -n $mode && $mode != +(*debug*) && -z $type ]]; then
         badblocks)
             fog.surfacetest
             ;;
-        clamav)
-            fog.av
-            ;;
         autoreg)
             fog.auto.reg
             ;;

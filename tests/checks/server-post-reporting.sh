@@ -274,7 +274,7 @@ while read -r hit; do
     [[ -n $hit ]] || continue
     b=$(basename "${hit%%:*}")
     case "$b" in
-        funcs.sh|fog.statusreporter|fog.av|fog|secureboot-funcs.sh|S40network) continue ;;
+        funcs.sh|fog.statusreporter|fog|secureboot-funcs.sh|S40network) continue ;;
     esac
     err="$err $b"
 done < <(grep -rn '=\$(curl \|=`curl ' "$OVERLAY" 2>/dev/null)

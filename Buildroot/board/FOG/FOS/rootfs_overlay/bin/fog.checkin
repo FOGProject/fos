@@ -86,12 +86,5 @@ case $mc in
 esac
 sysuuid=$(dmidecode -s system-uuid)
 sysuuid=${sysuuid,,}
-case $mode in
-    clamav)
-        poststring="sysuuid=${sysuuid}&mac=$mac&avmode=$avmode"
-        ;;
-    ""|*)
-        poststring="sysuuid=${sysuuid}&mac=$mac&type=$type"
-        ;;
-esac
+poststring="sysuuid=${sysuuid}&mac=$mac&type=$type"
 [[ ! $capone -eq 1 ]] && checkin "$poststring" "$php_post"
