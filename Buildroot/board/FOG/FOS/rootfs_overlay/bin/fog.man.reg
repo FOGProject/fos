@@ -61,7 +61,19 @@ mac=$(getMACAddresses | base64)
 sysuuid=$(dmidecode -s system-uuid)
 sysuuid=${sysuuid,,}
 sysuuid=$(echo $sysuuid | base64)
-callServer "${web}service/man.hostexists.php" "sysuuid=${sysuuid}&mac=$mac"
+sysserial=$(dmidecode -s system-serial-number)
+sysserial=${sysserial,,}
+sysserial=$(echo $sysserial | base64)
+# The board serial and chassis asset tag join the UUID and system serial
+# so the server can identify this machine by firmware, not only by MAC
+# (fogproject #198). A server that does not know the fields ignores them.
+mbserial=$(dmidecode -s baseboard-serial-number)
+mbserial=${mbserial,,}
+mbserial=$(echo $mbserial | base64)
+caseasset=$(dmidecode -s chassis-asset-tag)
+caseasset=${caseasset,,}
+caseasset=$(echo $caseasset | base64)
+callServer "${web}service/man.hostexists.php" "sysuuid=${sysuuid}&sysserial=${sysserial}&mbserial=${mbserial}&caseasset=${caseasset}&mac=$mac"
 exists="$serverBody"
 checkAndSet() {
     local testvar="$1"
@@ -382,7 +394,7 @@ res=""
 # two seconds when the server was unreachable, so the operator watched a blank
 # console with no idea anything was wrong.
 while [[ -z $res ]]; do
-    callServer "${web}service/auto.register.php" "sysuuid=${sysuuid}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&ou=$ou64&username=$user64&password=$pass64&groupid=$group64&snapinid=$snapin64&productKey=$productKey"
+    callServer "${web}service/auto.register.php" "sysuuid=${sysuuid}&sysserial=${sysserial}&mbserial=${mbserial}&caseasset=${caseasset}&mac=$mac&advanced=$(echo -n 1 | base64)&host=$host&imageid=$imageid&primaryuser=$primaryuser&other1=$other1&other2=$other2&doimage=$realdoimage&doad=$blDoAD&location=$location64&ou=$ou64&username=$user64&password=$pass64&groupid=$group64&snapinid=$snapin64&productKey=$productKey"
     res="$serverBody"
     echo "${serverReason:-$res}"
     usleep 2000000

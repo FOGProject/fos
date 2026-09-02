@@ -65,6 +65,15 @@ sysuuid=$(echo $sysuuid | base64)
 sysserial=$(dmidecode -s system-serial-number)
 sysserial=${sysserial,,}
 sysserial=$(echo $sysserial | base64)
+# The board serial and chassis asset tag join the UUID and system serial
+# so the server can identify this machine by firmware, not only by MAC
+# (fogproject #198). A server that does not know the fields ignores them.
+mbserial=$(dmidecode -s baseboard-serial-number)
+mbserial=${mbserial,,}
+mbserial=$(echo $mbserial | base64)
+caseasset=$(dmidecode -s chassis-asset-tag)
+caseasset=${caseasset,,}
+caseasset=$(echo $caseasset | base64)
 dots "Attempting to register host"
 count=0
 res=""
@@ -73,7 +82,7 @@ if [[ -f /sys/firmware/acpi/tables/MSDM ]]; then
     productKey=$(tail -c+57 /sys/firmware/acpi/tables/MSDM | base64)
 fi
 while [[ -z $res ]]; do
-    callServer "${web}service/auto.register.php" "sysserial=${sysserial}&sysuuid=${sysuuid}&mac=$mac&productKey=${productKey}"
+    callServer "${web}service/auto.register.php" "sysserial=${sysserial}&sysuuid=${sysuuid}&mbserial=${mbserial}&caseasset=${caseasset}&mac=$mac&productKey=${productKey}"
     res="$serverBody"
     case $count in
         [0-8])
