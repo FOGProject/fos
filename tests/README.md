@@ -56,6 +56,15 @@ tests/checks/resize-engine.sh # the capture-time shrink (processSfdisk +
                               # so a partition is never smaller than the
                               # filesystem already shrunk into it, and a valid 4Kn
                               # shrink reaches the sfdisk write (ADR-0016)
+tests/checks/ntfs-shrink-retry.sh
+                              # the NTFS branch of shrinkPartition() when the
+                              # ntfsresize dry run fails with ENOSPC (ntfs-3g
+                              # issue #142, fogproject#789): the target grows
+                              # and is retried until a dry run passes, the
+                              # real resize uses the size that passed, any
+                              # other failure still aborts on the first try,
+                              # and a volume nothing below its present size
+                              # fits is recorded as fixed size instead
 tests/checks/mbr-extended.sh  # MBR tables carrying an extended partition with
                               # logicals inside it (issue #150): the emitted
                               # table is ordered by partition number so sfdisk

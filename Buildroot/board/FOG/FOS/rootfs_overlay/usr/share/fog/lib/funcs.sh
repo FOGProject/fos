@@ -597,6 +597,9 @@ shrinkPartition() {
             fi
             tmpoutput=$(cat /tmp/tmpoutput.txt | tr -d \\0)
             size=$(cat /tmp/tmpoutput.txt | tr -d \\0 | sed -n 's/.*you might resize at\s\+\([0-9]\+\).*$/\1/pi')
+            # The volume's present size, in bytes. It is the ceiling for the
+            # retry loop below: a target at or past it is no shrink at all.
+            local ntfs_volume_bytes=$(cat /tmp/tmpoutput.txt | tr -d \\0 | sed -n 's/^Current volume size:\s\+\([0-9]\+\) bytes.*$/\1/pi')
             [[ -z $size ]] && handleError " * (${FUNCNAME[0]})\n   Args Passed: $*\n\nFatal Error, Unable to determine possible ntfs size\n * To better help you debug we will run the ntfs resize\n\t but this time with full output, please wait!\n\t $(cat /tmp/tmpoutput.txt | tr -d \\0)"
             local min_slack_bytes=$((500 * 1024 * 1024))
 
@@ -621,10 +624,37 @@ shrinkPartition() {
             echo " * Possible resize partition size (includes >=500MB slack): ${sizentfsresize}k"
             echo " * Possible resize partition size: ${sizentfsresize}k"
             dots "Running resize test $part"
-            yes | ntfsresize -fns ${sizentfsresize}k ${part} >/tmp/tmpoutput.txt 2>&1
-            local ntfsstatus="$?"
-            tmpoutput=$(cat /tmp/tmpoutput.txt | tr -d \\0)
-            test_string=$(cat /tmp/tmpoutput.txt | egrep -io "(ended successfully|bigger than the device size|volume size is already OK)" | tr -d '[[:space:]]' | tr -d \\0)
+            local ntfsstatus=1
+            local grown_from=0
+            while true; do
+                yes | ntfsresize -fns ${sizentfsresize}k ${part} >/tmp/tmpoutput.txt 2>&1
+                ntfsstatus="$?"
+                tmpoutput=$(cat /tmp/tmpoutput.txt | tr -d \\0)
+                test_string=$(cat /tmp/tmpoutput.txt | egrep -io "(ended successfully|bigger than the device size|volume size is already OK)" | tr -d '[[:space:]]' | tr -d \\0)
+                [[ $ntfsstatus -eq 0 || -n $test_string ]] && break
+                # ntfsresize relocates every cluster that lies past the new end
+                # into the space before it, and on a Windows 11 volume the file
+                # holding those relocations can run out of runlist room before
+                # the data runs out of clusters (ntfs-3g issue #142, fogproject
+                # issue #789). It reports that as ENOSPC even though the target
+                # has hundreds of MB free. More room means fewer relocations and
+                # less fragmentation, so double the slack and ask again, up to
+                # the volume's present size. Any other failure is still fatal.
+                grep -qi "no space left on device" /tmp/tmpoutput.txt || break
+                grown_from=$sizentfsresize
+                slack_bytes=$(calculate "${slack_bytes}*2")
+                sizentfsresize=$(calculate "(${size}+${slack_bytes})/1024")
+                if [[ -z $ntfs_volume_bytes || $(calculate "${sizentfsresize}*1024") -ge $ntfs_volume_bytes ]]; then
+                    # No target below the current size fits, so the partition
+                    # keeps its size: same outcome as "bigger than the device
+                    # size", chosen here instead of asking ntfsresize.
+                    test_string="outofroom"
+                    break
+                fi
+                echo
+                echo " * ntfsresize ran out of room relocating data at ${grown_from}k, retrying at ${sizentfsresize}k"
+                debugPause
+            done
             echo "Done"
             debugPause
             rm /tmp/tmpoutput.txt >/dev/null 2>&1
@@ -635,7 +665,7 @@ shrinkPartition() {
                     do_resizepart=1
                     ntfsstatus=0
                     ;;
-                biggerthanthedevicesize)
+                biggerthanthedevicesize|outofroom)
                     echo " * Not resizing filesystem $part (part too small)"
                     echo "$(cat ${imagePath}/d1.fixed_size_partitions | tr -d \\0):${part_number}" > "$imagePath/d1.fixed_size_partitions"
                     ntfsstatus=0
