@@ -1532,12 +1532,18 @@ getHardDisk() {
             fi
         fi
     else
-        if [[ -n $largesize ]]; then
-            # Auto-select largest available drive
+        if [[ -n $largesize || -n $smallsize ]]; then
+            # Kernel arguments largesize=1 / smallsize=1 pick the largest or
+            # the smallest disk by capacity, for fleets where the target disk
+            # sits at a different bus position on every machine but is
+            # always the biggest or (fogproject #817) the smallest one.
+            # Ties keep enumeration order.
+            local order="-k1,1nr"
+            [[ -n $smallsize ]] && order="-k1,1n"
             hd=$(
                 for d in $devs; do
                     echo "$(blockdev --getsize64 "$d") $d"
-                done | sort -k1,1nr -k2,2 | head -1 | cut -d' ' -f2
+                done | sort $order -k2,2 | head -1 | cut -d' ' -f2
             )
         else
             for d in $devs; do
