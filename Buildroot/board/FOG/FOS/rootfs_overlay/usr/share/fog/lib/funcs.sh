@@ -1423,6 +1423,26 @@ getHardDisk() {
     local devs
     devs=$(lsblk -dpno KNAME,SIZE -I 3,8,9,179,202,253,259 | awk '$2 != "0B" && !seen[$1]++ { print $1 }')
 
+    # USB and removable devices go to the back of the pool, and the automatic
+    # choice below only considers them when nothing else is present. A USB
+    # audio interface that exposes its driver files as a tiny disk enumerated
+    # as /dev/sda ahead of the NVMe and was deployed to (fogproject #778).
+    # Host Primary Disk still matches them by name, so a deliberate USB
+    # target keeps working, and a machine whose only disk is USB or an SD
+    # card still images.
+    local internal="" removable="" kv d
+    for d in $devs; do
+        kv=$(lsblk -dPno TRAN,RM "$d" 2>/dev/null)
+        if [[ $kv == *'TRAN="usb"'* || $kv == *'RM="1"'* ]]; then
+            removable="$removable$d"$'\n'
+        else
+            internal="$internal$d"$'\n'
+        fi
+    done
+    devs=$(printf '%s%s' "$internal" "$removable")
+    local autodevs="$internal"
+    [[ -z $autodevs ]] && autodevs="$devs"
+
     if [[ -n $fdrive ]]; then
         local found_match=0
         for spec in ${fdrive//,/ }; do
@@ -1541,12 +1561,12 @@ getHardDisk() {
             local order="-k1,1nr"
             [[ -n $smallsize ]] && order="-k1,1n"
             hd=$(
-                for d in $devs; do
+                for d in $autodevs; do
                     echo "$(blockdev --getsize64 "$d") $d"
                 done | sort $order -k2,2 | head -1 | cut -d' ' -f2
             )
         else
-            for d in $devs; do
+            for d in $autodevs; do
                 hd="$d"
                 break
             done

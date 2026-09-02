@@ -24,12 +24,17 @@
 #   4. With no fdrive, the kernel arguments largesize=1 and smallsize=1 pick
 #      the largest and the smallest disk by capacity (fogproject #817), and
 #      neither picks the first enumerated.
+#   5. A USB or removable device is never the automatic choice while an
+#      internal disk exists (fogproject #778), sits last in the pool, is
+#      still matched by name through fdrive, and is chosen when it is the
+#      only disk.
 #
 # Mechanism mirrors tests/checks/ntfs-shrink-retry.sh: source a sandbox copy
 # of the library and PATH-shadow lsblk, blockdev and blkid with doubles that
-# describe a fixed three-disk machine whose first-enumerated disk is neither
-# the largest nor the smallest, so each automatic choice lands on a
-# different device.
+# describe a fixed machine: a 32 GB USB device enumerated first (the shape of
+# fogproject #778), then three internal disks whose first is neither the
+# largest nor the smallest, so each automatic choice lands on a different
+# device.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_LIB="$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/usr/share/fog/lib"
@@ -53,16 +58,28 @@ cat > "$STUBBIN/lsblk" <<'STUB'
 #!/bin/bash
 case "$*" in
     *KNAME,SIZE*)
-        printf '/dev/sda 1T\n/dev/sdb 500G\n/dev/nvme0n1 2T\n'
+        if [[ -n $FAKE_ONLY_USB ]]; then
+            printf '/dev/sdc 32G\n'
+        else
+            printf '/dev/sdc 32G\n/dev/sda 1T\n/dev/sdb 500G\n/dev/nvme0n1 2T\n'
+        fi
         ;;
     *SERIAL,WWN*)
         printf 'SERIAL="" WWN=""\n'
+        ;;
+    *TRAN,RM*)
+        case "${@: -1}" in
+            /dev/sdc)     printf 'TRAN="usb" RM="0"\n' ;;
+            /dev/nvme0n1) printf 'TRAN="nvme" RM="0"\n' ;;
+            *)            printf 'TRAN="sata" RM="0"\n' ;;
+        esac
         ;;
 esac
 STUB
 cat > "$STUBBIN/blockdev" <<'STUB'
 #!/bin/bash
 case "$2" in
+    /dev/sdc) echo 34359738368 ;;
     /dev/sda) echo 1000204886016 ;;
     /dev/sdb) echo 500107862016 ;;
     *)        echo 2000398934016 ;;
@@ -95,9 +112,10 @@ check() {
     fi
 }
 
-check "first-enumerated disk named once"   "/dev/sda"          "/dev/sda /dev/sdb /dev/nvme0n1"
-check "later disk moves to the front"      "/dev/sdb"          "/dev/sdb /dev/sda /dev/nvme0n1"
-check "two specs keep their given order"   "/dev/nvme0n1,/dev/sda" "/dev/nvme0n1 /dev/sda /dev/sdb"
+check "first-enumerated disk named once"   "/dev/sda"          "/dev/sda /dev/sdb /dev/nvme0n1 /dev/sdc"
+check "later disk moves to the front"      "/dev/sdb"          "/dev/sdb /dev/sda /dev/nvme0n1 /dev/sdc"
+check "two specs keep their given order"   "/dev/nvme0n1,/dev/sda" "/dev/nvme0n1 /dev/sda /dev/sdb /dev/sdc"
+check "a USB device named explicitly"      "/dev/sdc"          "/dev/sdc /dev/sda /dev/sdb /dev/nvme0n1"
 
 # Automatic choice: single-disk image, no Host Primary Disk.
 auto() {
@@ -116,6 +134,7 @@ auto() {
 auto "no argument takes the first enumerated" "/dev/sda"     "" ""
 auto "largesize=1 takes the largest"          "/dev/nvme0n1" "1" ""
 auto "smallsize=1 takes the smallest"         "/dev/sdb"     "" "1"
+FAKE_ONLY_USB=1 auto "a lone USB device is still chosen" "/dev/sdc" "" ""
 
 [[ $fail -eq 0 ]] && echo "PASS" || echo "FAIL"
 exit $fail
