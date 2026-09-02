@@ -1440,8 +1440,12 @@ getHardDisk() {
                     matched=1
                     found_match=1
                     disks="$disks $dev"
-                    # remove matched dev from the pool
-                    devs="$(echo " $devs " | sed "s# $dev # #g; s/^ *//; s/ *$//")"
+                    # Remove the matched dev from the pool. $devs is one
+                    # device per LINE, so match whole lines -- a space-padded
+                    # sed never matched, the device stayed in the pool, and
+                    # the "add unmatched devices" step below appended it a
+                    # second time (fogproject #743: /dev/sda captured twice).
+                    devs="$(grep -vx -- "$dev" <<<"$devs")"
                     break
                 fi
             done
