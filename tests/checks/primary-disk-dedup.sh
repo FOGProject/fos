@@ -21,10 +21,15 @@
 #      their enumeration order, still once each.
 #   3. A comma-separated fdrive naming two disks yields them in the order
 #      given, with the remainder after.
+#   4. With no fdrive, the kernel arguments largesize=1 and smallsize=1 pick
+#      the largest and the smallest disk by capacity (fogproject #817), and
+#      neither picks the first enumerated.
 #
 # Mechanism mirrors tests/checks/ntfs-shrink-retry.sh: source a sandbox copy
 # of the library and PATH-shadow lsblk, blockdev and blkid with doubles that
-# describe a fixed three-disk machine.
+# describe a fixed three-disk machine whose first-enumerated disk is neither
+# the largest nor the smallest, so each automatic choice lands on a
+# different device.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_LIB="$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/usr/share/fog/lib"
@@ -48,7 +53,7 @@ cat > "$STUBBIN/lsblk" <<'STUB'
 #!/bin/bash
 case "$*" in
     *KNAME,SIZE*)
-        printf '/dev/sda 500G\n/dev/sdb 1T\n/dev/nvme0n1 2T\n'
+        printf '/dev/sda 1T\n/dev/sdb 500G\n/dev/nvme0n1 2T\n'
         ;;
     *SERIAL,WWN*)
         printf 'SERIAL="" WWN=""\n'
@@ -58,8 +63,8 @@ STUB
 cat > "$STUBBIN/blockdev" <<'STUB'
 #!/bin/bash
 case "$2" in
-    /dev/sda) echo 500107862016 ;;
-    /dev/sdb) echo 1000204886016 ;;
+    /dev/sda) echo 1000204886016 ;;
+    /dev/sdb) echo 500107862016 ;;
     *)        echo 2000398934016 ;;
 esac
 STUB
@@ -93,6 +98,24 @@ check() {
 check "first-enumerated disk named once"   "/dev/sda"          "/dev/sda /dev/sdb /dev/nvme0n1"
 check "later disk moves to the front"      "/dev/sdb"          "/dev/sdb /dev/sda /dev/nvme0n1"
 check "two specs keep their given order"   "/dev/nvme0n1,/dev/sda" "/dev/nvme0n1 /dev/sda /dev/sdb"
+
+# Automatic choice: single-disk image, no Host Primary Disk.
+auto() {
+    local name="$1" want="$2"
+    fdrive=""; imgType="n"; type="up"
+    largesize="$3"; smallsize="$4"
+    hd=""; disks=""
+    getHardDisk 2>/dev/null
+    if [[ "$hd" == "$want" && "$disks" == "$want" ]]; then
+        echo "ok    $name"
+    else
+        echo "FAIL  $name: largesize='$3' smallsize='$4' gave hd='$hd' disks='$disks', wanted '$want'"
+        fail=1
+    fi
+}
+auto "no argument takes the first enumerated" "/dev/sda"     "" ""
+auto "largesize=1 takes the largest"          "/dev/nvme0n1" "1" ""
+auto "smallsize=1 takes the smallest"         "/dev/sdb"     "" "1"
 
 [[ $fail -eq 0 ]] && echo "PASS" || echo "FAIL"
 exit $fail
