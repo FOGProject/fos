@@ -26,6 +26,11 @@
 #      ntfsresize is never asked for a target at or past the volume size.
 #   4. A dry run that passes first time takes the original target, so the
 #      unaffected majority of captures sees no change.
+#   5. A dry run that fails at "Could not adjust the bad sector list"
+#      (fogproject issue #762) records the partition as fixed size and
+#      captures it unresized, with no retry and no abort. The real resize
+#      would fail the same way, and capturing at present size is the manual
+#      workaround (the "not resizable" image type) applied to one partition.
 #
 # Mechanism mirrors tests/checks/sector-size.sh: source a sandbox copy of the
 # library, PATH-shadow ntfsresize with a double that records every size it was
@@ -75,6 +80,12 @@ case "$mode" in
         bytes=$(( kib * 1024 ))
         echo "$mode $bytes" >> "$SANDBOX/calls"
         [[ $mode == -fs ]] && exit 0
+        if [[ -n $FAKE_BADCLUST ]]; then
+            echo "Relocating needed data ..."
+            echo "Updating \$BadClust file ..."
+            echo "ERROR: Could not adjust the bad sector list"
+            exit 1
+        fi
         if [[ -n $FAKE_OTHER_ERROR ]]; then
             echo "ERROR: Cluster accounting failed at 12345 (0x3039): missing cluster in \$Bitmap"
             exit 1
@@ -99,7 +110,8 @@ FAIL=0
 pass() { echo "PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $1"; [[ -n $2 ]] && echo "      $2"; FAIL=$((FAIL + 1)); }
 
-# run_shrink <fits_bytes> [other_error] -- drive shrinkPartition over /dev/sda3.
+# run_shrink <fits_bytes> [other_error] [badclust] -- drive shrinkPartition
+# over /dev/sda3.
 # Leaves the console output in $OUT, the ntfsresize call log in $CALLS, the
 # bytes handed to resizePartition in $RESIZED and the fixed-size file in $FIXED.
 run_shrink() {
@@ -111,7 +123,7 @@ run_shrink() {
         set +u
         export PATH="$STUBBIN:$PATH" SANDBOX="$SANDBOX"
         export VOLUME_BYTES="$VOLUME_BYTES" MIN_BYTES="$MIN_BYTES"
-        export FAKE_FITS_BYTES="$1" FAKE_OTHER_ERROR="$2"
+        export FAKE_FITS_BYTES="$1" FAKE_OTHER_ERROR="$2" FAKE_BADCLUST="$3"
         . "$SANDBOX/funcs.sh"
         handleError() { echo "ABORT: $*"; exit 1; }
         debugPause() { :; }
@@ -194,6 +206,18 @@ if [[ $OUT != *ABORT* && $n -eq 1 && $first -eq $(( WANT_KIB * 1024 )) && $(real
     pass "fits first time: one dry run and one resize at ${WANT_KIB}k"
 else
     fail "fits first time" "tries=$n first=$first want=$(( WANT_KIB * 1024 )) real=$(realruns | tr '\n' ' ')
+$OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. The $BadClus truncate fails: fixed size, one dry run, no resize, no abort.
+run_shrink 0 "" yes
+n=$(dryruns | wc -l)
+if [[ $OUT != *ABORT* && $OUT == *RETURNED* && $OUT == *"bad sector list"* \
+      && $FIXED == *:3* && $n -eq 1 && -z $(realruns) && -z $RESIZED ]]; then
+    pass "bad sector list failure: recorded fixed size after one dry run, no resize"
+else
+    fail "bad sector list fallback" "tries=$n fixed='$FIXED' real='$(realruns | tr '\n' ' ')' resized='$RESIZED'
 $OUT"
 fi
 

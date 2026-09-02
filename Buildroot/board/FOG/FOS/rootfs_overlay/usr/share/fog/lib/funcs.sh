@@ -632,6 +632,18 @@ shrinkPartition() {
                 tmpoutput=$(cat /tmp/tmpoutput.txt | tr -d \\0)
                 test_string=$(cat /tmp/tmpoutput.txt | egrep -io "(ended successfully|bigger than the device size|volume size is already OK)" | tr -d '[[:space:]]' | tr -d \\0)
                 [[ $ntfsstatus -eq 0 || -n $test_string ]] && break
+                # ntfsresize shrinks $BadClus:$Bad, the sparse file that spans
+                # the whole volume, as part of every resize, and on some
+                # Windows 11 volumes (fogproject issue #762) that truncate
+                # fails while chkdsk finds nothing wrong. The real resize
+                # would fail the same way, so treat the partition as one that
+                # cannot shrink and capture it at its present size, which is
+                # the "not resizable" image type applied to one partition
+                # instead of the whole image.
+                if grep -q "Could not adjust the bad sector list" /tmp/tmpoutput.txt; then
+                    test_string="badclust"
+                    break
+                fi
                 # ntfsresize relocates every cluster that lies past the new end
                 # into the space before it, and on a Windows 11 volume the file
                 # holding those relocations can run out of runlist room before
@@ -663,6 +675,11 @@ shrinkPartition() {
                     echo " * Resize test was successful"
                     do_resizefs=1
                     do_resizepart=1
+                    ntfsstatus=0
+                    ;;
+                badclust)
+                    echo " * Not resizing filesystem $part (ntfsresize cannot adjust its bad sector list; capturing at present size)"
+                    echo "$(cat ${imagePath}/d1.fixed_size_partitions | tr -d \\0):${part_number}" > "$imagePath/d1.fixed_size_partitions"
                     ntfsstatus=0
                     ;;
                 biggerthanthedevicesize|outofroom)
