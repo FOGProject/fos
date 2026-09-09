@@ -865,6 +865,73 @@ countPartTypes() {
 # $1 = Source File
 # $2 = Target
 # $3 = mc task or not (not required)
+# Answers whether this server prefixes each multicast stream with an
+#    identity header, caching the probe in $mcstreamidcap. A server that
+#    does not must not have 128 bytes stripped off its payload, so the
+#    question has to be settled before the first receiver's bytes are read.
+#
+#    The CALL is checked before its answer is interpreted: reading the body
+#    straight out of $( ) would turn an unreachable server into "no header",
+#    which is a claim about the server's VERSION drawn from a dead network.
+#    Same shape as fogproject GH-1266, same handling as the mclvm probe.
+mcStreamIdSupported() {
+    [[ -n ${mcstreamidcap:-} ]] && return 0
+    local servercaps=""
+    if ! callServer "${web}service/getversion.php?caps=1"; then
+        handleError "Cannot confirm how the FOG server frames multicast streams: ${serverReason} (${FUNCNAME[0]})\n   Args Passed: $*"
+    fi
+    servercaps="$serverBody"
+    if [[ $servercaps == *mcstreamid* ]]; then
+        mcstreamidcap="yes"
+    else
+        mcstreamidcap="no"
+    fi
+    return 0
+}
+# Reads the identity header off the front of a multicast stream and refuses
+#    the stream if it is not the image file this partition asked for.
+#
+#    udpcast carries no metadata, so a stream is bound to a partition by
+#    nothing but its position in the sequence. A client that reboots
+#    mid-session, or whose receiver opens after a sender has already given up
+#    waiting for it, lands one stream out of step and every partition after
+#    that is restored from the wrong image. partclone objects only when the
+#    target partition is smaller than the source; when it is larger the wrong
+#    filesystem is written and the deploy reports success. fogproject #1742.
+#
+#    Reads on fd 9, which the caller has open on the receiver, and reads a
+#    byte at a time: a pipe may return a short read, and over-reading would
+#    eat payload.
+#
+# $1 = the image file this partition expects (may be a glob)
+checkStreamIdentity() {
+    local wanted="$1"
+    [[ -z $wanted ]] && handleError "No expected image file passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    # The server names a concatenated stream by the stem its chunks share,
+    #    which is what the client's own glob collapses to: d1p4.img* and
+    #    sys.img.* both become the stem. A plain filename is used verbatim,
+    #    so rec.img.000 and rec.img.001 stay distinguishable -- under the
+    #    legacy layouts those are whole partitions, not chunks.
+    wanted="$(basename "$wanted")"
+    wanted="${wanted%\*}"
+    wanted="${wanted%.}"
+    local hdr=""
+    hdr=$(dd bs=1 count=128 status=none <&9)
+    local tag="${hdr%% *}"
+    if [[ $tag != FOGMC1 ]]; then
+        handleError "Multicast stream for $wanted did not start with a stream header; the server and this client disagree about the stream format (${FUNCNAME[0]})\n   Args Passed: $*"
+    fi
+    local got="${hdr#FOGMC1 }"
+    got="${got%%[[:space:]]*}"
+    # Quoted: an unquoted right side of [[ != ]] is a PATTERN, so a $wanted
+    #    still carrying its glob would match the stem it was supposed to be
+    #    compared against, and the star-strip above would be doing the work
+    #    by accident. Names with [ or ? would be worse.
+    if [[ $got != "$wanted" ]]; then
+        handleError "Multicast stream mismatch: expected $wanted but the server is sending $got. The receiver is out of step with the sender, which would restore this image onto the wrong partition (${FUNCNAME[0]})\n   Args Passed: $*"
+    fi
+    echo " * Multicast stream $got"
+}
 writeImage()  {
     local file="$1"
     local target="$2"
@@ -873,10 +940,23 @@ writeImage()  {
     mkfifo /tmp/pigz1
     case $mc in
         yes)
-            if [[ -z $mcastrdv ]]; then
-                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $storageip 2>/dev/null >/tmp/pigz1 &
+            [[ -z $file ]] && handleError "No source file passed (${FUNCNAME[0]})\n   Args Passed: $*"
+            local rdvaddress="$storageip"
+            [[ -n $mcastrdv ]] && rdvaddress="$mcastrdv"
+            mcStreamIdSupported
+            if [[ $mcstreamidcap == yes ]]; then
+                # The receiver's own output is read here first, so that the
+                #    header can be checked before anything reaches partclone
+                #    and the target partition is still untouched on a refusal.
+                rm -f /tmp/mcraw
+                mkfifo /tmp/mcraw
+                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $rdvaddress 2>/dev/null >/tmp/mcraw &
+                exec 9</tmp/mcraw
+                checkStreamIdentity "$file"
+                cat <&9 >/tmp/pigz1 &
+                exec 9<&-
             else
-                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $mcastrdv 2>/dev/null >/tmp/pigz1 &
+                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $rdvaddress 2>/dev/null >/tmp/pigz1 &
             fi
             ;;
         *)
@@ -918,7 +998,7 @@ writeImage()  {
     exitcode=$?
     set +o pipefail
     [[ ! $exitcode -eq 0 ]] && handleError "Image failed to restore and exited with exit code $exitcode (${FUNCNAME[0]})\n   Info: $(cat /tmp/partclone.log)\n   Args Passed: $*"
-    rm -rf /tmp/pigz1 >/dev/null 2>&1
+    rm -rf /tmp/pigz1 /tmp/mcraw >/dev/null 2>&1
 }
 # Gets the valid restore parts. They're only
 #    valid if the partition data exists for
