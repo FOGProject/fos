@@ -915,13 +915,29 @@ checkStreamIdentity() {
     wanted="$(basename "$wanted")"
     wanted="${wanted%\*}"
     wanted="${wanted%.}"
+    # The width belongs to the record VERSION, not to the reader. A FOGMC1
+    #    record is 128 bytes on both sides, and nothing on the wire tells
+    #    this client otherwise -- so a server that changes the width must
+    #    change the magic with it. An old client then fails the tag test
+    #    below and names the version it cannot read, instead of mis-framing
+    #    the stream. fogproject holds the same pair as
+    #    MulticastTask::STREAM_HEADER_FORMAT and ::STREAM_HEADER_BYTES.
+    local mcHeaderMagic="FOGMC1"
+    local mcHeaderBytes=128
     local hdr=""
-    hdr=$(dd bs=1 count=128 status=none <&9)
+    hdr=$(dd bs=1 count=$mcHeaderBytes status=none <&9)
     local tag="${hdr%% *}"
-    if [[ $tag != FOGMC1 ]]; then
+    if [[ $tag != "$mcHeaderMagic" ]]; then
+        # A stream that carries a record version this client does not read
+        #    is a version skew, and saying which version turns "the deploy
+        #    failed" into "update FOS". Only a well formed magic is echoed;
+        #    an unheadered stream starts with image bytes.
+        if [[ $tag =~ ^FOGMC[0-9]+$ ]]; then
+            handleError "Multicast stream for $wanted carries $tag records and this client reads $mcHeaderMagic; update FOS to match the FOG server (${FUNCNAME[0]})\n   Args Passed: $*"
+        fi
         handleError "Multicast stream for $wanted did not start with a stream header; the server and this client disagree about the stream format (${FUNCNAME[0]})\n   Args Passed: $*"
     fi
-    local got="${hdr#FOGMC1 }"
+    local got="${hdr#"$mcHeaderMagic" }"
     got="${got%%[[:space:]]*}"
     # Quoted: an unquoted right side of [[ != ]] is a PATTERN, so a $wanted
     #    still carrying its glob would match the stem it was supposed to be
