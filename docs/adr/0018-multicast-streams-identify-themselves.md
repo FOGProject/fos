@@ -109,3 +109,31 @@ by the server it is talking to.
 - **The 128-byte width is duplicated**, as a constant on the server and a
   `dd` count here. Both are pinned by their own repo's checks, but nothing
   compares them across the two.
+
+## Amendments
+
+**2026-09-09 — both gaps above are closed.**
+
+*Prevention.* fogproject #1744 refuses the join instead of catching it
+later. A host whose task has already checked in, to a session that already
+has clients, is turned away in `TaskQueue::checkIn()` — the point
+`fog.checkin` blocks on, before `fog.download` touches the disk. That
+removes the common trigger. The header still covers the rest: a receiver
+that opens late, or a sender chain that moves on for any other reason.
+
+*The duplicated width.* #179 makes the width a property of the record
+version rather than a free number. **A `FOGMC1` record is 128 bytes.** Each
+repo pins that pair, not the number alone, so a width change that keeps the
+magic fails a check on the side that changed. Changing the width therefore
+means bumping the magic, and an old client then meets `FOGMC2`, fails the
+tag test, and names the version it cannot read — instead of mis-framing the
+stream.
+
+`checkStreamIdentity()` names the magic and the width once each, and the
+`dd` counts the named value. The assertion harness reads both out of the
+shipped function and builds every fixture from them, so a fixture can no
+longer agree with a stale belief about the format — which is what the
+restated `printf 'FOGMC1 %-120s\n'` did, and why a server-side change used
+to leave the suite green. Where a fogproject checkout is on the same
+machine, the harness compares the server's constants directly and says when
+it could not.
