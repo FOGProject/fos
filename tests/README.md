@@ -146,7 +146,12 @@ tests/checks/secureboot.sh    # secureboot-funcs.sh: derives the right firmware
                               # in a single full-block dd, PK is written LAST,
                               # a failed download writes nothing at all, and a
                               # SetupMode that does not flip 1 -> 0 is a refusal
-                              # rather than a success
+                              # rather than a success. And the User Mode path
+                              # (ADR-0019): Microsoft's signed 2023 CA updates
+                              # are appended, not written over db, only where
+                              # the 2011 counterpart and Microsoft's KEK are
+                              # present, and a write the firmware did not apply
+                              # is a failure
 tests/checks/secureboot-enrollment-report.sh
                               # sbReport() tells the FOG server WHICH of
                               # fog.enrollsb's three exits was reached -- all

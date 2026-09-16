@@ -362,6 +362,23 @@ and add a new ADR for any similarly hard-to-reverse decision:
   also first-exercised ADR-0015 and the `mount -t nfs` fix off QEMU. Guarded by
   `tests/checks/arm64-platform-config.sh`.
 
+- **0019 — Microsoft 2023 CAs in User Mode.** Windows servicing is moving the
+  boot manager to one signed by **Windows UEFI CA 2023**, and an image captured
+  after that fails with `Security Policy Violation` on a target whose `db` has
+  only the 2011 CAs (forums topic 18246). `fog.enrollsb` now applies
+  Microsoft's own KEK-signed db updates, shipped in
+  `rootfs_overlay/usr/share/fog/secureboot/`, on a machine in User Mode. This
+  does not contradict ADR-0009: the trust comes from Microsoft's key, already in
+  `KEK`. The write is an **append** (`0x67`): Microsoft signed it with the
+  append bit, so a `0x27` write fails the signature and adds nothing. Each 2023 CA is added only where its 2011
+  counterpart is already trusted, and only when `KEK` holds Microsoft's 2011
+  key. `db` is re-read after each write, because efivarfs accepts bytes the
+  firmware may not apply. The check runs **before** the already-trusted exit,
+  because the reporting machine already trusted FOG. Guarded by
+  `tests/checks/secureboot.sh` cases 41–50, which use the shipped files.
+  Validated on OVMF with SMM, Secure Boot enforcing (2026-09-16); not yet on
+  physical firmware.
+
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
 - Both libraries hardcode `/usr/share/fog/lib` as their own path and expect to
