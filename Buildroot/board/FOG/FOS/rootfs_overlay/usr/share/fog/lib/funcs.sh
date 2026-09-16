@@ -65,6 +65,33 @@ getMACAddresses() {
     read mac_addresses <<< $(/sbin/ip -0 addr | awk 'ORS=NR%2?FS:RS' | awk "/$ifaces/ {print \$11}" | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
     echo $mac_addresses
 }
+# A server that sent no mac= is not a machine with no MAC. Ask the NICs.
+#
+# $mac is how FOS names itself to the server for the whole run: it is what
+# reportToServer() posts to service/taskerror.php, what fog.statusreporter
+# posts to service/progress.php, and what secureboot-funcs.sh reports with.
+# Empty, every one of those is rejected or ignored -- and taskerror.php acks
+# identically whatever happens, so nothing says the channel is dead.
+#
+# FOG 1.5 servers do send it empty, on every task started from the iPXE menu
+# for a machine with no host row: BootMenu::falseTasking() builds the kernel
+# line with "mac=$mac" and never assigns $mac (FOGProject/fogproject#1767).
+# FOS runs against servers older than itself as a matter of course, so this
+# has to be recoverable here rather than only on the server.
+#
+# The reason nothing already recovers it: falseTasking() emits capone=1 but
+# also type=down, and bin/fog switches on $mode, which is unset -- so the run
+# is fog.download and fog.capone's own getMACAddresses call never happens.
+# fog.download borrows a real MAC for the inventory call and then puts the
+# empty one back.
+#
+# Here rather than beside the kernel-argument import above, which is where it
+# belongs, only because getMACAddresses has to be defined first. It is after
+# the usb /tmp/hinfo.txt source, so a USB boot still gets its own answer in
+# preference to this one. Guarded on empty, so a normal tasking pays nothing.
+if [[ -z $mac ]]; then
+    export mac=$(getMACAddresses)
+fi
 # Gets all macs and types.
 getMACTypes() {
     read macandtypes <<< $(/usr/sbin/lshw -c network -json | jq -s '.[] | .serial + " " + .handle' | tr -d '"' | tr '\n' '|' | sed 's/[|]$//g')

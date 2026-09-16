@@ -157,6 +157,7 @@ tests/checks/mbr-extended.sh  # MBR extended/logical layouts: emission order, EB
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
 tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
+tests/checks/empty-mac-fallback.sh  # $mac resolved from the NICs when the server sent none (fogproject#1767)
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
 tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
