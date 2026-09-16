@@ -166,7 +166,7 @@ if [[ -n $FAKE_DD_FAIL && ${out##*/} == "$FAKE_DD_FAIL"-* ]]; then
     exit 1
 fi
 # APPEND_WRITE (attribute 0x67): firmware adds the signed entries to the
-# variable and keeps what was there. Modelled by appending the payload, so the
+# variable and keeps what was there. Modeled by appending the payload, so the
 # old CAs survive and the new CA's DER (carried verbatim inside Microsoft's
 # update) becomes findable. Any other attribute byte falls through to the real
 # dd, which overwrites. Real firmware refuses a 0x27 write of this payload
