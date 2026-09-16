@@ -84,6 +84,26 @@ tests/checks/error-report.sh  # the failure report handleError() sends to
                               # console, a failed report still lets handleError
                               # reach its reboot notice, and no $web means no
                               # attempt at all
+tests/checks/empty-mac-fallback.sh
+                              # what $mac is when the server sent none
+                              # (fogproject#1767). A FOG 1.5 server builds a
+                              # menu-started task's kernel line with an empty
+                              # mac= for any machine with no host row, and $mac
+                              # is how FOS names itself to taskerror.php,
+                              # progress.php and the Secure Boot report for the
+                              # whole run -- so an empty one makes every report
+                              # anonymous and silently discarded. The check
+                              # pins that an empty or absent mac= is answered
+                              # from the NICs, that a mac= the server DID send
+                              # is kept and costs no lookup, that a USB boot's
+                              # own /tmp/hinfo.txt answer still wins, and that
+                              # the result is exported so a child process (the
+                              # backgrounded fog.statusreporter) sees it. Its
+                              # ip double reproduces FOS's OWN busybox output,
+                              # which omits the `state`/`group` fields a
+                              # distribution's ip prints -- getMACAddresses
+                              # reads field 11, so a stub built from the host's
+                              # format returns junk and fails correct code
 tests/checks/server-post-reporting.sh
                               # callServer() and every script that talks to the
                               # FOG server (fogproject#1380): a connect failure,
