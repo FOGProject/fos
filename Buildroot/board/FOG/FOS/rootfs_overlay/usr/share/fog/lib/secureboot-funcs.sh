@@ -213,7 +213,22 @@ sbReport() {
 sbCertInDb() {
     local cert="$1"
     [[ -z $cert ]] && handleError "No certificate passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    local path="${sbEfiVarDir}/db-${sbEfiSecurityGuid}"
+    sbCertInVar "db-${sbEfiSecurityGuid}" "$cert"
+}
+# Return 0 if the certificate's bytes are in the named EFI variable.
+#
+# The same byte search sbCertInDb describes, for any signature database. KEK
+# needs it too, and KEK lives under the global GUID, so the caller names the
+# efivarfs entry in full.
+#
+# $1 efivarfs entry name, "<Name>-<guid>"
+# $2 path to the DER certificate
+sbCertInVar() {
+    local var="$1"
+    local cert="$2"
+    [[ -z $var ]] && handleError "No variable passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ -z $cert ]] && handleError "No certificate passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    local path="${sbEfiVarDir}/${var}"
     [[ -r $path && -s $cert ]] || return 1
     local certhex dbhex
     # -v because od collapses repeated lines into "*" by default, which would
@@ -374,17 +389,21 @@ sbFetchAuthVar() {
 # $1 variable name (PK, KEK, db)
 # $2 namespace GUID
 # $3 path to the .auth file
+# $4 optional attribute byte, as a printf escape. Defaults to \x27. Pass \x67
+#    (the above plus APPEND_WRITE) to add entries to a variable instead of
+#    replacing it.
 sbWriteEfiAuthVar() {
     local name="$1"
     local guid="$2"
     local authfile="$3"
+    local attr="${4:-\x27}"
     [[ -z $name ]] && handleError "No variable name passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $guid ]] && handleError "No GUID passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -s $authfile ]] || return 1
     local path="${sbEfiVarDir}/${name}-${guid}"
     local payload="/tmp/.sbauth.${name}"
     rm -f "$payload" >/dev/null 2>&1
-    printf '\x27\x00\x00\x00' > "$payload" 2>/dev/null || return 1
+    printf "${attr}"'\x00\x00\x00' > "$payload" 2>/dev/null || return 1
     cat "$authfile" >> "$payload" 2>/dev/null || return 1
     local size
     size=$(stat -c %s "$payload" 2>/dev/null)
@@ -442,5 +461,60 @@ sbEnrollDb() {
     # stays 0 until the next boot, because firmware computes it during POST.
     # Checking it here turns "dd wrote some bytes" into "the platform enrolled".
     [[ $(sbEfiFlag SetupMode) == 0 ]] || return 1
+    return 0
+}
+# Add Microsoft's 2023 CAs to db on a machine that is NOT in Setup Mode.
+#
+# WHY: Windows servicing is replacing the boot manager with one signed by
+# "Windows UEFI CA 2023". An image captured after that change carries the new
+# boot manager, and a target whose db has only the 2011 CAs refuses it with
+# "Security Policy Violation" (forums topic 18246). The disk is correct; the
+# firmware does not trust it yet. See docs/adr/0019.
+#
+# HOW: Microsoft publishes each CA as a signed db update, signed by
+# "Microsoft Corporation KEK CA 2011". Almost every PC carries that key in KEK,
+# so the firmware accepts the update in User Mode, Secure Boot on or off. This
+# is the same file Windows servicing and fwupd apply. The files live in
+# /usr/share/fog/secureboot/ and are byte-identical to microsoft/secureboot_objects.
+#
+# APPEND, never replace: attribute 0x67 adds the entries and leaves the rest of
+# db alone. Microsoft signed the update with the append bit set, and the
+# signature covers the attributes, so a 0x27 write fails verification and adds
+# nothing (OVMF, 2026-09-16). A firmware that skipped that check would replace
+# db with this one CA.
+#
+# Each CA is added only where its 2011 counterpart is already in db. That is
+# Microsoft's own rule, and it keeps the owner's policy: a machine that does
+# not trust Windows or third-party code today does not start to.
+#
+# Echoes one line per CA it added. Returns 0 when nothing needed adding or
+# every addition was confirmed; 1 when a write failed or the firmware did not
+# apply it; 2 when a CA is missing but KEK lacks Microsoft's key, so no signed
+# update can apply. The caller reports; this does not decide policy.
+sbMsDbUpdate() {
+    local dir="/usr/share/fog/secureboot"
+    local entry update old new needed=""
+    # update file : 2011 CA that must be present : 2023 CA it adds
+    for entry in \
+        "DBUpdate2024.bin:MicWinProPCA2011.der:WindowsUEFICA2023.der" \
+        "DBUpdate3P2023.bin:MicCorUEFCA2011.der:MicrosoftUEFICA2023.der" \
+        "DBUpdateOROM2023.bin:MicCorUEFCA2011.der:MicCorOptionROMCA2023.der"; do
+        IFS=: read -r update old new <<< "$entry"
+        sbCertInDb "${dir}/${old}" || continue
+        sbCertInDb "${dir}/${new}" && continue
+        needed="${needed} ${update}:${new}"
+    done
+    [[ -z $needed ]] && return 0
+    # Checked once, before any write. Without Microsoft's KEK the firmware
+    # rejects every one of these, so trying is noise, not a diagnosis.
+    sbCertInVar "KEK-${sbEfiGlobalGuid}" "${dir}/MicCorKEKCA2011.der" || return 2
+    for entry in $needed; do
+        IFS=: read -r update new <<< "$entry"
+        sbWriteEfiAuthVar db "$sbEfiSecurityGuid" "${dir}/${update}" '\x67' || return 1
+        # Re-read db from the firmware. efivarfs accepts bytes the firmware can
+        # still decline, so a clean dd is not proof the CA is trusted.
+        sbCertInDb "${dir}/${new}" || return 1
+        echo "${new%.der}"
+    done
     return 0
 }

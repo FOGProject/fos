@@ -27,6 +27,11 @@
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_LIB="$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/usr/share/fog/lib"
 
+# The Microsoft certificates and signed db updates FOS ships. The tests use the
+# real files, not stand-ins: the update is found by the CA's DER bytes inside
+# it, and a fake payload would only prove the stub agrees with itself.
+SBFILES="$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/usr/share/fog/secureboot"
+
 [[ -f $REPO_LIB/secureboot-funcs.sh ]] || { echo "ERROR: cannot find secureboot-funcs.sh under $REPO_LIB" >&2; exit 2; }
 
 SANDBOX="$(mktemp -d)"
@@ -45,6 +50,7 @@ mkdir -p "$SANDBOX/proc" "$SANDBOX/bin"
 # a rule that has already rewritten a path to "$SANDBOX/sys/..." leaves a line
 # that this rule would match again and prefix a second time.
 sed -e "s#\"/tmp/#\"$SANDBOX/#g" \
+    -e "s#\"/usr/share/fog/secureboot\"#\"$SBFILES\"#g" \
     -e "s#/sys/firmware/efi#$SANDBOX/sys/firmware/efi#g" \
     -e "s#/proc/mounts#$SANDBOX/proc/mounts#g" \
     "$REPO_LIB/secureboot-funcs.sh" > "$SANDBOX/secureboot-funcs.sh"
@@ -159,6 +165,23 @@ done
 if [[ -n $FAKE_DD_FAIL && ${out##*/} == "$FAKE_DD_FAIL"-* ]]; then
     exit 1
 fi
+# APPEND_WRITE (attribute 0x67): firmware adds the signed entries to the
+# variable and keeps what was there. Modelled by appending the payload, so the
+# old CAs survive and the new CA's DER (carried verbatim inside Microsoft's
+# update) becomes findable. Any other attribute byte falls through to the real
+# dd, which overwrites. Real firmware refuses a 0x27 write of this payload
+# (the signature covers the attribute), but either way the 2011 CAs or the new
+# CA go missing, so a regression to a replacing write turns 41b-41d red. $FAKE_APPEND_IGNORED models firmware that accepts
+# the write and applies nothing.
+in=""
+for a in "$@"; do
+    [[ $a == if=* ]] && in="${a#if=}"
+done
+if [[ $(od -An -tx1 -N1 "$in" | tr -d '[:space:]') == 67 ]]; then
+    [[ -n $FAKE_APPEND_IGNORED ]] && exit 0
+    tail -c +5 "$in" >> "$out" || exit 1
+    exit 0
+fi
 /usr/bin/dd "$@" || exit 1
 # Writing a PK is what takes a platform out of Setup Mode. Modelling that here
 # is the only way to test that sbEnrollDb confirms the enrollment from the
@@ -267,7 +290,8 @@ new_case() {
     FAKE_IMPORT_NOOP=""; FAKE_KEY_ENROLLED=""; FAKE_KEY_IN_DB=""
     FAKE_CURL_BODY="der"; FAKE_MOUNT_FAIL=""; FAKE_UNMOUNTED=""
     FAKE_AUTH_FAIL=""; FAKE_DD_FAIL=""; FAKE_PK_KEEPS_SETUP=""
-    FAKE_AUTH_GARBAGE=""
+    FAKE_AUTH_GARBAGE=""; FAKE_APPEND_IGNORED=""
+    export FAKE_APPEND_IGNORED
     export FAKE_GENHASH_FAIL FAKE_GENHASH_GARBAGE FAKE_IMPORT_FAIL \
            FAKE_IMPORT_NOOP FAKE_KEY_ENROLLED FAKE_KEY_IN_DB FAKE_CURL_BODY \
            FAKE_MOUNT_FAIL FAKE_UNMOUNTED FAKE_AUTH_FAIL FAKE_DD_FAIL \
@@ -687,6 +711,106 @@ check "39. writes succeed but SetupMode stays 1 -> refuse" \
 new_case; make_firmware 1 0
 check "40. enrollment succeeds when the firmware leaves Setup Mode" \
     "$(lib 'sbEnrollDb && echo ok || echo refused')" "ok"
+
+# --- the Microsoft 2023 CA update (User Mode, append) ---
+
+# Build a db or KEK holding several certificates, one signature list each.
+# $1 variable name (db or KEK); the rest are DER files.
+make_sigdb() {
+    local var="$1"; shift
+    local guid="$SECURITY_GUID"
+    [[ $var == KEK ]] && guid="$GLOBAL_GUID"
+    local tmp="$SANDBOX/.sigdb" out="" f
+    : > "$SANDBOX/.sigdb.all"
+    for f in "$@"; do
+        make_db_with_cert "$f"
+        tail -c +5 "$EFIVARS/db-$SECURITY_GUID" >> "$SANDBOX/.sigdb.all"
+    done
+    { printf '\x27\x00\x00\x00'; cat "$SANDBOX/.sigdb.all"; } > "$tmp"
+    mv "$tmp" "$EFIVARS/$var-$guid"
+}
+in_db() { lib "sbCertInDb '$SBFILES/$1' && echo yes || echo no"; }
+
+# 41. A factory 2011 machine in User Mode gets all three 2023 CAs, by append:
+# the 2011 CAs are still there afterward.
+new_case; make_firmware 0 1
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der" "$SBFILES/MicCorUEFCA2011.der"
+GOT="$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')"
+check "41. factory 2011 db gets the three 2023 CAs" \
+    "$GOT" "WindowsUEFICA2023 MicrosoftUEFICA2023 MicCorOptionROMCA2023 rc=0 "
+check "41b. Windows UEFI CA 2023 is now in db" "$(in_db WindowsUEFICA2023.der)" "yes"
+check "41c. the 2011 Windows CA survived (append, not replace)" "$(in_db MicWinProPCA2011.der)" "yes"
+check "41d. the 2011 UEFI CA survived" "$(in_db MicCorUEFCA2011.der)" "yes"
+
+# 42. One write() per update, as case 35 requires for the Setup Mode path.
+# The 0x67 attribute byte is gated by 41c: the dd stub appends only on 0x67,
+# so a replacing write drops the 2011 CAs.
+DDLINE="$(grep -m1 '^dd .*db-' "$SANDBOX/calls")"
+check "42. the update is written as a single full-block dd" \
+    "$([[ $DDLINE == *count=1* && $DDLINE == *iflag=fullblock* ]] && echo yes || echo no)" "yes"
+
+# 43. Secure Boot off is still User Mode, and the update applies the same way.
+new_case; make_firmware 0 0
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der"
+check "43. Secure Boot off: the Windows CA is added" \
+    "$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')" "WindowsUEFICA2023 rc=0 "
+
+# 44. Only where the 2011 counterpart is trusted. A db with no third-party CA
+# does not gain the third-party 2023 CAs.
+check "44. no 2011 UEFI CA -> no 2023 UEFI CA added" "$(in_db MicrosoftUEFICA2023.der)" "no"
+
+# 45. Already current: nothing is written.
+new_case; make_firmware 0 1
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der" "$SBFILES/WindowsUEFICA2023.der"
+GOT="$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')"
+check "45. db already holds the 2023 CA -> rc 0, nothing added" "$GOT" "rc=0 "
+check "45b. ... and nothing was written" "$(grep -c '^dd ' "$SANDBOX/calls")" "0"
+
+# 46. A machine that trusts no Microsoft CA is left alone, KEK or not.
+new_case; make_firmware 0 1
+make_sigdb db "$SBFILES/MicCorKEKCA2011.der"
+check "46. no Microsoft 2011 CA in db -> nothing to do" \
+    "$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')" "rc=0 "
+
+# 47. KEK without Microsoft's key: no signed update can apply. Refuse before
+# writing, with its own code, so the task can say why.
+new_case; make_firmware 0 1
+make_sigdb KEK "$SBFILES/MicCorUEFCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der"
+check "47. no Microsoft KEK -> rc 2" "$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')" "rc=2 "
+check "47b. ... and nothing was written" "$(grep -c '^dd ' "$SANDBOX/calls")" "0"
+
+# 48. THE silent-failure guard, as in cases 23 and 39: the write succeeds and
+# the firmware applies nothing. db is re-read, so this is a failure.
+new_case; make_firmware 0 1; FAKE_APPEND_IGNORED=1
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der"
+check "48. write accepted but not applied -> rc 1" \
+    "$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')" "rc=1 "
+
+# 49. A failed write stops the sequence.
+new_case; make_firmware 0 1; FAKE_DD_FAIL=db; export FAKE_DD_FAIL
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der" "$SBFILES/MicCorUEFCA2011.der"
+check "49. failed write -> rc 1 after one attempt" \
+    "$(lib 'sbMsDbUpdate; echo "rc=$?"' | tr '\n' ' ')|$(grep -c '^dd ' "$SANDBOX/calls")" "rc=1 |1"
+
+# 50. The shipped update files are what they claim: each is an
+# EFI_VARIABLE_AUTHENTICATION_2 and carries its CA's DER verbatim.
+hexof() { od -An -tx1 -v "$1" | tr -d '[:space:]'; }
+for pair in DBUpdate2024.bin:WindowsUEFICA2023.der DBUpdate3P2023.bin:MicrosoftUEFICA2023.der \
+            DBUpdateOROM2023.bin:MicCorOptionROMCA2023.der; do
+    u="${pair%%:*}"; c="${pair##*:}"
+    hdr="$(od -An -tx1 -j20 -N4 "$SBFILES/$u" | tr -d '[:space:]')"
+    case $(hexof "$SBFILES/$u") in
+        *"$(hexof "$SBFILES/$c")"*) has=yes ;;
+        *) has=no ;;
+    esac
+    check "50. $u is an AUTH_2 update carrying $c" "$hdr/$has" "0002f10e/yes"
+done
 
 echo "----"
 echo "$PASS passed, $FAIL failed"

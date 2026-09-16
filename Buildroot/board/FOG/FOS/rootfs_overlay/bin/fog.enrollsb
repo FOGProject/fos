@@ -47,6 +47,33 @@ if [[ $(sbPlatformBits) == 32 ]]; then
     handleError "This machine has 32-bit UEFI firmware, which FOG cannot enroll. ($0)\n   No Microsoft-signed 32-bit shim and no signed 32-bit iPXE exist, so it\n   cannot boot FOG under Secure Boot enforcement even with this key trusted.\n   Nothing was enrolled and nothing was changed. Leave Secure Boot off here."
 fi
 
+# Microsoft's 2023 CAs, before the FOG certificate and before the
+# already-trusted exit: the machine in forums topic 18246 already trusted FOG
+# and still could not boot a Windows image. Setup Mode skips this, because
+# sbEnrollDb writes a db that already holds these CAs. See docs/adr/0019.
+if [[ $state == enforcing || $state == disabled ]]; then
+    dots "Checking Microsoft 2023 CAs"
+    added=$(sbMsDbUpdate)
+    case $? in
+        0)
+            [[ -z $added ]] && echo "Present" || echo "Added"
+            for ca in $added; do
+                echo "   * Added $ca to db"
+            done
+            ;;
+        1)
+            echo "Failed"
+            debugPause
+            handleError "The firmware did not accept Microsoft's signed db update. ($0)\n   No existing db entry was removed. A Windows image whose boot manager is\n   signed by Windows UEFI CA 2023 will not boot here with Secure Boot on.\n   Check for a firmware update from the vendor."
+            ;;
+        2)
+            echo "Skipped"
+            handleWarning "This machine's db lacks Microsoft's 2023 CAs, and its KEK does not hold\n   Microsoft Corporation KEK CA 2011, so no signed update can add them.\n   A Windows image whose boot manager is signed by Windows UEFI CA 2023\n   will not boot here with Secure Boot on. Nothing was changed."
+            ;;
+    esac
+    debugPause
+fi
+
 dots "Fetching certificate"
 if ! sbFetchCert "$cert"; then
     echo "Failed"
