@@ -126,6 +126,30 @@ tests/checks/server-post-reporting.sh
                               # call site anywhere in the overlay may wrap it,
                               # and raw curl may read a reply only in the
                               # exceptions named in the check
+tests/checks/status-reporting.sh
+                              # fog.statusreporter: what actually reaches
+                              # service/progress.php while a task images. It
+                              # read partclone's snapshot file as though it
+                              # were a stream -- truncating /tmp/status.fog
+                              # after every read, which posted an EMPTY status
+                              # whenever the read landed between the truncation
+                              # and the next tick, and left nothing for any
+                              # other reader. The check pins that the producer's
+                              # file survives a read, that a partial or short
+                              # line the server would discard is not sent at
+                              # all, that an unchanged value is not re-posted
+                              # every three seconds (a host lookup, a task
+                              # load, an image load and a save per post, times
+                              # every client in a multicast), that it IS
+                              # re-posted on the keepalive interval so a quiet
+                              # client and a stalled one are distinguishable in
+                              # the server's log, and that the poll loop
+                              # contains no `continue` -- the old empty-MAC
+                              # guard jumped past the sleep and span at 100%
+                              # CPU. The spin is measured from /proc, not from
+                              # `ps -o time=`: the loop burns its time in the
+                              # `tail` it forks, so ps reports 00:00:00 for a
+                              # process eating a core
 tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # device class (NVMe/SSD/HDD) and mode
                               # (fast/normal/full), never issues an `nvme format`
