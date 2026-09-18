@@ -150,6 +150,24 @@ tests/checks/status-reporting.sh
                               # `ps -o time=`: the loop burns its time in the
                               # `tail` it forks, so ps reports 00:00:00 for a
                               # process eating a core
+tests/checks/partclone-status-patch.sh
+                              # the producer half of the same path: FOG's
+                              # partclone patch, which adds fogLogStatusFile()
+                              # to progress.c. That function used to call
+                              # exit(0) when it could not open
+                              # /tmp/status.fog, quitting partclone with a
+                              # SUCCESS status mid-restore -- funcs.sh reads
+                              # $exitcode, sees 0, and records a partially
+                              # written partition as a completed deploy. /tmp
+                              # in FOS is a ramdisk, so a full one reaches it.
+                              # The check pins that the function never exits,
+                              # that a failed open returns instead, that no
+                              # sprintf() takes a converted string as its
+                              # FORMAT argument, and that each hunk header's
+                              # counts match the lines under it -- the added
+                              # code is `+` lines in a unified diff, so
+                              # editing it by hand moves counts that nothing
+                              # else recomputes
 tests/checks/wipe.sh          # wipeDisk() issues the right erase primitive per
                               # device class (NVMe/SSD/HDD) and mode
                               # (fast/normal/full), never issues an `nvme format`

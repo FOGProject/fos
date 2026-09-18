@@ -13,7 +13,7 @@ diff --git a/src/progress.c b/src/progress.c
 index 4a25c06..5937d25 100644
 --- a/src/progress.c
 +++ b/src/progress.c
-@@ -220,6 +220,47 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
+@@ -220,6 +220,59 @@ static void calculate_speed(struct progress_bar *prog, unsigned long long copied
      strncpy(prog_stat->Rformated, Rformated, sizeof(Rformated)+1);
  }
  
@@ -30,21 +30,33 @@ index 4a25c06..5937d25 100644
 +}
 +
 +/// write data to log file for status/progress info
++///
++/// Reporting progress is best effort. This used to exit(0) when the file could
++/// not be opened, which quit partclone with a SUCCESS status in the middle of a
++/// restore -- FOG reads that status, sees 0, and records a partially written
++/// partition as a completed deploy. /tmp in FOS is a ramdisk, so a full one is
++/// enough to cause it. Warn once and keep imaging instead: a missing progress
++/// file costs a stalled percentage on the web UI, not the disk.
 +void fogLogStatusFile(struct progress_bar *prog,struct prog_stat_t *prog_stat,unsigned long long current) {
++    static int fog_log_warned = 0;
 +    FILE *fog_log;
 +    fog_log = fopen("/tmp/status.fog","w");
 +    if (fog_log == NULL) {
-+        fprintf(stderr,"Error opening file %s","/tmp/status.fog");
-+        exit(0);
++        if (!fog_log_warned) {
++            fprintf(stderr,"Could not open %s for progress reporting. Imaging continues without progress updates.\n","/tmp/status.fog");
++            fog_log_warned = 1;
++        }
++        return;
 +    }
 +    double totalsize=prog->block_size * prog->total;
 +    double currentsize=prog->block_size * current;
-+    int max_len=15;
-+    char total_str[max_len];
-+    char current_str[max_len];
-+    char buf[max_len];
-+    sprintf(total_str,filesize_conv(totalsize,buf,max_len));
-+    sprintf(current_str,filesize_conv(currentsize,buf,max_len));
++    char total_str[16];
++    char current_str[16];
++    /* filesize_conv writes into the buffer it is handed and returns it. The
++     * previous form passed that return value as sprintf's FORMAT string, so
++     * any % in the converted text would have been read as a conversion. */
++    filesize_conv(totalsize,total_str,sizeof(total_str));
++    filesize_conv(currentsize,current_str,sizeof(current_str));
 +    fprintf(fog_log,"%6.2f%s@%s@%s@%s@%s@%6.2f@%f\n",
 +        prog_stat->speed,
 +        prog_stat->speed_unit,
@@ -61,7 +73,7 @@ index 4a25c06..5937d25 100644
  /// update information at progress bar
  extern void progress_update(struct progress_bar *prog, unsigned long long copied, unsigned long long current, int done)
  {
-@@ -245,6 +286,7 @@ extern void progress_update(struct progress_bar *prog, unsigned long long copied
+@@ -245,6 +298,7 @@ extern void progress_update(struct progress_bar *prog, unsigned long long copied
  	    fprintf(stderr, _("Current block: %10Lu, Total block: %10Lu, Complete: %6.2f%%%s"), current, prog->total, prog_stat.total_percent, "\x1b[A");
  	    fprintf(stderr, "\r");
  	}
@@ -69,7 +81,7 @@ index 4a25c06..5937d25 100644
      } else {
  	setlocale(LC_ALL, "");
  	bindtextdomain(PACKAGE, LOCALEDIR);
-@@ -326,6 +368,7 @@ extern void Ncurses_progress_update(struct progress_bar *prog, unsigned long lon
+@@ -326,6 +380,7 @@ extern void Ncurses_progress_update(struct progress_bar *prog, unsigned long lon
  	wrefresh(p_win);
          wrefresh(bar_win);
          wrefresh(tbar_win);
