@@ -159,6 +159,7 @@ tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
 tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
 tests/checks/empty-mac-fallback.sh  # $mac resolved from the NICs when the server sent none (fogproject#1767)
 tests/checks/status-reporting.sh    # fog.statusreporter: what reaches service/progress.php, and what must not
+tests/checks/partclone-status-patch.sh  # FOG's partclone patch: fogLogStatusFile() never ends the restore, and the hunks are countable
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
 tests/checks/pcie-aspm-config.sh    # kernel configs can control PCIe ASPM (ADR-0013)
