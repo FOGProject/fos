@@ -1,23 +1,118 @@
 #!/bin/bash
-sysuuid=$(dmidecode -s system-uuid)
-sysuuid=${sysuuid,,}
-oIFS=$IFS
-IFS=$'\n'
+#
+# Reports imaging progress to the server for the life of one task.
+#
+#   fog.statusreporter <mac> <web>
+#
+# Started as a background job by fog.download and fog.upload, stopped by
+# killStatusReporter(). It is the ONLY thing that posts to service/progress.php,
+# and progress.php is what fills the percentage, elapsed/remaining time and
+# bytes-copied columns the task list shows.
+#
+# The producer is partclone, not this script. FOG's own partclone patch
+# (Buildroot/package/partclone/partclone-*.patch) adds fogLogStatusFile(), which
+# rewrites /tmp/status.fog whole -- fopen(..., "w") -- on every UI tick with one
+# line:
+#
+#   bpm@elapsed@remaining@copied@total@percent@totalsize
+#
+# The server needs the first six of those fields; it discards a payload that
+# carries fewer (see the $strArrsSet guard in service/progress.php).
+#
+# Three things this script used to do that it no longer does, all of them
+# consequences of treating the file as a stream when it is a snapshot:
+#
+#   * It truncated /tmp/status.fog after every read. partclone rewrites the file
+#     itself, so the truncation bought nothing -- and a read landing between the
+#     truncation and the next tick found the file EMPTY, which posted an empty
+#     status the server then discarded. It also meant nothing else could ever
+#     read the file, because this script consumed it.
+#
+#   * It posted on a fixed three-second timer whether or not anything had
+#     changed, so most posts re-sent a value the server already held. Every one
+#     of them costs the server a host lookup, a task load, an image load and a
+#     save. On a multicast that is multiplied by the number of clients.
+#
+#   * `[[ -z $mac ]] && continue` jumped PAST the usleep at the bottom of the
+#     loop, so a task with no MAC span at 100% CPU for its whole duration. The
+#     MAC is recovered in funcs.sh now (fogproject#1767), which is why nobody
+#     sees it, but the shape is a trap for the next guard added here. There is
+#     no `continue` in this loop for that reason; the sleep is unconditional.
+#
+# Polling and posting are deliberately two different rates. partclone is asked
+# for a tick a second (-f 1), so reading once a second means the value that goes
+# out is the current one. Posting stays at the old three-second floor, so the
+# server's worst case is what it has always been.
+#
+# Transport matches reportToServer() in funcs.sh: --max-time so a wedged
+# connection cannot stall the loop with nothing on screen, --data-urlencode so a
+# field carrying an & or an = cannot rewrite the request, and the result
+# discarded. A missed progress post costs nothing and reporting each failure
+# would paint the console over the top of the imaging output this exists to
+# report on. The completion scripts are where a failure actually matters.
+#
+# -Lks is kept as it was. -k trusts the server's certificate, which is what a
+# default FOG install presents, and changing that is a decision about every
+# call in FOS rather than about this one.
+
 mac="$1"
 web="$2"
-usleep 3000000
+
+statusfile="/tmp/status.fog"
+pollsecs=1
+minpostsecs=3
+keepalivesecs=30
+
+sysuuid=$(dmidecode -s system-uuid)
+sysuuid=${sysuuid,,}
+
+lastsent=""
+lastpost=0
+
+# The current line, or nothing. The file is rewritten whole on every tick, so
+# the last line IS the current state; a read that lands mid-write returns a
+# partial line and is rejected by validStatus below rather than sent.
+readStatus() {
+    tail -n 1 "$statusfile" 2>/dev/null | tr -d '\000'
+}
+
+# True when the line carries the six fields the server requires. A shorter one
+# is either a partial write or output from something that is not partclone --
+# partimage writes its own progress here too, in its own format -- and the
+# server discards both. Refusing to send it keeps the difference between "no
+# progress" and "progress the server threw away" out of the access log.
+validStatus() {
+    local line="$1"
+    local fields
+    local IFS='@'
+    read -ra fields <<< "$line"
+    [[ ${#fields[@]} -ge 6 ]]
+}
+
+postStatus() {
+    local line="$1"
+    [[ -z $mac || -z $web ]] && return 0
+    curl -Lks --max-time 5 \
+        --data-urlencode "sysuuid=$sysuuid" \
+        --data-urlencode "mac=$mac" \
+        --data-urlencode "status=$(printf '%s' "$line" | base64 | tr -d '\n')" \
+        "${web}service/progress.php" >/dev/null 2>&1 || :
+    lastsent="$line"
+    lastpost=$SECONDS
+}
+
 while :; do
-    tmpfile="/tmp/status.fog"
-    status=$(tail -n 2 $tmpfile 2>/dev/null | head -n 1 2>/dev/null)
-    cat /dev/null > $tmpfile 2>/dev/null
-    [[ -z $mac ]] && continue
-    status=$(echo $status | base64)
-    # Deliberately NOT callServer, and $res is deliberately never read. This is
-    # a best-effort progress ping every three seconds for the life of the task;
-    # reporting each failure would paint the console over the top of the imaging
-    # output it exists to report on, and a missed progress update costs nothing.
-    # The completion scripts are where a failure actually matters.
-    res=$(curl -Lks --data "sysuuid=${sysuuid}&mac=$mac&status=$status" ${web}service/progress.php 2>/dev/null)
-    usleep 3000000
+    status=$(readStatus)
+    if [[ -n $status ]] && validStatus "$status"; then
+        elapsed=$((SECONDS - lastpost))
+        # Changed and the floor has passed, or nothing has changed for long
+        # enough that a silent client and a stalled one would look the same in
+        # the server's log.
+        if [[ $status != "$lastsent" && $elapsed -ge $minpostsecs ]]; then
+            postStatus "$status"
+        elif [[ $elapsed -ge $keepalivesecs ]]; then
+            postStatus "$status"
+        fi
+    fi
+    usleep $((pollsecs * 1000000))
 done
-IFS=$oIFS
