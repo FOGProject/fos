@@ -134,6 +134,12 @@ Rules that matter when touching any of this:
   commit its archive was checked against. It warns when the old version is
   still mentioned; take the warning seriously rather than leaving a comment
   that describes verification which never happened for the new bytes.
+- **A Buildroot package can join the table too.** FOG ships only its `.hash`
+  under `Buildroot/package/<pkg>/`, with the sha512 added; `build.sh`'s rsync
+  lays it over Buildroot's copy and the `.mk` stays Buildroot's. `ntfs-3g` is
+  the one so far (download.tuxera.com returned 403 to GitHub's runners,
+  2026-10-01). When `BUILDROOT_VERSION` moves ntfs-3g, update that `.hash` by
+  hand — `bump-package.sh` refuses it, because the version is not FOG's.
 - **Keep `_SITE` on https.** Plain HTTP is what egress filtering drops, and it
   is what timed out on GitHub's runners.
 

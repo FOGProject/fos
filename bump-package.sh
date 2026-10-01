@@ -84,9 +84,20 @@ fetch() {
 # Re-downloads a package's current tarball and compares it to the committed
 # hashes. Answers the one question the offline harness cannot.
 checkPackage() {
-    local pkg="$1" vars version source upstream want got tmp rc=0
+    local pkg="$1" mk vars version source upstream want got tmp rc=0
+    mk="$PKGROOT/$pkg/$pkg.mk"
 
-    vars=$(readPackageVars "$pkg" "$PKGROOT/$pkg/$pkg.mk") || {
+    # A Buildroot package ships only its .hash here (see package-funcs.sh);
+    # its .mk is in a downloaded Buildroot tree, if build.sh has made one.
+    if [[ ! -f $mk ]]; then
+        mk=$(ls "$HERE"/fssource*/package/"$pkg"/"$pkg".mk 2>/dev/null | head -1)
+        if [[ -z $mk ]]; then
+            echo " * $pkg: Buildroot package, no fssource*/ tree to read its .mk from, skipped"
+            return 0
+        fi
+    fi
+
+    vars=$(readPackageVars "$pkg" "$mk") || {
         echo " * $pkg: could not read its .mk" >&2
         return 1
     }
@@ -153,6 +164,11 @@ done
 
 mk="$PKGROOT/$pkg/$pkg.mk"
 hashFile="$PKGROOT/$pkg/$pkg.hash"
+if [[ ! -f $mk && -f $hashFile ]]; then
+    echo "Error: $pkg is Buildroot's package; FOG ships only its .hash. Its version" >&2
+    echo "       follows BUILDROOT_VERSION in build.sh, so update the .hash with the pin." >&2
+    exit 1
+fi
 if [[ ! -f $mk ]]; then
     echo "Error: no such package '$pkg' (looked for $mk)." >&2
     exit 1
@@ -163,7 +179,7 @@ if [[ ! -f $hashFile ]]; then
     exit 1
 fi
 
-upper=$(echo "$pkg" | tr '[:lower:]' '[:upper:]')
+upper=$(echo "$pkg" | tr '[:lower:]-' '[:upper:]_')
 
 # --- resolve before and after -------------------------------------------
 

@@ -48,6 +48,16 @@ function dots() {
 # let Buildroot run its normal download, so the error the user ends up reading
 # is Buildroot's own rather than one invented here.
 #
+# The table also takes a Buildroot package whose one site has failed us. FOG
+# ships only its .hash, under Buildroot/package/<pkg>/: build.sh's rsync lays
+# that over Buildroot's copy, and the .mk is read from Buildroot's own tree, so
+# the version still follows BUILDROOT_VERSION. ntfs-3g is the first: on
+# 2026-10-01 download.tuxera.com answered GitHub's runners with 403 on two
+# release runs while serving the same file to other hosts, and
+# sources.buildroot.net had no copy. Its .hash adds the sha512 the Fedora URL
+# needs. Moving the Buildroot pin means updating that .hash, or Buildroot stops
+# with "No hash found".
+#
 # @V@ is the package version and @F@ the source filename, both read from the
 # package's own .mk so a version bump cannot leave a stale URL here. @FEDORA@
 # expands to the Fedora lookaside cache, which is addressed by sha512 and is
@@ -59,6 +69,7 @@ FOS_PACKAGE_MIRRORS=(
     "testdisk    https://deb.debian.org/debian/pool/main/t/testdisk/testdisk_@V@.orig.tar.bz2  @FEDORA@"
     "partimage   https://deb.debian.org/debian/pool/main/p/partimage/partimage_@V@.orig.tar.bz2"
     "partclone   @FEDORA@"
+    "ntfs-3g     @FEDORA@"
 )
 
 # Reads $1_VERSION / $1_SOURCE / $1_SITE out of a package's .mk and echoes the
@@ -70,7 +81,8 @@ function readPackageVars() {
     local pkg="$1" mk="$2"
     local upper version source site ghUser ghRepo ghVer args
 
-    upper=$(echo "$pkg" | tr '[:lower:]' '[:upper:]')
+    # Buildroot's variable prefix maps '-' to '_': ntfs-3g is NTFS_3G_*.
+    upper=$(echo "$pkg" | tr '[:lower:]-' '[:upper:]_')
     version=$(sed -n "s/^${upper}_VERSION[[:space:]]*[:?]*=[[:space:]]*\([^[:space:]][^[:space:]]*\).*/\1/p" "$mk" | head -1)
     source=$(sed -n "s/^${upper}_SOURCE[[:space:]]*[:?]*=[[:space:]]*\([^[:space:]][^[:space:]]*\).*/\1/p" "$mk" | head -1)
     site=$(sed -n "s/^${upper}_SITE[[:space:]]*[:?]*=[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p" "$mk" | head -1)
@@ -96,12 +108,16 @@ function readPackageVars() {
 function seedPackage() {
     local dlDir="$1" pkg="$2"; shift 2
     local pkgDir="../Buildroot/package/$pkg"
+    local mk="$pkgDir/$pkg.mk"
     local vars version source upstream sha256 sha512 target tmp url host m
     local -a mirrors
 
-    [[ -f $pkgDir/$pkg.mk && -f $pkgDir/$pkg.hash ]] || return 0
+    # A Buildroot package (see the table) has only its .hash here; its .mk is
+    # Buildroot's own, in the tree build.sh runs from.
+    [[ -f $mk ]] || mk="package/$pkg/$pkg.mk"
+    [[ -f $mk && -f $pkgDir/$pkg.hash ]] || return 0
 
-    vars=$(readPackageVars "$pkg" "$pkgDir/$pkg.mk") || {
+    vars=$(readPackageVars "$pkg" "$mk") || {
         echo " * WARNING: Couldn't read $pkg's version/source/site, leaving its download to Buildroot!"
         return 0
     }

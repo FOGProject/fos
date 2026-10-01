@@ -1,0 +1,15 @@
+# FOG's copy of Buildroot's ntfs-3g.hash. build.sh's rsync lays it over
+# Buildroot's own, which has no sha512. package-funcs.sh builds the Fedora
+# lookaside URL from the sha512, because download.tuxera.com has refused
+# GitHub's runners (403, 2026-10-01). The tarball from download.tuxera.com
+# and the Fedora lookaside copy were checked byte-identical on 2026-10-01.
+#
+# The version comes from Buildroot's ntfs-3g.mk, so it moves with
+# BUILDROOT_VERSION in build.sh. When the pin moves ntfs-3g, replace these
+# lines, or Buildroot stops with "No hash found".
+#
+# Locally calculated
+sha256  7754f3b32e8baf9c472459b4e9c981e3ae0f5039107cdd8d8201aed0a949008a  ntfs-3g_ntfsprogs-2026.2.25.tgz
+sha512  c4f537ea45a6ebb21ddf21fbf4d71ab336fdf9cb1d55a062a6376f90480cf6992b11ad93b4b2bbd8a96e26f97d7c15948d4f6cc71d713e9deb78e3a6cad7438c  ntfs-3g_ntfsprogs-2026.2.25.tgz
+sha256  231f7edcc7352d7734a96eef0b8030f77982678c516876fcb81e25b32d68564c  COPYING
+sha256  d7bf9d064ac3e5840f9dd02422b7eeec4f1fd03f37fadbd043602be5e882304f  COPYING.LIB

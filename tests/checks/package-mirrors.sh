@@ -218,6 +218,35 @@ seed nohash
 check $? "skips a package with no .hash rather than seeding it unverified"
 mv "$SANDBOX/held.hash" "$PKGDIR/$PKG.hash"
 
+# 10. A Buildroot package: FOG ships only its .hash, and the .mk is Buildroot's,
+#     in the tree build.sh runs from (here, $SANDBOX/cwd). The hyphen in the
+#     name also proves the NTFS_3G-style variable prefix. This is ntfs-3g's
+#     shape, after download.tuxera.com refused GitHub's runners on 2026-10-01.
+BRPKG=fixture-br
+BRTAR="$BRPKG-$VERSION.tar.gz"
+mkdir -p "$SANDBOX/Buildroot/package/$BRPKG" "$SANDBOX/cwd/package/$BRPKG"
+printf '%s\n' "FIXTURE_BR_VERSION = $VERSION" \
+    "FIXTURE_BR_SOURCE = $BRPKG-\$(FIXTURE_BR_VERSION).tar.gz" \
+    "FIXTURE_BR_SITE = http://brupstream.invalid/pub" \
+    > "$SANDBOX/cwd/package/$BRPKG/$BRPKG.mk"
+printf '%s\n' "sha256  $FIX_SHA256  $BRTAR" "sha512  $FIX_SHA512  $BRTAR" \
+    > "$SANDBOX/Buildroot/package/$BRPKG/$BRPKG.hash"
+DL="$SANDBOX/dl-br"; export STUB_LOG="$SANDBOX/log-br"; : > "$STUB_LOG"
+BLOCK="brupstream.invalid" seedPackage "$DL" "$BRPKG" "@FEDORA@" >/dev/null 2>&1
+is_fixture "$DL/$BRPKG/$BRTAR"
+check $? "seeds a Buildroot package from its FOG-side .hash and Buildroot's .mk"
+grep -q "brupstream.invalid/pub/$BRTAR" "$STUB_LOG" &&
+    grep -q "$FEDORA/repo/pkgs/$BRPKG/$BRTAR/sha512/$FIX_SHA512/$BRTAR" "$STUB_LOG"
+check $? "resolves FIXTURE_BR_* for a hyphenated name and falls through to Fedora"
+
+# 11. No Buildroot tree yet (no .mk anywhere): skipped, no network call.
+mv "$SANDBOX/cwd/package/$BRPKG/$BRPKG.mk" "$SANDBOX/held.mk"
+DL="$SANDBOX/dl-br2"; export STUB_LOG="$SANDBOX/log-br2"; : > "$STUB_LOG"
+seedPackage "$DL" "$BRPKG" "@FEDORA@" >/dev/null 2>&1
+[[ ! -s $STUB_LOG && ! -e $DL/$BRPKG/$BRTAR ]]
+check $? "skips a Buildroot package when no .mk can be found"
+mv "$SANDBOX/held.mk" "$SANDBOX/cwd/package/$BRPKG/$BRPKG.mk"
+
 # ============================================================================
 echo "== shipped package files =="
 # ============================================================================
@@ -232,6 +261,23 @@ for entry in "${FOS_PACKAGE_MIRRORS[@]}"; do
 
     grep -qE '^sha256[[:space:]]' "$hash" 2>/dev/null
     check $? "$pkg.hash carries a sha256 (seeding is skipped entirely without it)"
+
+    # A Buildroot package: FOG ships only the .hash. Its .mk and _SITE are
+    # Buildroot's, so check the .mk only where a downloaded tree has one, and
+    # leave the https rule to FOG's own packages.
+    if [[ ! -f $mk ]]; then
+        if [[ $rest == *"@FEDORA@"* ]]; then
+            grep -qE '^sha512[[:space:]]' "$hash"
+            check $? "$pkg.hash carries a sha512 (its Fedora lookaside URL is built from it)"
+        fi
+        mk=$(ls "$REPO"/fssource*/package/"$pkg"/"$pkg".mk 2>/dev/null | head -1)
+        if [[ -n $mk ]]; then
+            read -r _ src _ <<< "$(readPackageVars "$pkg" "$mk")"
+            awk -v f="$src" '$1 == "sha256" && $3 == f { found = 1 } END { exit !found }' "$hash"
+            check $? "$pkg.hash has a sha256 for $src, the file Buildroot's .mk resolves to"
+        fi
+        continue
+    fi
 
     # The hash must be for the file this package currently resolves to. A
     # version bump that forgets its .hash fails the build with Buildroot's
