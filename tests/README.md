@@ -253,6 +253,16 @@ tests/checks/nfs-mount-type.sh
                               # each one rejecting 'nolock'. The console then
                               # blames ext2/ext4/vfat/f2fs for a bad NFS path.
                               # See forums topic 18229
+tests/checks/mdraid-gate.sh
+                              # md arrays assemble only with mdraid=true:
+                              # the overlay masks mdadm's udev
+                              # 64-md-raid-assembly.rules with a copy gated on
+                              # the kernel command line, and S99fog stops any
+                              # array when the flag is off. Without the gate an
+                              # array holds its member partitions and capture
+                              # fails with 'Could not find partitions'. -b also
+                              # diffs the copy against the built upstream rule.
+                              # See forums topic 18202
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
