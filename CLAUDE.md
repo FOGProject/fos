@@ -167,6 +167,7 @@ tests/checks/initrd-format.sh       # each arch's kernel can unpack the init bui
 tests/checks/arm64-platform-config.sh  # arm64 kernel describes a real ARM platform (ADR-0015)
 
 tests/checks/nfs-mount-type.sh       # FOS's NFS mounts name -t nfs instead of relying on busybox inference
+tests/checks/mdraid-gate.sh          # md arrays auto-assemble only with mdraid=true (forums 18202)
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```

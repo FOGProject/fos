@@ -18,6 +18,12 @@ if [[ $mdraid == true ]]; then
     mdadm --auto-detect
     mdadm --assemble --scan
     mdadm --incremental --run --scan
+else
+    # Without mdraid=true FOS images the member disks, not the array.
+    # Release any array the kernel's own autodetect started at boot
+    # (CONFIG_MD_AUTODETECT); udev assembly is gated in
+    # etc/udev/rules.d/64-md-raid-assembly.rules.
+    mdadm --stop --scan >/dev/null 2>&1
 fi
 [[ -n $keymap ]] && loadkeys $keymap
 case $isdebug in
