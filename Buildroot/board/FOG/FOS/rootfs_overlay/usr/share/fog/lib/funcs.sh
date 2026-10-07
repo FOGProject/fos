@@ -556,10 +556,13 @@ movePartition() {
     local tmp_file2="/tmp/move2.$$"
     rm -f /tmp/move{1,2}.*
     saveSfdiskPartitions "$disk" "$tmp_file1"
-    prevPartStart=$(grep "$prevPart" $tmp_file1 | cut -d',' -f1 | awk -F'=' '{print $2}' | tr -d ' ')
-    prevPartSize=$(grep "$prevPart" $tmp_file1 | cut -d',' -f2 | awk -F'=' '{print $2}' | tr -d ' ')
+    # Match the device name exactly in the first field. A substring grep for
+    # /dev/sda1 also matches /dev/sda14 and /dev/sda15 (Debian/Ubuntu cloud
+    # images), which turns each value below into several lines (fos#189).
+    prevPartStart=$(awk -v p="$prevPart" '$1 == p' $tmp_file1 | cut -d',' -f1 | awk -F'=' '{print $2}' | tr -d ' ')
+    prevPartSize=$(awk -v p="$prevPart" '$1 == p' $tmp_file1 | cut -d',' -f2 | awk -F'=' '{print $2}' | tr -d ' ')
     newStart=$(calculate "${prevPartStart}+${prevPartSize}")
-    currPartStart=$(grep "$part" $tmp_file1 | cut -d',' -f1 | awk -F'=' '{print $2}' | tr -d ' ')
+    currPartStart=$(awk -v p="$part" '$1 == p' $tmp_file1 | cut -d',' -f1 | awk -F'=' '{print $2}' | tr -d ' ')
     if [[ $currPartStart -gt $newStart ]]; then
         echo " * Moving $part forward to close gap between end of $prevPart and start of $part."
         debugPause

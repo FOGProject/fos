@@ -159,6 +159,7 @@ tests/golden/run.sh print     # dump current output to stdout, no comparison
 tests/checks/sector-size.sh   # validateImageSectorSize() refusal/reformat behavior
 tests/checks/fill-engine.sh   # sfdisk fill engine: 4Kn rescaling, GPT clamp, abort-on-unusable-table
 tests/checks/resize-engine.sh # capture-time shrink: 4Kn units, last-lba passthrough, round-up (ADR-0016)
+tests/checks/move-partition.sh # capture-time gap close: exact device-name lookup, sda1 vs sda14 (fos#189)
 tests/checks/mbr-extended.sh  # MBR extended/logical layouts: emission order, EBR gaps, container sizing
 tests/checks/wipe.sh          # wipeDisk() erase-primitive-per-device-class correctness
 tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
