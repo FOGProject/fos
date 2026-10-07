@@ -56,6 +56,12 @@ tests/checks/resize-engine.sh # the capture-time shrink (processSfdisk +
                               # so a partition is never smaller than the
                               # filesystem already shrunk into it, and a valid 4Kn
                               # shrink reaches the sfdisk write (ADR-0016)
+tests/checks/move-partition.sh
+                              # movePartition(), which closes the gap a capture-
+                              # time shrink leaves on a GPT disk: each partition
+                              # is looked up by its exact device name, so sda1
+                              # never also matches sda14/sda15 (Debian/Ubuntu
+                              # cloud images, fos#189)
 tests/checks/ntfs-shrink-retry.sh
                               # the NTFS branch of shrinkPartition() when the
                               # ntfsresize dry run fails with ENOSPC (ntfs-3g
