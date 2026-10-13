@@ -268,6 +268,10 @@ lib() {
         set +u
         handleError() { echo "HANDLEERROR: $1"; exit 90; }
         handleWarning() { echo "HANDLEWARNING: $1"; }
+        # funcs.sh is not sourced here; sbEnroll() uses these two for screen
+        # pacing only.
+        dots() { :; }
+        debugPause() { :; }
         web="http://fog.example/fog/"
         . "$SANDBOX/secureboot-funcs.sh"
         eval "$1"
@@ -811,6 +815,100 @@ for pair in DBUpdate2024.bin:WindowsUEFICA2023.der DBUpdate3P2023.bin:MicrosoftU
     esac
     check "50. $u is an AUTH_2 update carrying $c" "$hdr/$has" "0002f10e/yes"
 done
+
+# --- sbEnroll(): the whole task, and registration (fogproject#1860) ---
+#
+# sbEnroll() is what bin/fog.enrollsb runs and what registration runs. These
+# drive it end to end through the stubs and read back $sbOutcome, which the task
+# hands to sbReport. A "db" here for a machine that only had a request STAGED is
+# the regression that matters most: the server would record the machine as
+# enrolled, and an administrator would turn Secure Boot on and lose the boot.
+outcome() { lib "sbEnroll $1 >/dev/null; echo \"rc=\$? outcome=\$sbOutcome\""; }
+
+# 51. Setup Mode: written straight into db.
+new_case; make_firmware 1 0
+check "51. Setup Mode -> outcome db" "$(outcome handleError)" "rc=0 outcome=db"
+
+# 52. Already trusted: nothing enrolled, nothing staged.
+new_case; make_firmware 0 0; FAKE_KEY_IN_DB=1
+check "52. already trusted -> outcome trusted" "$(outcome handleError)" "rc=0 outcome=trusted"
+check "52b. ... and no request was staged" "$(grep -c -- '--import' "$SANDBOX/calls")" "0"
+
+# 53. User Mode, Secure Boot off: a request is staged, and it says mok.
+new_case; make_firmware 0 0
+check "53. staged request -> outcome mok, never db" "$(outcome handleError)" "rc=0 outcome=mok"
+check "53b. ... and the request really is staged" "$([[ -f $SANDBOX/staged ]] && echo yes)" "yes"
+
+# 54. The banner warns that a missed MokManager prompt discards the request.
+# shim's MokManager deletes MokNew before its 10-second countdown, so this is
+# the difference between a technician waiting for the screen and one who
+# finds, after an unattended imaging reboot, that nothing was ever enrolled.
+new_case; make_firmware 0 0
+check "54. the staged-request banner names the 10-second window" \
+    "$(lib 'sbEnroll handleError' | grep -c 'within 10 seconds')" "1"
+
+# 55. A failure under handleError aborts: this is the task's behavior.
+new_case; make_firmware 0 0; FAKE_IMPORT_FAIL=1
+check "55. handleError: a failed staging aborts" \
+    "$(lib 'sbEnroll handleError >/dev/null; echo returned' | tail -1)" ""
+check "55b. ... through handleError" \
+    "$(lib 'sbEnroll handleError' | grep -c '^HANDLEERROR: The MOK enrollment request was NOT staged')" "1"
+
+# 56. The same failure under handleWarning returns 1 and leaves no outcome, so
+# registration carries on and nothing reads it as enrolled.
+new_case; make_firmware 0 0; FAKE_IMPORT_FAIL=1
+check "56. handleWarning: a failed staging returns 1 with no outcome" \
+    "$(outcome handleWarning)" "rc=1 outcome="
+
+# 57. The refusals before the certificate fetch also return under a non-fatal
+# handler, instead of falling through into the enrollment.
+new_case; make_firmware 0 0 32
+check "57. handleWarning: 32-bit UEFI returns 1 and enrolls nothing" \
+    "$(outcome handleWarning)|$(grep -c '^curl ' "$SANDBOX/calls")" "rc=1 outcome=|0"
+
+# --- sbEnrollAtRegistration(): the opt-in gate ---
+# callServer and $mac are stubbed so case 60 can see a report if one is sent:
+# funcs.sh is not sourced here, and without them sbReport would fail silently.
+reg() {
+    lib "callServer() { echo \"callServer \$*\" >> \"\$SANDBOX/calls\"; serverBody='##ok'; }
+         mac=00:11:22:33:44:55; sbenroll='$1'; sbEnrollAtRegistration
+         echo \"rc=\$? outcome=\$sbOutcome\""
+}
+
+# 58. Off unless asked: registration must behave exactly as it did before.
+for v in "" 0 1 yes; do
+    new_case; make_firmware 0 0
+    got="$(reg "$v")"
+    check "58. sbenroll='$v' does nothing" "$got|$(wc -l < "$SANDBOX/calls")" "rc=0 outcome=|0"
+done
+
+# 59. Asked for: enrolls through the same path as the task.
+new_case; make_firmware 0 0
+check "59. sbenroll=true stages a request" "$(reg true | tail -1)" "rc=0 outcome=mok"
+
+# 60. ... and does NOT report. The endpoint only accepts a report while an
+# Enroll Secure Boot task is in flight, and registration has none.
+new_case; make_firmware 0 0
+reg true >/dev/null
+check "60. registration posts no enrollment report" \
+    "$(grep -c 'secureboot.report.php' "$SANDBOX/calls")" "0"
+
+# 61. BIOS and 32-bit UEFI are skipped in one line, not warned about: with
+# sbenroll=true fleet-wide, each would otherwise sit through a one-minute warning.
+new_case; make_firmware noefi
+got="$(reg true)"
+check "61. BIOS machine: skipped, no warning" \
+    "$(grep -c 'Skipped' <<<"$got")|$(grep -c 'HANDLE' <<<"$got")|${got##*$'\n'}" "1|0|rc=0 outcome="
+new_case; make_firmware 0 0 32
+got="$(reg true)"
+check "61b. 32-bit UEFI: skipped, no warning" \
+    "$(grep -c 'Skipped' <<<"$got")|$(grep -c 'HANDLE' <<<"$got")|${got##*$'\n'}" "1|0|rc=0 outcome="
+
+# 62. A failure during registration warns and returns; it never aborts.
+new_case; make_firmware 0 0; FAKE_IMPORT_FAIL=1
+got="$(reg true)"
+check "62. registration: a failed staging warns and returns" \
+    "$(grep -c '^HANDLEWARNING' <<<"$got")|${got##*$'\n'}" "1|rc=1 outcome="
 
 echo "----"
 echo "$PASS passed, $FAIL failed"

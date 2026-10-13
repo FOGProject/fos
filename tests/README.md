@@ -199,10 +199,16 @@ tests/checks/secureboot.sh    # secureboot-funcs.sh: derives the right firmware
                               # are appended, not written over db, only where
                               # the 2011 counterpart and Microsoft's KEK are
                               # present, and a write the firmware did not apply
-                              # is a failure
+                              # is a failure. sbEnroll() end to end: each path
+                              # sets the outcome the task reports (a staged
+                              # request is 'mok', never 'db'), handleError
+                              # aborts while handleWarning returns, and
+                              # registration enrolls only on sbenroll=true,
+                              # skips BIOS and 32-bit UEFI quietly, and posts
+                              # no report (fogproject#1860)
 tests/checks/secureboot-enrollment-report.sh
                               # sbReport() tells the FOG server WHICH of
-                              # fog.enrollsb's three exits was reached -- all
+                              # sbEnroll()'s three outcomes was reached -- all
                               # three otherwise end in the same argument-free
                               # completion POST and look identical from the
                               # server. Pins that a staged MOK is reported as

@@ -1,5 +1,6 @@
 #!/bin/bash
 . /usr/share/fog/lib/funcs.sh
+. /usr/share/fog/lib/secureboot-funcs.sh
 clearScreen
 displayBanner
 disks=""
@@ -400,4 +401,7 @@ while [[ -z $res ]]; do
     usleep 2000000
 done
 . /bin/fog.inventory
+# After the host is registered and inventoried, so a failed enrollment costs
+# neither. Does nothing unless sbenroll=true; see sbEnrollAtRegistration().
+sbEnrollAtRegistration
 usleep 2000000

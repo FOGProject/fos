@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Assertion harness for sbReport() and the three exits that call it.
+# Assertion harness for sbReport() and the task that calls it.
 #
 #   tests/checks/secureboot-enrollment-report.sh
 #
@@ -165,26 +165,30 @@ err=""
 grep -qi 'could not be recorded' <<<"$out" && err="complained on success"
 note "9. a successful report prints nothing" "$err"
 
-# --- 10. every exit in fog.enrollsb reports, and reports the right thing --
-# Whole-line anchored, for the same reason tests/checks/server-post-reporting.sh
-# anchors its call sites: a grep for the function name alone passes when the
-# argument has been changed, and the argument is the entire point.
+# --- 10. fog.enrollsb reports the outcome sbEnroll reached -----------------
+# The three exits now live in sbEnroll() (secureboot-funcs.sh), which sets
+# $sbOutcome; the task reports it once. Whole-line anchored, for the same
+# reason tests/checks/server-post-reporting.sh anchors its call sites: a grep
+# for the function name alone passes when the argument has been changed, and
+# the argument is the entire point.
 err=""
-for want in 'sbReport "trusted" "$fingerprint"' \
-            'sbReport "db" "$fingerprint"' \
-            'sbReport "mok" "$fingerprint"'; do
-    grep -Fq "$want" "$REPO_BIN/fog.enrollsb" || err="$err; missing: $want"
-done
-note "10. all three exits report their own outcome" "$err"
+grep -Fxq 'sbEnroll handleError' "$REPO_BIN/fog.enrollsb" \
+    || err="the task does not run sbEnroll with handleError"
+grep -Fxq 'sbReport "$sbOutcome" "$sbFingerprint"' "$REPO_BIN/fog.enrollsb" \
+    || err="$err; the task does not report sbEnroll's outcome"
+note "10. the task reports the outcome sbEnroll reached" "$err"
 
-# --- 11. the staged-MOK exit must not claim an enrollment ------------------
-# THE assertion in this file. Everything else is plumbing; this is the one that
-# stops FOG telling an administrator a machine is enrolled when it is not.
+# --- 11. the staged-MOK path must not claim an enrollment ------------------
+# THE assertion this file used to carry by reading the last exit's text. It is
+# now behavioral: tests/checks/secureboot.sh case 53 drives sbEnroll through a
+# staged request and requires outcome=mok, never db. Checked here only that the
+# library still sets it, so this file cannot pass with that case deleted.
 err=""
-staged=$(awk '/^sbReport /{ last=$0 } END { print last }' "$REPO_BIN/fog.enrollsb")
-[[ $staged == 'sbReport "mok" "$fingerprint"' ]] \
-    || err="the last exit reports [$staged], not a staged MOK"
-note "11. the staged-MOK exit reports 'mok', never 'db'" "$err"
+grep -Fq 'sbOutcome="mok"' "$REPO_LIB/secureboot-funcs.sh" \
+    || err="sbEnroll no longer sets sbOutcome=mok for a staged request"
+grep -Fq 'staged request -> outcome mok, never db' "$HERE/secureboot.sh" \
+    || err="$err; secureboot.sh case 53 is gone"
+note "11. the staged-MOK path reports 'mok', never 'db'" "$err"
 
 # --- 12. the report happens BEFORE the task is completed ------------------
 # Order is load-bearing: fog.nonimgcomplete is what clears the task, and a
