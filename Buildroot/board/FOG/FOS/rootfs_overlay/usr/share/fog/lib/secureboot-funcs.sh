@@ -736,6 +736,14 @@ sbEnroll() {
     echo " and nothing has been enrolled."
     echo "=============================================================================="
     echo
+    # Held, not flashed. S99fog runs `reboot -f` the moment the script returns,
+    # so a random password was on screen for about two seconds -- measured in a
+    # VM through Quick Registration -- and nobody could answer MokManager with
+    # it. With $sbmokpw set, the technician already knows it, so nothing waits.
+    if [[ -z $sbmokpw ]]; then
+        echo " * Write the password down. Press Enter to reboot (rebooting in 5 minutes)."
+        read -r -t 300 _ || :
+    fi
     # "mok", NOT "db": nothing is enrolled yet and will not be until a human
     # works through MokManager. The server records this as pending for exactly
     # that reason -- see ADR 0029 decision 6.

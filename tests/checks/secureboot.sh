@@ -272,6 +272,8 @@ lib() {
         # pacing only.
         dots() { :; }
         debugPause() { :; }
+        # The staged-MOK banner waits on a read; EOF returns it at once.
+        exec </dev/null
         web="http://fog.example/fog/"
         . "$SANDBOX/secureboot-funcs.sh"
         eval "$1"
@@ -909,6 +911,17 @@ new_case; make_firmware 0 0; FAKE_IMPORT_FAIL=1
 got="$(reg true)"
 check "62. registration: a failed staging warns and returns" \
     "$(grep -c '^HANDLEWARNING' <<<"$got")|${got##*$'\n'}" "1|rc=1 outcome="
+
+# 63. A random password holds the screen until Enter. S99fog reboots the moment
+# the script returns, so without the hold it was readable for about two seconds
+# (measured in a VM through Quick Registration). A fleet password set with
+# $sbmokpw is already known, so nothing waits.
+new_case; make_firmware 0 0
+check "63. random password: the banner waits for Enter" \
+    "$(lib 'sbEnroll handleError' | grep -c 'Press Enter to reboot')" "1"
+new_case; make_firmware 0 0
+check "63b. \$sbmokpw set: no wait" \
+    "$(lib 'sbmokpw=fleetpw; sbEnroll handleError' | grep -c 'Press Enter to reboot')" "0"
 
 echo "----"
 echo "$PASS passed, $FAIL failed"
