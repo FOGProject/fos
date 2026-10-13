@@ -267,8 +267,30 @@ success: that is the firmware confirming it accepted the `PK`, and it is the onl
 confirmation available before a reboot (`SecureBoot` stays `0` until the next
 POST computes it). An enrollment that failed part-way stops before the `PK` write,
 so the machine is still in Setup Mode and still boots whatever it booted before —
-`fog.enrollsb` says so explicitly, because "Secure Boot enrollment failed"
+`sbEnroll()` says so explicitly, because "Secure Boot enrollment failed"
 otherwise reads like the machine may now be unbootable.
+
+## Enrolling at registration (fogproject#1860)
+
+The task's steps live in `sbEnroll()`, so Quick and Full Registration can run
+them too, at the end, after the host is registered and inventoried. A new PC set
+up with Secure Boot off then needs one boot instead of two. Three choices, each
+for a reason:
+
+- **Opt-in, `sbenroll=true`.** On a machine not in Setup Mode this stages a MOK
+  request, and an unattended Quick Registration would otherwise send every new
+  machine to a MokManager screen nobody is there to answer. Exactly `true`, like
+  `mdraid=true`, so `sbenroll=0` does not switch it on.
+- **Failures warn, they do not abort.** The caller passes the handler:
+  `fog.enrollsb` passes `handleError`, registration `handleWarning`. A failed
+  enrollment must not undo a registration that already succeeded.
+- **No report.** `secureboot.report.php` accepts a report only while an Enroll
+  Secure Boot task is in flight for the host, and registration has none.
+
+Registration does not remove the console visit. shim's MokManager deletes
+`MokNew` before its 10-second countdown, so a prompt nobody answers discards the
+request rather than deferring it. The staged-request banner says so, for the
+task and for registration alike.
 
 ## Why the `db` baseline is Microsoft's certificates
 

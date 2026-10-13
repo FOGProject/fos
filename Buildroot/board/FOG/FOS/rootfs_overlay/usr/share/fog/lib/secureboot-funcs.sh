@@ -3,7 +3,8 @@
 #
 # Deliberately a separate library rather than more of funcs.sh: this shares no
 # state, no vocabulary and no failure modes with the imaging engine, and
-# funcs.sh is already ~3600 lines. Sourced only by bin/fog.enrollsb.
+# funcs.sh is already ~3600 lines. Sourced by bin/fog.enrollsb,
+# bin/fog.enrollsbforce and the two registration scripts.
 #
 # The central constraint this file is built around (see docs/adr/0009):
 # shim's MokList is a BOOT-SERVICES-ONLY variable, so the running OS cannot
@@ -517,4 +518,262 @@ sbMsDbUpdate() {
         echo "${new%.der}"
     done
     return 0
+}
+# Enroll this FOG server's certificate on this machine, by whichever path the
+# firmware allows.
+#
+# The whole of the Enroll Secure Boot task, lifted out of bin/fog.enrollsb so
+# that registration can run the same steps (fogproject#1860). Two callers want
+# two different things from a failure, so the caller names the handler:
+#
+#   handleError    the task. Enrolling is the only thing it was asked to do,
+#                  so a failure aborts it (ADR-0003).
+#   handleWarning  registration. The host is already registered by the time
+#                  this runs; a failed enrollment must not undo that or stop
+#                  the inventory, so it says what happened and carries on.
+#
+# On success sets $sbOutcome to the outcome sbReport records -- db, trusted or
+# mok -- and $sbFingerprint to the certificate's SHA-256, and returns 0. It
+# does NOT report or complete anything itself: only the task has a task for
+# the server to match the report against.
+#
+# Returns 1 when the handler returned, which only a non-fatal one does.
+#
+# $1 the failure handler: handleError or handleWarning
+sbEnroll() {
+    local fail="$1"
+    local cert="/tmp/MOK.der"
+    local state added ca password
+    [[ -z $fail ]] && handleError "No failure handler passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    sbOutcome=""
+    sbFingerprint=""
+
+    dots "Checking firmware state"
+    state=$(sbState)
+    echo "$state"
+    debugPause
+
+    case $state in
+        nonefi)
+            # Not a failure of this task so much as a task pointed at the wrong
+            # machine, but it is still a task that cannot do what it was asked
+            # to. Per ADR-0003 that aborts rather than reporting a success that
+            # enrolled nothing.
+            "$fail" "This machine booted in BIOS/CSM mode, where Secure Boot does not exist. ($0)\n   Nothing was enrolled. Switch the firmware to UEFI and run this again."
+            return 1
+            ;;
+        noefivars)
+            "$fail" "UEFI firmware was detected but efivarfs could not be mounted. ($0)\n   FOS cannot read or write EFI variables, so nothing was enrolled."
+            return 1
+            ;;
+    esac
+
+    # 32-bit UEFI is refused outright rather than degraded to the db path. See
+    # docs/adr/0009-secure-boot-enrolment-paths.md and FOGProject/fos#140.
+    #
+    # The db write would succeed -- nothing in it is architecture-specific --
+    # and that is precisely the trap. No Microsoft-signed 32-bit shim and no
+    # signed 32-bit iPXE exist, so this machine cannot boot FOG under Secure
+    # Boot enforcement whether or not the certificate is enrolled. Meanwhile the
+    # only state where this can run on ia32 at all is Setup Mode (nothing is
+    # enforcing, so the unsigned chain boots), and the last thing the db path
+    # does is write the PK -- which is what LEAVES Setup Mode. Degrading would
+    # therefore take a machine FOG can image today, make it enforceable, and
+    # leave it with nothing signed to boot, irreversibly from the client's side.
+    #
+    # Checked before the certificate fetch and before the already-trusted
+    # short-circuit: no db contents make enrollment useful here, so there is no
+    # state in which continuing tells the admin something more useful than this.
+    if [[ $(sbPlatformBits) == 32 ]]; then
+        "$fail" "This machine has 32-bit UEFI firmware, which FOG cannot enroll. ($0)\n   No Microsoft-signed 32-bit shim and no signed 32-bit iPXE exist, so it\n   cannot boot FOG under Secure Boot enforcement even with this key trusted.\n   Nothing was enrolled and nothing was changed. Leave Secure Boot off here."
+        return 1
+    fi
+
+    # Microsoft's 2023 CAs, before the FOG certificate and before the
+    # already-trusted exit: the machine in forums topic 18246 already trusted
+    # FOG and still could not boot a Windows image. Setup Mode skips this,
+    # because sbEnrollDb writes a db that already holds these CAs. See
+    # docs/adr/0019.
+    if [[ $state == enforcing || $state == disabled ]]; then
+        dots "Checking Microsoft 2023 CAs"
+        added=$(sbMsDbUpdate)
+        case $? in
+            0)
+                [[ -z $added ]] && echo "Present" || echo "Added"
+                for ca in $added; do
+                    echo "   * Added $ca to db"
+                done
+                ;;
+            1)
+                echo "Failed"
+                debugPause
+                "$fail" "The firmware did not accept Microsoft's signed db update. ($0)\n   No existing db entry was removed. A Windows image whose boot manager is\n   signed by Windows UEFI CA 2023 will not boot here with Secure Boot on.\n   Check for a firmware update from the vendor."
+                return 1
+                ;;
+            2)
+                echo "Skipped"
+                handleWarning "This machine's db lacks Microsoft's 2023 CAs, and its KEK does not hold\n   Microsoft Corporation KEK CA 2011, so no signed update can add them.\n   A Windows image whose boot manager is signed by Windows UEFI CA 2023\n   will not boot here with Secure Boot on. Nothing was changed."
+                ;;
+        esac
+        debugPause
+    fi
+
+    dots "Fetching certificate"
+    if ! sbFetchCert "$cert"; then
+        echo "Failed"
+        debugPause
+        "$fail" "Could not download a usable certificate from ${web}service/secureboot/MOK.der ($0)\n   Secure Boot signing may not be configured on this FOG server;\n   check the Secure Boot page under FOG Configuration."
+        return 1
+    fi
+    echo "Done"
+    debugPause
+
+    # Shown and reported for the record, not as a security gate: FOS is already
+    # running a kernel this same server signed and served, so a server that
+    # could hand us the wrong certificate could equally have handed us the
+    # wrong kernel. The value of it is that it matches what the Secure Boot page
+    # displays and what sbReport stores against the host, so an enrollment can
+    # be audited after the fact -- "enrolled in March" says nothing about
+    # whether this machine trusts what the server is serving today, and a
+    # fingerprint does.
+    sbFingerprint=$(sbCertFingerprint "$cert")
+    echo " * Certificate SHA-256:"
+    echo "     $sbFingerprint"
+    echo
+
+    if sbCertTrusted "$cert"; then
+        echo " * This certificate is already trusted by this machine. Nothing to do."
+        echo
+        # Reported even though nothing was enrolled here. "This machine already
+        # trusts the certificate the server is serving today" is the answer the
+        # administrator was after; recording nothing would leave the host
+        # looking never-enrolled and invite the same task again on the next
+        # sweep.
+        sbOutcome="trusted"
+        return 0
+    fi
+
+    if [[ $state == setup ]]; then
+        # The automatic path. Preferred over staging a MOK whenever it is
+        # available, because it finishes here: no reboot into MokManager, no
+        # password, nobody at the keyboard. Only reachable in Setup Mode -- see
+        # sbState().
+        echo " * This machine is in Setup Mode, so its Secure Boot databases can be"
+        echo "   written directly. Enrolling automatically; no MOK Manager step is"
+        echo "   needed."
+        echo
+        dots "Enrolling Secure Boot keys"
+        if ! sbEnrollDb; then
+            echo "Failed"
+            debugPause
+            # Deliberately spells out the state the machine is left in. A
+            # partial enrollment stops before the PK write, so the platform is
+            # still in Setup Mode and still boots exactly what it booted before
+            # -- that is worth saying, because "Secure Boot enrollment failed"
+            # otherwise reads like the machine may now be unbootable, and
+            # someone will make an unnecessary trip to the firmware screen.
+            "$fail" "Automatic Secure Boot enrollment failed. ($0)\n   This machine is still in Setup Mode and still boots as it did before;\n   nothing has been made unbootable.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth --\n   the FOG server needs efitools installed to produce them."
+            return 1
+        fi
+        echo "Done"
+        debugPause
+
+        echo
+        echo "=============================================================================="
+        echo " Secure Boot is now enrolled on this machine."
+        echo
+        echo "   This FOG server's certificate is in the platform's db, and Microsoft's"
+        echo "   certificates were enrolled alongside it, so Windows and FOG's own"
+        echo "   signed PXE chain both still boot."
+        echo
+        echo " The machine has left Setup Mode. Secure Boot enforcement takes effect on"
+        echo " the next boot; turn it on in the firmware if it is not already."
+        echo "=============================================================================="
+        echo
+        sbOutcome="db"
+        return 0
+    fi
+
+    password=$(sbMokPassword)
+    if [[ -z $password ]]; then
+        "$fail" "Could not determine a one-time password for the MOK request. ($0)"
+        return 1
+    fi
+
+    dots "Staging MOK enrollment request"
+    if ! sbStageMok "$cert" "$password"; then
+        echo "Failed"
+        debugPause
+        "$fail" "The MOK enrollment request was NOT staged. ($0)\n   Do not reboot expecting a MokManager prompt; nothing is pending.\n   See the messages above for what ran."
+        return 1
+    fi
+    echo "Done"
+    debugPause
+
+    # The 10-second line is shim's, not ours: MokManager counts down from 10
+    # (MokTimeout) and deletes MokNew before it shows anything, so a missed
+    # prompt discards the request rather than deferring it. Worth saying now
+    # that registration can stage one ahead of an imaging reboot nobody is
+    # watching.
+    echo
+    echo "=============================================================================="
+    echo " A Secure Boot enrollment request is now pending on this machine."
+    echo
+    echo "   ONE-TIME PASSWORD:   $password"
+    echo
+    echo " On the next boot, a blue MOK Manager screen appears instead of the normal"
+    echo " boot. Press a key within 10 seconds, or the request is discarded and has"
+    echo " to be staged again. Then work through it in this order:"
+    echo
+    echo "   1. Enroll MOK"
+    echo "   2. View key 0        <- check it names your FOG server"
+    echo "   3. Continue"
+    echo "   4. Yes"
+    echo "   5. Enter the password above"
+    echo "   6. Reboot"
+    echo
+    echo " If MOK Manager does NOT appear, this machine did not boot through a shim"
+    echo " and nothing has been enrolled."
+    echo "=============================================================================="
+    echo
+    # "mok", NOT "db": nothing is enrolled yet and will not be until a human
+    # works through MokManager. The server records this as pending for exactly
+    # that reason -- see ADR 0029 decision 6.
+    sbOutcome="mok"
+    return 0
+}
+# Enroll at the end of registration, when the administrator asked for it.
+#
+# Opt-in through sbenroll=true on the kernel command line -- set it fleet-wide
+# in FOG's global kernel arguments. Exactly "true", like mdraid=true, so that
+# sbenroll=0 does not switch it on. Without it registration behaves exactly as before. It is
+# opt-in because, on a machine that is not in Setup Mode, it stages a MOK
+# request -- and an unattended Quick Registration would otherwise send every
+# new machine to a MOK Manager screen nobody is there to answer.
+#
+# Runs while Secure Boot is still off, which is what lets one boot do both:
+# FOS could not have booted to register this machine otherwise, unless it
+# already trusts the certificate, which sbEnroll then reports and leaves alone.
+#
+# Nothing is reported to the server. secureboot.report.php only accepts a
+# report while an Enroll Secure Boot task is in flight for the host, and there
+# is none here, so a report would only print a "could not be recorded" note.
+#
+# BIOS and 32-bit UEFI machines are skipped with one line rather than warned
+# about: with sbenroll set fleet-wide, every such machine that registers would
+# otherwise sit through a one-minute warning for something it was never going
+# to be able to do.
+sbEnrollAtRegistration() {
+    [[ $sbenroll == true ]] || return 0
+    echo
+    echo " * Secure Boot enrollment requested (sbenroll=true)"
+    if [[ $(sbState) == nonefi ]]; then
+        echo "   Skipped: this machine booted in BIOS/CSM mode."
+        return 0
+    fi
+    if [[ $(sbPlatformBits) == 32 ]]; then
+        echo "   Skipped: 32-bit UEFI firmware cannot boot FOG under Secure Boot."
+        return 0
+    fi
+    sbEnroll handleWarning
 }
