@@ -918,6 +918,29 @@ mcStreamIdSupported() {
     fi
     return 0
 }
+# Prints the seconds a multicast receiver may wait for a sender, or nothing.
+#
+#    Without --start-timeout udp-receiver waits forever. A host that boots
+#    after its sender started, or after the sender gave up, then sits at
+#    "waiting" until someone notices (fos#48). The server sends
+#    mcastMaxWait=<minutes> on the kernel command line, which S40network
+#    exports. Its sender waits mcastMaxWait*60 s for the first partition
+#    stream and max(600, mcastMaxWait*60) s for each later one, so the
+#    receiver must outwait both: the larger of the two plus 120 s of slack.
+#    udp-receiver applies the timeout only before the first data packet, so
+#    it never cuts a running transfer short.
+#
+#    An older server sends no mcastMaxWait. Nothing is printed for that, or
+#    for a value that is not a positive integer, and the receiver keeps its
+#    old behavior of waiting without a limit.
+mcStartTimeout() {
+    [[ ${mcastMaxWait:-} =~ ^[0-9]+$ ]] || return 0
+    local mins=$((10#$mcastMaxWait))
+    [[ $mins -gt 0 ]] || return 0
+    local secs=$((mins * 60))
+    [[ $secs -lt 600 ]] && secs=600
+    echo $((secs + 120))
+}
 # Reads the identity header off the front of a multicast stream and refuses
 #    the stream if it is not the image file this partition asked for.
 #
@@ -934,6 +957,7 @@ mcStreamIdSupported() {
 #    eat payload.
 #
 # $1 = the image file this partition expects (may be a glob)
+# $2 = the receiver's start timeout in seconds, if it was given one (optional)
 checkStreamIdentity() {
     local wanted="$1"
     [[ -z $wanted ]] && handleError "No expected image file passed (${FUNCNAME[0]})\n   Args Passed: $*"
@@ -956,6 +980,14 @@ checkStreamIdentity() {
     local mcHeaderBytes=128
     local hdr=""
     hdr=$(dd bs=1 count=$mcHeaderBytes status=none <&9)
+    # An empty read means the receiver ended without a single byte: it gave
+    #    up waiting (--start-timeout), or no sender answered. Reporting that
+    #    as a stream mismatch against '' would point at the wrong problem.
+    if [[ -z $hdr ]]; then
+        local waited=""
+        [[ -n ${2:-} ]] && waited=" within $2 seconds"
+        handleError "No multicast sender answered on port $port${waited}. The session may have started without this host or been canceled (${FUNCNAME[0]})\n   Args Passed: $*"
+    fi
     local tag="${hdr%% *}"
     if [[ $tag != "$mcHeaderMagic" ]]; then
         # A stream that carries a record version this client does not read
@@ -989,6 +1021,8 @@ writeImage()  {
             [[ -z $file ]] && handleError "No source file passed (${FUNCNAME[0]})\n   Args Passed: $*"
             local rdvaddress="$storageip"
             [[ -n $mcastrdv ]] && rdvaddress="$mcastrdv"
+            # Empty unless the server sent mcastMaxWait; see mcStartTimeout.
+            local mcsto="$(mcStartTimeout)"
             mcStreamIdSupported
             if [[ $mcstreamidcap == yes ]]; then
                 # The receiver's own output is read here first, so that the
@@ -996,13 +1030,13 @@ writeImage()  {
                 #    and the target partition is still untouched on a refusal.
                 rm -f /tmp/mcraw
                 mkfifo /tmp/mcraw
-                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $rdvaddress 2>/dev/null >/tmp/mcraw &
+                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $rdvaddress ${mcsto:+--start-timeout $mcsto} 2>/dev/null >/tmp/mcraw &
                 exec 9</tmp/mcraw
-                checkStreamIdentity "$file"
+                checkStreamIdentity "$file" "$mcsto"
                 cat <&9 >/tmp/pigz1 &
                 exec 9<&-
             else
-                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $rdvaddress 2>/dev/null >/tmp/pigz1 &
+                udp-receiver --nokbd --portbase $port --ttl 32 --mcast-rdv-address $rdvaddress ${mcsto:+--start-timeout $mcsto} 2>/dev/null >/tmp/pigz1 &
             fi
             ;;
         *)

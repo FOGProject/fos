@@ -74,7 +74,7 @@ ck "the header is only stripped when the server advertises it" "$([[ $? -eq 0 ]]
 
 # A server that does not prepend a header must keep its old, unstripped
 # path, or 128 bytes of payload go missing.
-grep -q 'udp-receiver --nokbd --portbase \$port --ttl 32 --mcast-rdv-address \$rdvaddress 2>/dev/null >/tmp/pigz1 &' "$FUNCS"
+grep -q 'udp-receiver --nokbd --portbase \$port --ttl 32 --mcast-rdv-address \$rdvaddress \${mcsto:+--start-timeout \$mcsto} 2>/dev/null >/tmp/pigz1 &' "$FUNCS"
 ck "an unadvertised server still gets the direct receiver" "$([[ $? -eq 0 ]] && echo 1 || echo 0)"
 
 # Same shape as the mclvm probe and fogproject GH-1266: an unreachable

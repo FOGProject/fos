@@ -275,6 +275,17 @@ tests/checks/mdraid-gate.sh
                               # fails with 'Could not find partitions'. -b also
                               # diffs the copy against the built upstream rule.
                               # See forums topic 18202
+tests/checks/multicast-receiver.sh
+                              # writeImage() gives both udp-receiver call
+                              # sites --start-timeout of max(mcastMaxWait*60,
+                              # 600)+120 seconds when the server sent a positive
+                              # integer mcastMaxWait, and no flag otherwise (an
+                              # older server, 0, or garbage). Without it a host
+                              # that boots after its sender started or gave up
+                              # waits forever. An empty receiver stream is
+                              # reported as "no multicast sender answered"
+                              # rather than a stream mismatch against ''.
+                              # See fos#48
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
