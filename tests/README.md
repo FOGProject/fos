@@ -286,6 +286,14 @@ tests/checks/multicast-receiver.sh
                               # reported as "no multicast sender answered"
                               # rather than a stream mismatch against ''.
                               # See fos#48
+tests/checks/fixparts-binary-present.sh
+                              # runFixparts() calls fixparts, which Buildroot's
+                              # gptfdisk package cannot build. fs.patch adds
+                              # BR2_PACKAGE_GPTFDISK_FIXPARTS; this asserts the
+                              # patch still defines it and every fs config sets
+                              # it. A symbol with no Kconfig definition is
+                              # dropped silently, which is how every init from
+                              # 2023-12 on shipped without it. See fos#194
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
