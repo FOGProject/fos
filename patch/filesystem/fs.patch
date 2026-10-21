@@ -41,6 +41,33 @@ index 5ebb5f9ba8..8701319072 100644
  
  include package/pkg-download.mk
  include package/pkg-autotools.mk
+diff --git a/package/gptfdisk/Config.in b/package/gptfdisk/Config.in
+--- a/package/gptfdisk/Config.in
++++ b/package/gptfdisk/Config.in
+@@ -35,6 +35,12 @@
+ 	  traditional MBR based sfdisk tool albeit with an entirely
+ 	  different option syntax.
+ 
++config BR2_PACKAGE_GPTFDISK_FIXPARTS
++	bool "command line fixparts"
++	help
++	  Install /usr/sbin/fixparts, which repairs MBR partition
++	  tables and removes stale GPT data from an MBR disk.
++
+ config BR2_PACKAGE_GPTFDISK_CGDISK
+ 	bool "ncurses cgdisk"
+ 	depends on BR2_USE_WCHAR # ncurses wchar
+diff --git a/package/gptfdisk/gptfdisk.mk b/package/gptfdisk/gptfdisk.mk
+--- a/package/gptfdisk/gptfdisk.mk
++++ b/package/gptfdisk/gptfdisk.mk
+@@ -12,6 +12,7 @@
+ GPTFDISK_TARGETS_$(BR2_PACKAGE_GPTFDISK_GDISK) += gdisk
+ GPTFDISK_TARGETS_$(BR2_PACKAGE_GPTFDISK_SGDISK) += sgdisk
+ GPTFDISK_TARGETS_$(BR2_PACKAGE_GPTFDISK_CGDISK) += cgdisk
++GPTFDISK_TARGETS_$(BR2_PACKAGE_GPTFDISK_FIXPARTS) += fixparts
+ 
+ GPTFDISK_DEPENDENCIES += util-linux
+ GPTFDISK_LDLIBS += -luuid
 diff --git a/package/ntfs-3g/ntfs-3g.hash b/package/ntfs-3g/ntfs-3g.hash
 index 3fcba6af4d..45ee0daafd 100644
 --- a/package/ntfs-3g/ntfs-3g.hash
