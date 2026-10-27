@@ -20,12 +20,18 @@ This is those four patches combined and adapted to vanilla 6.12.35:
 Adaptation: dropped the pci_lock_rescan_remove()/pci_unlock_rescan_remove()
 calls in vmd_enable_domain, which exist only in Ubuntu's 6.11 tree, and
 Ubuntu's aspm_os_control field which mainline lacks. Everything else is
-verbatim. Remove this patch once the upstream series lands in the stable
-kernel FOS builds from.
+verbatim.
+
+Rebased to 7.2.13 (fos#110 experimental kernel): vmd_enable_domain now
+allocates its domain with pci_bus_find_emul_domain_nr() and releases it
+on the root-bus failure path, so the rebased hunk keeps both.
+
+Remove this patch once the upstream series lands in the stable kernel
+FOS builds from.
 
 --- a/drivers/pci/controller/vmd.c
 +++ b/drivers/pci/controller/vmd.c
-@@ -33,9 +33,34 @@
+@@ -34,9 +34,34 @@
  #define PCI_REG_VMLOCK		0x70
  #define MB2_SHADOW_EN(vmlock)	(vmlock & 0x2)
  
@@ -60,7 +66,7 @@ kernel FOS builds from.
  enum vmd_features {
  	/*
  	 * Device may contain registers which hint the physical location of the
-@@ -76,6 +101,12 @@
+@@ -77,6 +102,12 @@
  	 * proper power management of the SoC.
  	 */
  	VMD_FEAT_BIOS_PM_QUIRK		= (1 << 5),
@@ -73,7 +79,7 @@ kernel FOS builds from.
  };
  
  #define VMD_BIOS_PM_QUIRK_LTR	0x1003	/* 3145728 ns */
-@@ -83,7 +114,8 @@
+@@ -84,7 +115,8 @@
  #define VMD_FEATS_CLIENT	(VMD_FEAT_HAS_MEMBAR_SHADOW_VSCAP |	\
  				 VMD_FEAT_HAS_BUS_RESTRICTIONS |	\
  				 VMD_FEAT_OFFSET_FIRST_VECTOR |		\
@@ -83,7 +89,7 @@ kernel FOS builds from.
  
  static DEFINE_IDA(vmd_instance_ida);
  
-@@ -134,10 +166,10 @@
+@@ -135,10 +167,10 @@
  	struct vmd_irq_list	*irqs;
  
  	struct pci_sysdata	sysdata;
@@ -97,7 +103,7 @@ kernel FOS builds from.
  	u8			first_vec;
  	char			*name;
  	int			instance;
-@@ -366,11 +398,30 @@
+@@ -389,11 +421,30 @@
  	}
  }
  
@@ -130,7 +136,7 @@ kernel FOS builds from.
  
  	if (offset + len >= resource_size(&vmd->dev->resource[VMD_CFGBAR]))
  		return NULL;
-@@ -507,10 +558,15 @@
+@@ -520,10 +571,15 @@
  
  static void vmd_domain_reset(struct vmd_dev *vmd)
  {
@@ -147,7 +153,7 @@ kernel FOS builds from.
  	for (bus = 0; bus < max_buses; bus++) {
  		for (dev = 0; dev < 32; dev++) {
  			base = vmd->cfgbar + PCIE_ECAM_OFFSET(bus,
-@@ -555,8 +611,8 @@
+@@ -568,8 +624,8 @@
  
  static void vmd_attach_resources(struct vmd_dev *vmd)
  {
@@ -158,7 +164,7 @@ kernel FOS builds from.
  }
  
  static void vmd_detach_resources(struct vmd_dev *vmd)
-@@ -635,7 +691,7 @@
+@@ -632,7 +688,7 @@
  	return 0;
  }
  
@@ -167,7 +173,7 @@ kernel FOS builds from.
  {
  	struct pci_dev *dev = vmd->dev;
  	u16 reg;
-@@ -646,13 +702,25 @@
+@@ -643,13 +699,25 @@
  
  		switch (BUS_RESTRICT_CFG(reg)) {
  		case 0:
@@ -196,7 +202,7 @@ kernel FOS builds from.
  			break;
  		default:
  			pci_err(dev, "Unknown Bus Offset Setting (%d)\n",
-@@ -774,17 +842,252 @@
+@@ -771,17 +839,252 @@
  	return 0;
  }
  
@@ -454,7 +460,7 @@ kernel FOS builds from.
  	int ret;
  
  	/*
-@@ -809,18 +1112,12 @@
+@@ -806,18 +1109,12 @@
  	 * limits the bus range to between 0-127, 128-255, or 224-255
  	 */
  	if (features & VMD_FEAT_HAS_BUS_RESTRICTIONS) {
@@ -475,7 +481,7 @@ kernel FOS builds from.
  
  	/*
  	 * If the window is below 4GB, clear IORESOURCE_MEM_64 so we can
-@@ -834,36 +1131,12 @@
+@@ -831,36 +1128,12 @@
  	 *
  	 * The only way we could use a 64-bit non-prefetchable MEMBAR is
  	 * if its address is <4GB so that we can convert it to a 32-bit
@@ -513,29 +519,35 @@ kernel FOS builds from.
 -	};
 +	vmd_configure_membar1_membar2(vmd, membar2_offset);
  
- 	sd->vmd_dev = vmd->dev;
- 	sd->domain = vmd_find_free_domain();
-@@ -899,70 +1172,49 @@
+ 	/*
+ 	 * Currently MSI remapping must be enabled in guest passthrough mode
+@@ -883,9 +1156,11 @@
  		vmd_set_msi_remapping(vmd, false);
  	}
  
 -	pci_add_resource(&resources, &vmd->resources[0]);
 -	pci_add_resource_offset(&resources, &vmd->resources[1], offset[0]);
 -	pci_add_resource_offset(&resources, &vmd->resources[2], offset[1]);
--
--	vmd->bus = pci_create_root_bus(&vmd->dev->dev, vmd->busn_start,
--				       &vmd_ops, sd, &resources);
--	if (!vmd->bus) {
 +	pci_add_resource(&resources, &vmd->resources[VMD_RES_CFGBAR]);
 +	pci_add_resource_offset(&resources, &vmd->resources[VMD_RES_MBAR_1],
 +				offset[0]);
 +	pci_add_resource_offset(&resources, &vmd->resources[VMD_RES_MBAR_2],
 +				offset[1]);
-+
+ 
+ 	sd->vmd_dev = vmd->dev;
+ 
+@@ -901,67 +1176,44 @@
+ 
+ 	sd->node = pcibus_to_node(vmd->dev->bus);
+ 
+-	vmd->bus = pci_create_root_bus(&vmd->dev->dev, vmd->busn_start,
+-				       &vmd_ops, sd, &resources);
+-	if (!vmd->bus) {
 +	vmd->bus[VMD_BUS_0] = pci_create_root_bus(&vmd->dev->dev,
 +						  vmd->busn_start[VMD_BUS_0],
 +						  &vmd_ops, sd, &resources);
 +	if (!vmd->bus[VMD_BUS_0]) {
+ 		pci_bus_release_emul_domain_nr(sd->domain);
  		pci_free_resource_list(&resources);
  		vmd_remove_irq_domain(vmd);
  		return -ENODEV;
@@ -631,7 +643,7 @@ kernel FOS builds from.
  	vmd_cleanup_srcu(vmd);
  	vmd_detach_resources(vmd);
  	vmd_remove_irq_domain(vmd);
-@@ -1148,4 +1404,4 @@
+@@ -1151,4 +1407,4 @@
  MODULE_AUTHOR("Intel Corporation");
  MODULE_DESCRIPTION("Volume Management Device driver");
  MODULE_LICENSE("GPL v2");

@@ -5,7 +5,7 @@ source ./dependencies.sh
 # bump-package.sh and the test harness, so they live in their own file.
 source "$(dirname "${BASH_SOURCE[0]}")/package-funcs.sh"
 
-[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='6.18.38'
+[[ -z $KERNEL_VERSION ]] && KERNEL_VERSION='7.2.13'
 [[ -z $BUILDROOT_VERSION ]] && BUILDROOT_VERSION='2026.02.1'
 
 declare -ar ARCHITECTURES=("x64" "x86" "arm64")
