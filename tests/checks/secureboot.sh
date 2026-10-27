@@ -56,6 +56,13 @@ sed -e "s#\"/tmp/#\"$SANDBOX/#g" \
     "$REPO_LIB/secureboot-funcs.sh" > "$SANDBOX/secureboot-funcs.sh"
 
 STUBBIN="$SANDBOX/bin"
+# fog.curl is shipped code that sits between the call site and the curl double.
+# Its TLS state is seeded "verified", so it adds no probe call of its own and
+# runs plain curl. tests/checks/tls-trust.sh covers its modes.
+sed "s#^statefile=.*#statefile=\"$SANDBOX/fog.tls\"#" \
+    "$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/bin/fog.curl" > "$STUBBIN/fog.curl"
+chmod +x "$STUBBIN/fog.curl"
+echo verified > "$SANDBOX/fog.tls"
 
 # mokutil double. Logs argv, and each subcommand fails only under its own knob
 # so a test can isolate one link of the chain.

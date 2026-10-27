@@ -42,6 +42,13 @@ sed -e "s#^\. /usr/share/fog/lib/partition-funcs\.sh#. $SANDBOX/partition-funcs.
 
 STUBBIN="$SANDBOX/bin"
 mkdir -p "$STUBBIN"
+# fog.curl is shipped code that sits between the call site and the curl double.
+# Its TLS state is seeded "verified", so it adds no probe call of its own and
+# runs plain curl. tests/checks/tls-trust.sh covers its modes.
+sed "s#^statefile=.*#statefile=\"$SANDBOX/fog.tls\"#" \
+    "$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/bin/fog.curl" > "$STUBBIN/fog.curl"
+chmod +x "$STUBBIN/fog.curl"
+echo verified > "$SANDBOX/fog.tls"
 
 # curl double: records one line per argument into $SANDBOX/curl.argv, then exits
 # with $FAKE_CURL_RC. Recording argv rather than a flattened string is what lets

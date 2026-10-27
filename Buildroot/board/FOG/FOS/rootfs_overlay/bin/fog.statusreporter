@@ -92,7 +92,7 @@ validStatus() {
 postStatus() {
     local line="$1"
     [[ -z $mac || -z $web ]] && return 0
-    curl -Lks --max-time 5 \
+    fog.curl -Ls --max-time 5 \
         --data-urlencode "sysuuid=$sysuuid" \
         --data-urlencode "mac=$mac" \
         --data-urlencode "status=$(printf '%s' "$line" | base64 | tr -d '\n')" \

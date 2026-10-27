@@ -1,0 +1,66 @@
+#!/bin/bash
+#
+# curl, plus the decision about which TLS certificate to trust.
+#
+#   fog.curl <curl arguments...>
+#
+# Every FOS call to the FOG server goes through this. Each call site used to
+# pass -k, so FOS never checked who answered it (fos#102, docs/adr/0020). The
+# host token, the task data and the status reports all went to whatever server
+# answered for $web.
+#
+# Three modes, picked in this order:
+#
+#   pinned    fogpin= is on the kernel command line. The server's public key
+#             must hash to it, and nothing else decides. -k stays, because the
+#             pin replaces the chain check: a FOG server's certificate is
+#             usually signed by the CA the FOG installer generated, and no
+#             bundle carries that CA. curl still enforces --pinnedpubkey under
+#             -k and exits 90 on a mismatch.
+#   verified  no pin. curl checks the chain against the CA bundle in the init.
+#   insecure  no pin, and the chain did not verify. Warn once, then use -k,
+#             which is what every call did before. This is not a downgrade an
+#             attacker can use: whoever can strip fogpin= from the command line
+#             can also rewrite web=.
+#
+# An executable rather than a function in funcs.sh. S40network,
+# fog.statusreporter and secureboot-funcs.sh do not source funcs.sh, and
+# callServer runs curl inside $(...), where any state a function set is lost.
+# The verified/insecure answer is kept in $statefile for the same reason, so
+# the probe and the warning happen once per boot rather than once per call.
+statefile=/tmp/fog.tls
+
+# The kernel command-line parser in funcs.sh and S40network splits on "=", so
+# it drops the base64 padding. A SHA-256 is 32 bytes, which is always 43
+# base64 characters and one "=". Strip what is left of the padding and put it
+# back, so the pin is right whichever parser exported it.
+if [[ -n $fogpin ]]; then
+    curl -k --pinnedpubkey "sha256//${fogpin//=/}=" "$@"
+    rc=$?
+    [[ $rc -eq 90 ]] && echo " * The FOG server's TLS key does not match fogpin= on the kernel command line. Refusing to talk to it." >&2
+    exit $rc
+fi
+
+mode=$(cat "$statefile" 2>/dev/null)
+if [[ -z $mode && -n $web ]]; then
+    # Probe $web once, on its own, rather than retry the real call after a
+    # failure: a retried call would print its -w output twice, and callServer
+    # parses that output.
+    curl -sL -o /dev/null --connect-timeout 5 --max-time 10 "$web" 2>/dev/null
+    case $? in
+        0)
+            mode=verified
+            ;;
+        # 60 is a certificate that did not verify, 77 a CA bundle that is not
+        # there (an init built before this change). Any other failure is the
+        # network, and says nothing about trust, so nothing is recorded and the
+        # next call probes again.
+        60|77)
+            mode=insecure
+            echo " * WARNING: cannot verify the TLS certificate of ${web}. Continuing without verification, as FOS always has. A FOG server that sends fogpin= removes this warning." >&2
+            ;;
+    esac
+    [[ -n $mode ]] && echo "$mode" > "$statefile"
+fi
+[[ $mode == insecure ]] && exec curl -k "$@"
+exec curl "$@"
