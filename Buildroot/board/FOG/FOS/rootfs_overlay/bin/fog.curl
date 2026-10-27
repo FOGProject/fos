@@ -57,7 +57,7 @@ if [[ -z $mode && -n $web ]]; then
         # next call probes again.
         60|77)
             mode=insecure
-            echo " * WARNING: cannot verify the TLS certificate of ${web}. Continuing without verification, as FOS always has. Pass fogpin= from the server to fix this." >&2
+            echo " * WARNING: cannot verify the TLS certificate of ${web}. Continuing without verification, as FOS always has. A FOG server that sends fogpin= removes this warning." >&2
             ;;
     esac
     [[ -n $mode ]] && echo "$mode" > "$statefile"
