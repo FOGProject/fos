@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# Caps /tmp at the size the FOG server asks for (ADR-0021).
+#
+# FOS's root is in RAM, and so is /tmp. A runaway write to /tmp must end in
+# "No space left on device", not in the client running out of memory and
+# hanging. fstab mounts /tmp as tmpfs with a 256 MiB default; this resizes it
+# from ramdisk_size= on the kernel command line, which the server fills from
+# the FOG_KERNEL_RAMDISK_SIZE setting (in KB). That setting sized the old ext2
+# ram disk; an initramfs has no ram disk, so the same knob now sizes /tmp, and
+# every FOG server already sends it.
+#
+# The size is clamped: never below 64 MiB, never above half of physical
+# memory -- a tmpfs larger than RAM caps nothing. A missing or non-numeric
+# value keeps the 256 MiB default.
+#
+#   S00tmpsize start      resize /tmp (what rcS runs)
+#   S00tmpsize print      print the size in KB it would use, change nothing
+#
+# FOG_CMDLINE and FOG_MEMINFO override /proc/cmdline and /proc/meminfo, for
+# tests/checks/tmp-size.sh.
+
+DEFAULT_KB=262144
+MIN_KB=65536
+
+tmpSizeKB() {
+    local cmdline="${FOG_CMDLINE:-/proc/cmdline}" meminfo="${FOG_MEMINFO:-/proc/meminfo}"
+    local arg kb="" memkb half
+    for arg in $(cat "$cmdline" 2>/dev/null); do
+        [[ $arg == ramdisk_size=* ]] && kb="${arg#ramdisk_size=}"
+    done
+    [[ $kb =~ ^[0-9]{1,10}$ ]] || kb=$DEFAULT_KB
+    [[ $kb -lt $MIN_KB ]] && kb=$MIN_KB
+    memkb=$(awk '/^MemTotal:/ {print $2; exit}' "$meminfo" 2>/dev/null)
+    if [[ $memkb =~ ^[0-9]+$ ]]; then
+        half=$(( memkb / 2 ))
+        [[ $kb -gt $half ]] && kb=$half
+    fi
+    echo "$kb"
+}
+
+case $1 in
+    start)
+        kb=$(tmpSizeKB)
+        mount -o remount,size="${kb}k" /tmp || echo " * Could not resize /tmp to ${kb} KB; it keeps the fstab default"
+        ;;
+    print)
+        tmpSizeKB
+        ;;
+esac

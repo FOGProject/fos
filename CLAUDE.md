@@ -179,6 +179,7 @@ tests/checks/mdraid-gate.sh          # md arrays auto-assemble only with mdraid=
 tests/checks/multicast-receiver.sh    # udp-receiver gets --start-timeout from mcastMaxWait; an empty stream says no sender answered (fos#48)
 
 tests/checks/fixparts-binary-present.sh  # fs.patch builds fixparts, which runFixparts() calls (fos#194)
+tests/checks/tmp-size.sh                 # /tmp is real tmpfs, sized from ramdisk_size= and clamped (ADR-0021)
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
@@ -403,6 +404,18 @@ and add a new ADR for any similarly hard-to-reverse decision:
   injected pin goes stale on certificate rotation, and a pin must come from
   wherever `web=` comes from. The `fogpin=` parser drops base64 padding, so
   `fog.curl` restores it. Guarded by `tests/checks/tls-trust.sh`.
+
+- **0021 — initramfs for every arch.** x64/x86 now ship an xz cpio initramfs
+  (same names, `init.xz`/`init_32.xz`) instead of an ext2 image booted as a
+  classic initrd: mainline is removing `root=/dev/ram0` initrd support
+  (January 2027), and fos#75 panics inside that loader. The server's
+  `root=`/`ramdisk_size=`/`rootfstype=` are ignored once `/init` exists, so no
+  server change is needed. Two traps: customizing the init is now an appended
+  overlay cpio, not a loop mount (`xz --check=crc32` still required); and
+  `CONFIG_SHMEM` was off, which made every "tmpfs" a size-ignoring ramfs, so
+  `/tmp` was never capped. SHMEM/TMPFS are now on and `S00tmpsize` sizes `/tmp`
+  from `ramdisk_size=` (FOG_KERNEL_RAMDISK_SIZE), clamped to half of RAM.
+  Guarded by `tests/checks/initrd-format.sh` and `tests/checks/tmp-size.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

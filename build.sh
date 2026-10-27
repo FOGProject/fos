@@ -301,11 +301,11 @@ function buildFilesystem() {
     cd dist || { echo "Couldn't change directory to dist"; exit 1; }
     case "${arch}" in
         x64)
-            compiledfile="../fssource$arch/output/images/rootfs.ext2.xz"
+            compiledfile="../fssource$arch/output/images/rootfs.cpio.xz"
             initfile='init.xz'
             ;;
         x86)
-            compiledfile="../fssource$arch/output/images/rootfs.ext2.xz"
+            compiledfile="../fssource$arch/output/images/rootfs.cpio.xz"
             initfile='init_32.xz'
             ;;
         arm64)

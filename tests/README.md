@@ -308,6 +308,12 @@ tests/checks/fixparts-binary-present.sh
                               # it. A symbol with no Kconfig definition is
                               # dropped silently, which is how every init from
                               # 2023-12 on shipped without it. See fos#194
+tests/checks/tmp-size.sh
+                              # /tmp is a real, capped tmpfs: SHMEM/TMPFS in
+                              # every kernel config (-b: post-oldconfig), a
+                              # size= default in fstab, and S00tmpsize's size
+                              # from ramdisk_size= clamped to 64 MiB..half of
+                              # RAM. See ADR-0021
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk

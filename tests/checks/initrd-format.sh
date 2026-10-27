@@ -8,7 +8,7 @@
 #                                        # in any kernelsource<arch>/ present
 #
 # Why this exists. build.sh publishes a *different* init image per arch --
-# rootfs.ext2.xz for x64/x86, rootfs.cpio.gz for arm64 -- and each of those
+# rootfs.cpio.xz for x64/x86, rootfs.cpio.gz for arm64 -- and each of those
 # compressions needs its own CONFIG_RD_* symbol in the kernel that has to unpack
 # it. Nothing in the tree tied the two ends together, and they drifted: the
 # arm64 kernel shipped with `# CONFIG_RD_GZIP is not set` while the arm64 init
@@ -164,6 +164,14 @@ for arch in x64 x86 arm64; do
     brsuffix="${row%%|*}"
     rdsuffix="${row#*|}"
     echo "arch $arch ships $artifact"
+    # A filesystem image (ext2) is booted through the classic initrd path,
+    # root=/dev/ram0, which mainline deprecated and schedules for removal in
+    # January 2027; 7.2 warns on every boot. It is also the code path fos#75
+    # panics in. Every arch ships an initramfs (cpio) instead -- ADR-0021.
+    if [[ $imgtype != cpio ]]; then
+        echo "FAIL [build.sh] arch $arch ships $artifact, a classic initrd image; ship a cpio initramfs (ADR-0021)"
+        fails=$((fails + 1))
+    fi
     checkBuildroot "$arch" "$imgtype" "$brsuffix"
     checkKernel "configs/kernel${arch}.config" \
                 "$REPO/configs/kernel${arch}.config" "$rdsuffix"
