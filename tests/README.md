@@ -314,6 +314,14 @@ tests/checks/tmp-size.sh
                               # size= default in fstab, and S00tmpsize's size
                               # from ramdisk_size= clamped to 64 MiB..half of
                               # RAM. See ADR-0021
+tests/checks/perftest.sh
+                              # fog.perftest (Performance Test task): MB/s and
+                              # GB/min arithmetic, the dev/ share mapped to the
+                              # stored images, the sampled image (never a
+                              # capture in progress), real zstdmt/pigz on a
+                              # stream cut mid-way, scaling compressed rates
+                              # to uncompressed, and which stage it blames.
+                              # See fos#55
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk

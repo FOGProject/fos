@@ -180,6 +180,7 @@ tests/checks/multicast-receiver.sh    # udp-receiver gets --start-timeout from m
 
 tests/checks/fixparts-binary-present.sh  # fs.patch builds fixparts, which runFixparts() calls (fos#194)
 tests/checks/tmp-size.sh                 # /tmp is real tmpfs, sized from ramdisk_size= and clamped (ADR-0021)
+tests/checks/perftest.sh                 # Performance Test task: rates, sampled image, dev/ share, bottleneck (fos#55)
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
