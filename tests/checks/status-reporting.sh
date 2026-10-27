@@ -60,6 +60,13 @@ STATUSFILE="$SANDBOX/status.fog"
 POSTLOG="$SANDBOX/posts"
 STUBBIN="$SANDBOX/bin"
 mkdir -p "$STUBBIN"
+# fog.curl is shipped code that sits between the call site and the curl double.
+# Its TLS state is seeded "verified", so it adds no probe call of its own and
+# runs plain curl. tests/checks/tls-trust.sh covers its modes.
+sed "s#^statefile=.*#statefile=\"$SANDBOX/fog.tls\"#" \
+    "$HERE/../../Buildroot/board/FOG/FOS/rootfs_overlay/bin/fog.curl" > "$STUBBIN/fog.curl"
+chmod +x "$STUBBIN/fog.curl"
+echo verified > "$SANDBOX/fog.tls"
 
 # curl double. Records one line per argument and a terminator, so a case can
 # count posts and read back exactly what was sent.

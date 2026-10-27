@@ -132,6 +132,20 @@ tests/checks/server-post-reporting.sh
                               # call site anywhere in the overlay may wrap it,
                               # and raw curl may read a reply only in the
                               # exceptions named in the check
+tests/checks/tls-trust.sh
+                              # fog.curl, the TLS trust decision on every FOS
+                              # call to the FOG server (fos#102, ADR-0020). Runs
+                              # the shipped fog.curl against REAL curl and a
+                              # local HTTPS server with a throwaway CA, because
+                              # what is under test is what curl does with a real
+                              # certificate. A matching fogpin= connects to a
+                              # server no bundle trusts, with or without its
+                              # base64 padding; a wrong pin refuses with exit 90
+                              # even when the bundle trusts the server; with no
+                              # pin a trusted chain verifies and an untrusted one
+                              # warns once and falls back to -k; a network
+                              # failure records nothing. No call site may run
+                              # curl directly or hand fog.curl a -k
 tests/checks/status-reporting.sh
                               # fog.statusreporter: what actually reaches
                               # service/progress.php while a task images. It

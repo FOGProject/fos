@@ -15,7 +15,7 @@ if [[ $boottype == usb && ! -z $web ]]; then
     [[ -z $token ]] && echo " * Could not get this host's key: ${serverReason:-the server returned no key}"
     # Left as a raw curl deliberately: -o writes a file rather than returning a
     # body, which is not what callServer is for.
-    curl -Lks -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$mac&hosttoken=${token}" "${web}service/hostinfo.php" -A ''
+    fog.curl -Ls -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$mac&hosttoken=${token}" "${web}service/hostinfo.php" -A ''
     [[ -f /tmp/hinfo.txt ]] && . /tmp/hinfo.txt
 fi
 dots "Running post init scripts"

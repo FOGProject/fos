@@ -133,7 +133,7 @@ sbFetchCert() {
     [[ -z $dest ]] && handleError "No destination passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $web ]] && handleError "No web root known, cannot fetch the certificate (${FUNCNAME[0]})"
     rm -f "$dest" >/dev/null 2>&1
-    curl -Lks -o "$dest" "${web}service/secureboot/MOK.der" >/dev/null 2>&1
+    fog.curl -Ls -o "$dest" "${web}service/secureboot/MOK.der" >/dev/null 2>&1
     # A 404 still writes a file, so existence proves nothing. DER certificates
     # start with an ASN.1 SEQUENCE tag (0x30); an HTML error page does not.
     [[ -s $dest ]] || return 1
@@ -363,7 +363,7 @@ sbFetchAuthVar() {
     [[ -z $dest ]] && handleError "No destination passed (${FUNCNAME[0]})\n   Args Passed: $*"
     [[ -z $web ]] && handleError "No web root known, cannot fetch ${name}.auth (${FUNCNAME[0]})"
     rm -f "$dest" >/dev/null 2>&1
-    curl -Lks -o "$dest" "${web}service/secureboot/${name}.auth" >/dev/null 2>&1
+    fog.curl -Ls -o "$dest" "${web}service/secureboot/${name}.auth" >/dev/null 2>&1
     [[ -s $dest ]] || return 1
     # An EFI_VARIABLE_AUTHENTICATION_2 descriptor is a 16-byte EFI_TIME followed
     # by a WIN_CERTIFICATE_UEFI_GUID header, so bytes 20..23 are wRevision

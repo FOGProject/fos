@@ -166,6 +166,7 @@ tests/checks/lvm.sh           # per-LV LVM capture/deploy/resize paths
 tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK staging, Setup Mode db writes
 tests/checks/empty-mac-fallback.sh  # $mac resolved from the NICs when the server sent none (fogproject#1767)
 tests/checks/status-reporting.sh    # fog.statusreporter: what reaches service/progress.php, and what must not
+tests/checks/tls-trust.sh           # fog.curl: fogpin= pinning, CA-bundle verification, warn-once -k fallback (fos#102)
 tests/checks/partclone-status-patch.sh  # FOG's partclone patch: fogLogStatusFile() never ends the restore, and the hunks are countable
 
 tests/checks/secureboot-config.sh   # kernel configs carry the Secure Boot hardening symbols (ADR-0010)
@@ -391,6 +392,17 @@ and add a new ADR for any similarly hard-to-reverse decision:
   `tests/checks/secureboot.sh` cases 41–50, which use the shipped files.
   Validated on OVMF with SMM, Secure Boot enforcing (2026-09-16); not yet on
   physical firmware.
+- **0020 — TLS trust for the FOG server.** Every call to the server goes
+  through `bin/fog.curl`; no call site runs `curl` directly or passes `-k`.
+  With `fogpin=` on the kernel command line, the server's public key must hash
+  to it (`-k --pinnedpubkey`; `-k` stays because a FOG-installer CA is in no
+  bundle, and curl still enforces the pin). With no pin, the chain is checked
+  against the CA bundle the init now carries; if it does not verify, FOS warns
+  once and falls back to `-k`. The pin travels on the command line, not in a
+  file injected into `init.xz`: iPXE delivers both over the same channel, an
+  injected pin goes stale on certificate rotation, and a pin must come from
+  wherever `web=` comes from. The `fogpin=` parser drops base64 padding, so
+  `fog.curl` restores it. Guarded by `tests/checks/tls-trust.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 

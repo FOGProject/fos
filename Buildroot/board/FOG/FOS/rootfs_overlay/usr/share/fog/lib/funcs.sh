@@ -1885,7 +1885,7 @@ reportToServer() {
     # real newline; the server flattens control characters back to spaces, and
     # would otherwise be handed the two literal characters.
     report=$(printf '%b' "$str" 2>/dev/null) || report="$str"
-    curl -Lks --max-time 5 \
+    fog.curl -Ls --max-time 5 \
         --data-urlencode "mac=$mac" \
         --data-urlencode "sysuuid=$sysuuid" \
         --data-urlencode "type=$type" \
@@ -1941,11 +1941,16 @@ callServer() {
     serverStatus="000"
     serverReason=""
     if [[ -n $data ]]; then
-        raw=$(curl -Lks -w $'\n%{http_code}' --data "$data" "$url" 2>/dev/null)
+        raw=$(fog.curl -Ls -w $'\n%{http_code}' --data "$data" "$url" 2>/dev/null)
     else
-        raw=$(curl -Lks -w $'\n%{http_code}' "$url" 2>/dev/null)
+        raw=$(fog.curl -Ls -w $'\n%{http_code}' "$url" 2>/dev/null)
     fi
     rc=$?
+    if [[ $rc -eq 90 ]]; then
+        # fog.curl's pinned mode: the server answered with a different key.
+        serverReason="the TLS key of $url does not match fogpin= on the kernel command line (curl exit 90)"
+        return 1
+    fi
     if [[ $rc -ne 0 ]]; then
         serverReason="could not reach $url (curl exit $rc)"
         return 1
