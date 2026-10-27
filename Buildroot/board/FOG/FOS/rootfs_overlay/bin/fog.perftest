@@ -1,0 +1,161 @@
+#!/bin/bash
+#
+# Performance Test task (fos#55): times the three stages a deploy runs
+# through -- disk, network, CPU -- names the slowest, shows the result and
+# reports it to the server so it stays on the host's record. Nothing is
+# written to the disk and nothing is written to the storage node: the disk
+# test only reads, and /images is mounted read-only.
+. /usr/share/fog/lib/funcs.sh
+. /usr/share/fog/lib/perftest-funcs.sh
+clearScreen
+displayBanner
+
+# How much each test moves. Large enough to get past caches and ramp-up, small
+# enough that the whole task takes a minute or two on slow hardware. The
+# decompression sample is held in RAM (/tmp is tmpfs), so it stays modest.
+DISK_MIB=2048
+NET_MIB=1024
+CPU_MIB=256
+
+dots "Locating disks"
+disks=""
+disk=""
+hd=""
+getHardDisk
+if [[ -z $hd ]]; then
+    echo "Failed"
+    debugPause
+    handleError "No hard disks found! ($0)\n   Args Passed: $*"
+fi
+echo "Done"
+debugPause
+
+dots "Attempting to checkin"
+res=""
+count=0
+sysuuid=$(dmidecode -s system-uuid)
+sysuuid=${sysuuid,,}
+while [[ $res != "##@GO" ]]; do
+    callServer "${web}service/Pre_Stage1.php" "sysuuid=${sysuuid}&mac=$mac"
+    res="$serverBody"
+    if [[ $count -ge 10 ]]; then
+        echo "Failed"
+        debugPause
+        handleError "Could not checkin: ${serverReason:-last reply was \"$res\"} ($0)\n   Args Passed: $*"
+    fi
+    let count+=1
+    usleep 5000000
+done
+echo "Done"
+debugPause
+
+# Disk: a direct (uncached) sequential read of the target disk.
+dots "Testing disk read ($hd)"
+diskmbps=0
+if perfReadTest "$hd" "$DISK_MIB" 1; then
+    diskmbps=$(perfRate "$PERF_BYTES" "$PERF_NS")
+    echo "Done"
+else
+    echo "Failed"
+fi
+debugPause
+
+# Network and CPU both need a captured image to read. fog.mount is not used:
+# it mounts only for type=up/down, and this mount must be read-only.
+netmbps=0
+cpumbps=0
+ratio100=100
+fmt=""
+sample=""
+[[ ! -d /images ]] && mkdir -p /images >/dev/null 2>&1
+umount /images >/dev/null 2>&1
+# The server sends a non-imaging task the capture share, <node path>/dev/
+# (BootMenuBase::getTasking). The stored images a deploy reads are its parent.
+imgroot=$(perfImageRoot "$storage")
+dots "Mounting storage read-only"
+# -t nfs is load-bearing, see the comment in fog.mount.
+if mount -t nfs -o ro,nolock,proto=tcp,rsize=32768,intr,noatime "$imgroot" /images >/tmp/mount-output 2>&1; then
+    echo "Done"
+    sample=$(perfPickSample /images)
+else
+    echo "Failed"
+    echo "   $(tr -d \\0 </tmp/mount-output)"
+fi
+debugPause
+
+if [[ -n $sample ]]; then
+    fmt=$(perfFormat "$sample")
+    dots "Testing network read (${sample#/images/})"
+    if perfReadTest "$sample" "$NET_MIB" 0; then
+        netcompressed=$(perfRate "$PERF_BYTES" "$PERF_NS")
+        echo "Done"
+    else
+        netcompressed=0
+        echo "Failed"
+    fi
+    debugPause
+    if [[ $fmt != unknown ]]; then
+        dots "Testing decompression ($fmt)"
+        # Taken from the NFS client's cache after the read above, so this
+        # copy costs little and the timing below is the CPU alone.
+        dd if="$sample" of=/tmp/perf.sample bs=1M count="$CPU_MIB" >/dev/null 2>&1
+        if perfDecompressTest /tmp/perf.sample "$fmt"; then
+            cpumbps=$(perfRate "$PERF_OUT" "$PERF_NS")
+            ratio100=$(perfRatio100 "$PERF_IN" "$PERF_OUT")
+            echo "Done"
+        else
+            echo "Failed"
+        fi
+        rm -f /tmp/perf.sample
+        debugPause
+    fi
+    # The network moves compressed bytes; scale to what they unpack to.
+    netmbps=$(perfScale "$netcompressed" "$ratio100")
+fi
+umount /images >/dev/null 2>&1
+
+bottleneck=$(perfBottleneck "$diskmbps" "$netmbps" "$cpumbps")
+
+perfLine() {
+    local label="$1" mbps="$2" note="$3"
+    if [[ $mbps -gt 0 ]]; then
+        printf "   %-12s %6s MB/s  %5s GB/min%s\n" "$label" "$mbps" "$(perfGBmin "$mbps")" "$note"
+    else
+        printf "   %-12s %s\n" "$label" "not measured"
+    fi
+}
+echo
+echo "   +-----------------------------------------+"
+echo "   |  Performance Test (uncompressed rates)  |"
+echo "   +-----------------------------------------+"
+perfLine "Disk read" "$diskmbps" "  ($hd)"
+perfLine "Network" "$netmbps"
+perfLine "Decompress" "$cpumbps" "${fmt:+  ($fmt)}"
+[[ -z $sample ]] && echo "   No captured image on the storage node, so network and CPU were skipped."
+if [[ $ratio100 -ne 100 ]]; then
+    echo "   Compression ratio of the sample: $(( ratio100 / 100 )).$(( ratio100 % 100 / 10 )):1"
+fi
+if [[ -n $bottleneck ]]; then
+    echo
+    echo "   A deploy to this machine is limited by: $bottleneck"
+fi
+echo
+
+# Reported BEFORE the task is completed, so the server can still tie the
+# result to this task. A failed report is a warning, not an abort: the
+# measurement is on screen either way.
+dots "Sending results to the FOG server"
+sample64=$(echo -n "${sample#/images/}" | base64 | tr -d '\n')
+kernel=$(uname -r)
+initver=$(awk -F= '/^export initversion=/{print $2}' /usr/share/fog/lib/funcs.sh)
+callServer "${web}service/perftest.php" "mac=${mac}&disk=${hd}&diskmbps=${diskmbps}&netmbps=${netmbps}&cpumbps=${cpumbps}&ratio=${ratio100}&format=${fmt}&sample=${sample64}&bottleneck=${bottleneck}&kernel=${kernel}&initversion=${initver}"
+if [[ $serverBody == "##" ]]; then
+    echo "Done"
+else
+    echo "Failed"
+    echo "   ${serverReason:-$serverBody}"
+fi
+debugPause
+echo " * Press [Enter] key to continue"
+read -t 300 -p ""
+. /bin/fog.nonimgcomplete

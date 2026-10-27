@@ -179,6 +179,7 @@ tests/checks/mdraid-gate.sh          # md arrays auto-assemble only with mdraid=
 tests/checks/multicast-receiver.sh    # udp-receiver gets --start-timeout from mcastMaxWait; an empty stream says no sender answered (fos#48)
 
 tests/checks/fixparts-binary-present.sh  # fs.patch builds fixparts, which runFixparts() calls (fos#194)
+tests/checks/perftest.sh                 # Performance Test task: rates, sampled image, dev/ share, bottleneck (fos#55)
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```

@@ -308,6 +308,14 @@ tests/checks/fixparts-binary-present.sh
                               # it. A symbol with no Kconfig definition is
                               # dropped silently, which is how every init from
                               # 2023-12 on shipped without it. See fos#194
+tests/checks/perftest.sh
+                              # fog.perftest (Performance Test task): MB/s and
+                              # GB/min arithmetic, the dev/ share mapped to the
+                              # stored images, the sampled image (never a
+                              # capture in progress), real zstdmt/pigz on a
+                              # stream cut mid-way, scaling compressed rates
+                              # to uncompressed, and which stage it blames.
+                              # See fos#55
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk
