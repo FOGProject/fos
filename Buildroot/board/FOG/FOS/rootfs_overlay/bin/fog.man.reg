@@ -178,6 +178,63 @@ blDoAddGroup=""
 blDoAddSnapin=""
 keyEnter=""
 blDoAD=""
+user64=""
+pass64=""
+fogAuthed=""
+# Asks for a FOG GUI login until the server accepts it, three tries at most.
+# On success sets user64/pass64 for the registration POST and fogAuthed=1,
+# and returns 0. Asks nothing again once a login was accepted.
+# Both domain join and imaging need it: the server copies the domain join
+# account onto the new host only for a signed-in operator
+# (GHSA-97vv-f7hc-rp5m).
+fogLogin() {
+    [[ -n $fogAuthed ]] && return 0
+    local ret=""
+    local retry=3
+    while [[ ! $retry -eq 0 ]]; do
+        echo " * Enter FOG GUI Username and Password"
+        echo -n "    Username: "
+        read username
+        echo -n "    Password: "
+        read -s password
+        user64=$(echo $username | tr -d '\012' | base64)
+        pass64=$(echo $password | tr -d '\012' | base64)
+        callServer "${web}service/checkcredentials.php" "sysuuid=${sysuuid}&mac=$mac&username=$user64&password=$pass64"
+        ret="${serverBody:-$serverReason}"
+        case $ret in
+            '#!ok')
+                echo
+                fogAuthed=1
+                return 0
+                ;;
+            '#!il')
+                let retry-=1
+                echo
+                echo " * Error: Invalid Login! ($retry remaining)"
+                ;;
+            '#!rl')
+                # The server rate limits this endpoint after
+                # repeated bad credentials and answers '#!rl'
+                # until the window expires. Without this case it
+                # fell through to "Unexpected response from
+                # server", which sends the user looking for a
+                # network fault instead of waiting.
+                let retry-=1
+                echo
+                echo " * Error: Too many failed logins. Wait a few minutes and try again."
+                ;;
+            *)
+                let retry-=1
+                echo
+                echo " * Error: Unexpected response from server ($retry remaining)"
+                ;;
+        esac
+    done
+    # A rejected login must not reach the registration POST.
+    user64=""
+    pass64=""
+    return 1
+}
 res=""
 while [[ $res != "#!ok" ]]; do
     echo -n " * Enter hostname for this computer: "
@@ -308,7 +365,11 @@ while [[ -z $askme ]]; do
             askme="N"
             ;;
         [Yy]|[Yy][Ee][Ss])
-            blDoAD=$(echo -n 1 | base64)
+            if fogLogin; then
+                blDoAD=$(echo -n 1 | base64)
+            else
+                echo " * This host will be registered without joining a domain."
+            fi
             askme="Y"
             ;;
         *)
@@ -336,50 +397,10 @@ while [[ -z $askme ]]; do
             askme="N"
             ;;
         [Yy]|[Yy][Ee][Ss])
-            tmp=""
-            ret=""
-            retry=3
-            while [[ $ret != "#!ok" && ! $retry -eq 0 ]]; do
-                echo " * Enter FOG GUI Username and Password"
-                echo -n "    Username: "
-                read username
-                echo -n "    Password: "
-                read -s password
-                user64=$(echo $username | tr -d '\012' | base64)
-                pass64=$(echo $password | tr -d '\012' | base64)
-                callServer "${web}service/checkcredentials.php" "sysuuid=${sysuuid}&mac=$mac&username=$user64&password=$pass64"
-                ret="${serverBody:-$serverReason}"
-                case $ret in
-                    '#!ok')
-                        echo
-                        echo " * This host will reboot and deployment will start!"
-                        ret=$tmp
-                        realdoimage=$(echo -n 1 | base64)
-                        break
-                        ;;
-                    '#!il')
-                        echo
-                        echo " * Error: Invalid Login! ($retry remaining)"
-                        let retry-=1
-                        ;;
-                    '#!rl')
-                        # The server rate limits this endpoint after
-                        # repeated bad credentials and answers '#!rl'
-                        # until the window expires. Without this case it
-                        # fell through to "Unexpected response from
-                        # server", which sends the user looking for a
-                        # network fault instead of waiting.
-                        echo
-                        echo " * Error: Too many failed logins. Wait a few minutes and try again."
-                        let retry-=1
-                        ;;
-                    *)
-                        echo
-                        echo " * Error: Unexpected response from server ($retry remaining)"
-                        let retry-=1
-                        ;;
-                esac
-            done
+            if fogLogin; then
+                echo " * This host will reboot and deployment will start!"
+                realdoimage=$(echo -n 1 | base64)
+            fi
             askme="Y"
             ;;
         *)
