@@ -191,14 +191,22 @@ fogLogin() {
     [[ -n $fogAuthed ]] && return 0
     local ret=""
     local retry=3
+    # Local, so the plaintext password does not outlive this function.
+    local username=""
+    local password=""
     while [[ ! $retry -eq 0 ]]; do
         echo " * Enter FOG GUI Username and Password"
         echo -n "    Username: "
-        read username
+        # read trims leading and trailing blanks, as the web UI trims every
+        # posted value, so the two agree on what the password is.
+        read -r username
         echo -n "    Password: "
-        read -s password
-        user64=$(echo $username | tr -d '\012' | base64)
-        pass64=$(echo $password | tr -d '\012' | base64)
+        read -rs password
+        # Quoted printf, not a bare echo: word splitting and globbing changed
+        # a password holding spaces, '*' or '?', or one spelled -n or -e, so a
+        # correct login read as invalid. The tr joins base64's 76-column wrap.
+        user64=$(printf '%s' "$username" | base64 | tr -d '\n')
+        pass64=$(printf '%s' "$password" | base64 | tr -d '\n')
         callServer "${web}service/checkcredentials.php" "sysuuid=${sysuuid}&mac=$mac&username=$user64&password=$pass64"
         ret="${serverBody:-$serverReason}"
         case $ret in
@@ -400,6 +408,8 @@ while [[ -z $askme ]]; do
             if fogLogin; then
                 echo " * This host will reboot and deployment will start!"
                 realdoimage=$(echo -n 1 | base64)
+            else
+                echo " * This host will be registered without deploying an image."
             fi
             askme="Y"
             ;;
