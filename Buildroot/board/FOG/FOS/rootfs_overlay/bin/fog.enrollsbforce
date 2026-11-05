@@ -56,9 +56,10 @@ fi
 # has already enrolled this same PK/KEK once. So it always attempts the write
 # and reports the firmware state alongside the result, with no MOK fallback:
 # muddying a forced-write result with a fallback path would defeat the point
-# of the test. sbEnrollDb() itself is unchanged and still fails closed (aborts
-# on the first rejected write, per ADR-0003), so a state/key mismatch here just
-# returns 1 with nothing changed on disk -- not a partial or unsafe write.
+# of the test. sbEnrollDb() still fails closed: a rejected db or KEK write
+# aborts before PK (ADR-0003), and PK counts as written only when it reads back
+# as FOG's own. So a state/key mismatch here returns non-zero with nothing
+# changed on disk -- not a partial or unsafe write.
 echo " * [TEST] Firmware state is '$state' -- attempting the direct database"
 echo "   write anyway (Setup Mode check disabled for this test task)."
 echo

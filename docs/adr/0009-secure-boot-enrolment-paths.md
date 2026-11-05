@@ -262,13 +262,27 @@ a success that enrolled nothing.
 
 The Setup Mode path has the same shape of guard, because `dd` can write bytes
 into efivarfs that the firmware then declines to apply. `sbEnrollDb()` therefore
-re-reads `SetupMode` and requires it to have flipped `1 → 0` before reporting
-success: that is the firmware confirming it accepted the `PK`, and it is the only
-confirmation available before a reboot (`SecureBoot` stays `0` until the next
-POST computes it). An enrollment that failed part-way stops before the `PK` write,
-so the machine is still in Setup Mode and still boots whatever it booted before —
-`sbEnroll()` says so explicitly, because "Secure Boot enrollment failed"
-otherwise reads like the machine may now be unbootable.
+reads `PK` back through GetVariable and requires it to equal the signature list
+inside `PK.auth` before it reports success. That is the firmware's own answer to
+"did you store the PK", so it runs even when `dd` reports an error.
+
+This check used to be `SetupMode` flipping `1 → 0`. Some firmware stores the PK
+and still reports `SetupMode=1` until the next reset. On that firmware the task
+said "failed" on an enrolled machine (forums topic 18307). `SecureBoot` is no
+help either, because it stays `0` until the next POST computes it. The task now
+prints a note when `SetupMode` still reads `1` after a confirmed PK.
+
+The result has three outcomes, and each gets its own message:
+
+| `PK` after the write | Platform state | `sbEnroll()` says |
+|---|---|---|
+| FOG's PK | enrolled | success |
+| absent | still in Setup Mode, boots as before | "enrollment failed … still in Setup Mode" |
+| some other PK | may have left Setup Mode | "could not be confirmed … check the firmware key pages" |
+
+A failure at `db` or `KEK` stops before the `PK` write, so the machine is still
+in Setup Mode. `sbEnroll()` says so explicitly, because "Secure Boot enrollment
+failed" otherwise reads like the machine may now be unbootable.
 
 ## Enrolling at registration (fogproject#1860)
 

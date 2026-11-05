@@ -428,6 +428,44 @@ sbWriteEfiAuthVar() {
     [[ -s $path ]] || return 1
     return 0
 }
+# Echo, as hex, the signature list a signed variable update carries.
+#
+# A .auth file is a 16-byte EFI_TIME, then a WIN_CERTIFICATE_UEFI_GUID whose
+# dwLength (the UINT32 at offset 16) counts the whole certificate, then the
+# EFI_SIGNATURE_LIST the firmware stores. So the payload starts at
+# 16 + dwLength. Echoes nothing when the file is too short to hold one.
+#
+# $1 path to the .auth file
+sbAuthPayloadHex() {
+    local authfile="$1"
+    local len
+    # UEFI fields are little-endian. Say so, rather than rely on the host.
+    len=$(od --endian=little -An -tu4 -j16 -N4 "$authfile" 2>/dev/null | tr -d '[:space:]')
+    [[ $len =~ ^[0-9]+$ ]] || return 1
+    od -An -tx1 -v -j$((16 + len)) "$authfile" 2>/dev/null | tr -d '[:space:]'
+}
+# Read the platform's PK back and compare it to the one in the given PK.auth.
+#
+# This reads PK through GetVariable, so the answer is what the firmware stored,
+# not what dd was handed. efivarfs prefixes the 4-byte attribute mask, which is
+# skipped. A variable the firmware refused reads as empty or absent.
+#
+# Returns 0 when PK is exactly the one in PK.auth.
+# Returns 1 when PK is absent or empty: the platform is in Setup Mode.
+# Returns 2 when PK holds something else, or PK.auth carries no payload.
+#
+# $1 path to PK.auth
+sbPkReadback() {
+    local authfile="$1"
+    local path="${sbEfiVarDir}/PK-${sbEfiGlobalGuid}"
+    local want got
+    [[ -r $path ]] || return 1
+    got=$(od -An -tx1 -v -j4 "$path" 2>/dev/null | tr -d '[:space:]')
+    [[ -n $got ]] || return 1
+    want=$(sbAuthPayloadHex "$authfile")
+    [[ -n $want && $got == "$want" ]] && return 0
+    return 2
+}
 # Enroll this server's certificate into the platform's Secure Boot databases.
 #
 # Order is db, then KEK, then PK, and it is not interchangeable. Writing PK is
@@ -438,11 +476,21 @@ sbWriteEfiAuthVar() {
 #
 # A failure part-way through is NOT that trap: db and KEK written without a PK
 # leaves the platform still in Setup Mode, still booting anything, exactly as it
-# was found. So this aborts loudly on the first failure (ADR-0003) rather than
-# pressing on to the write that would close the door.
+# was found. So this aborts loudly on the first db or KEK failure (ADR-0003)
+# rather than pressing on to the write that would close the door.
 #
-# Returns 0 on success, 1 on any failure. The caller reports; this does not
-# print, so it stays testable.
+# sbEnrollDb confirms the PK write by reading PK back (sbPkReadback), not by
+# SetupMode. Some firmware stores the PK and still reports SetupMode=1 until
+# the next reset (forums topic 18307: the task said "failed", and the machine
+# came back in Custom Mode with FOG's certificate in db). It runs the readback
+# even when dd reports an error, because only the firmware's own answer says
+# whether the platform left Setup Mode.
+#
+# Returns 0 on success.
+# Returns 1 when no PK was stored: the platform is still in Setup Mode.
+# Returns 2 when PK holds something other than FOG's PK after the write: the
+#   platform may have left Setup Mode, so the caller must not say it did not.
+# The caller reports; this does not print, so it stays testable.
 sbEnrollDb() {
     local var guid authfile
     # Fetch all three BEFORE writing any. A download that fails halfway would
@@ -453,16 +501,13 @@ sbEnrollDb() {
         authfile="/tmp/${var}.auth"
         sbFetchAuthVar "$var" "$authfile" || return 1
     done
-    for var in db KEK PK; do
+    for var in db KEK; do
         [[ $var == db ]] && guid="$sbEfiSecurityGuid" || guid="$sbEfiGlobalGuid"
         sbWriteEfiAuthVar "$var" "$guid" "/tmp/${var}.auth" || return 1
     done
-    # SetupMode flipping 1 -> 0 is the firmware confirming it accepted the PK,
-    # and it is the only confirmation available from a running OS: SecureBoot
-    # stays 0 until the next boot, because firmware computes it during POST.
-    # Checking it here turns "dd wrote some bytes" into "the platform enrolled".
-    [[ $(sbEfiFlag SetupMode) == 0 ]] || return 1
-    return 0
+    # The dd status is deliberately not acted on; see the header.
+    sbWriteEfiAuthVar PK "$sbEfiGlobalGuid" "/tmp/PK.auth"
+    sbPkReadback "/tmp/PK.auth"
 }
 # Add Microsoft's 2023 CAs to db on a machine that is NOT in Setup Mode.
 #
@@ -663,20 +708,40 @@ sbEnroll() {
         echo "   needed."
         echo
         dots "Enrolling Secure Boot keys"
-        if ! sbEnrollDb; then
-            echo "Failed"
-            debugPause
-            # Deliberately spells out the state the machine is left in. A
-            # partial enrollment stops before the PK write, so the platform is
-            # still in Setup Mode and still boots exactly what it booted before
-            # -- that is worth saying, because "Secure Boot enrollment failed"
-            # otherwise reads like the machine may now be unbootable, and
-            # someone will make an unnecessary trip to the firmware screen.
-            "$fail" "Automatic Secure Boot enrollment failed. ($0)\n   This machine is still in Setup Mode and still boots as it did before;\n   nothing has been made unbootable.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth --\n   the FOG server needs efitools installed to produce them."
-            return 1
-        fi
+        sbEnrollDb
+        case $? in
+            0) ;;
+            1)
+                echo "Failed"
+                debugPause
+                # Deliberately spells out the state the machine is left in.
+                # rc 1 means PK reads back absent, so the platform is still in
+                # Setup Mode and still boots exactly what it booted before --
+                # that is worth saying, because "Secure Boot enrollment failed"
+                # otherwise reads like the machine may now be unbootable, and
+                # someone will make an unnecessary trip to the firmware screen.
+                "$fail" "Automatic Secure Boot enrollment failed. ($0)\n   This machine is still in Setup Mode and still boots as it did before;\n   nothing has been made unbootable.\n   Check that ${web}service/secureboot/ serves PK.auth, KEK.auth and db.auth --\n   the FOG server needs efitools installed to produce them."
+                return 1
+                ;;
+            *)
+                echo "Failed"
+                debugPause
+                # rc 2: a PK is present, and it is not this server's. The
+                # platform may have left Setup Mode, so the message must not
+                # say otherwise.
+                "$fail" "Automatic Secure Boot enrollment could not be confirmed. ($0)\n   After the write, the platform key is not the one this FOG server publishes.\n   This machine may no longer be in Setup Mode.\n   Check the Secure Boot key pages in the firmware setup before you turn\n   Secure Boot enforcement on."
+                return 1
+                ;;
+        esac
         echo "Done"
         debugPause
+        # Some firmware stores the PK but reports SetupMode=1 until the next
+        # reset (forums topic 18307). This note makes the next report of it
+        # explain itself.
+        if [[ $(sbEfiFlag SetupMode) == 1 ]]; then
+            echo " * The firmware still reports Setup Mode. It stored FOG's platform key,"
+            echo "   so this is expected on firmware that updates that flag at the next reboot."
+        fi
 
         echo
         echo "=============================================================================="

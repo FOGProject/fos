@@ -132,13 +132,16 @@ if [[ $url == *.auth ]]; then
         head -c 64 /dev/zero > "$dest"
         exit 0
     fi
-    # 16-byte EFI_TIME, dwLength, wRevision=0x0200, wCertificateType=0x0EF1,
-    # then filler standing in for the GUID and PKCS#7 blob. Only the four bytes
-    # at offset 20 are load-bearing for the validator under test.
+    # The real layout, at fixture scale: a 16-byte EFI_TIME, then a
+    # WIN_CERTIFICATE_UEFI_GUID whose dwLength (0x18 = 24) covers its 8-byte
+    # header and a 16-byte block standing in for the CertType GUID and PKCS#7
+    # blob, then the EFI_SIGNATURE_LIST the firmware stores. The validator reads
+    # offset 20; sbPkReadback reads the list at 16 + dwLength.
     {
         printf '\xea\x07\x08\x03\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-        printf '\x30\x00\x00\x00\x00\x02\xf1\x0e'
-        printf 'AUTHBODY-%s-PADDINGPADDINGPADDING' "$name"
+        printf '\x18\x00\x00\x00\x00\x02\xf1\x0e'
+        printf '%-16.16s' "AUTHBODY-$name"
+        printf 'ESL-%s-SIGNATURELIST' "$name"
     } > "$dest"
     exit 0
 fi
@@ -159,9 +162,9 @@ echo "chattr $*" >> "$SANDBOX/calls"
 exit 0
 EOF
 
-# dd double: logs argv, then hands off to the real dd so the variable file ends
-# up with the bytes actually written. $FAKE_DD_FAIL names one variable whose
-# write should fail, so an abort mid-sequence can be tested.
+# dd double: logs argv, then models the firmware storing the write. $FAKE_DD_FAIL
+# names one variable whose write should fail and store nothing, so an abort
+# mid-sequence can be tested.
 cat > "$STUBBIN/dd" <<'EOF'
 #!/bin/bash
 echo "dd $*" >> "$SANDBOX/calls"
@@ -189,14 +192,40 @@ if [[ $(od -An -tx1 -N1 "$in" | tr -d '[:space:]') == 67 ]]; then
     tail -c +5 "$in" >> "$out" || exit 1
     exit 0
 fi
-/usr/bin/dd "$@" || exit 1
-# Writing a PK is what takes a platform out of Setup Mode. Modelling that here
-# is the only way to test that sbEnrollDb confirms the enrollment from the
-# firmware rather than from dd's exit status.
-if [[ ${out##*/} == PK-* && -z $FAKE_PK_KEEPS_SETUP ]]; then
+# Authenticated write (0x27). The real dd runs with the same arguments into
+# $SANDBOX/handed-<var>, which keeps what the kernel was handed for cases 34-35.
+# The variable then holds what firmware keeps: the attribute word plus the
+# EFI_SIGNATURE_LIST after the 16 + dwLength descriptor, never the descriptor.
+# A GetVariable readback (sbPkReadback) sees exactly that.
+name="${out##*/}"; name="${name%%-*}"
+handed="$SANDBOX/handed-$name"
+args=()
+for a in "$@"; do
+    [[ $a == of=* ]] && a="of=$handed"
+    args+=("$a")
+done
+/usr/bin/dd "${args[@]}" || exit 1
+# $FAKE_PK_DECLINED: dd succeeds, firmware keeps nothing.
+[[ $name == PK && -n $FAKE_PK_DECLINED ]] && exit 0
+len=$(od -An -tu4 -j20 -N4 "$handed" | tr -d '[:space:]')
+{
+    head -c 4 "$handed"
+    if [[ $name == PK && -n $FAKE_PK_FOREIGN ]]; then
+        printf 'ESL-SOMEONE-ELSES-PK'
+    else
+        tail -c +$((4 + 16 + len + 1)) "$handed"
+    fi
+} > "$out"
+# Writing a PK is what takes a platform out of Setup Mode. $FAKE_PK_KEEPS_SETUP
+# models firmware that stores the PK but reports SetupMode=1 until the next
+# reset (forums topic 18307).
+if [[ $name == PK && -z $FAKE_PK_KEEPS_SETUP ]]; then
     guid="8be4df61-93ca-11d2-aa0d-00e098032b8c"
     printf '\x07\x00\x00\x00\x00' > "${out%/*}/SetupMode-$guid"
 fi
+# $FAKE_DD_ERR_AFTER_STORE names a variable the firmware stores while the
+# write still reports an error.
+[[ -n $FAKE_DD_ERR_AFTER_STORE && $name == "$FAKE_DD_ERR_AFTER_STORE" ]] && exit 1
 exit 0
 EOF
 
@@ -304,13 +333,14 @@ new_case() {
     FAKE_CURL_BODY="der"; FAKE_MOUNT_FAIL=""; FAKE_UNMOUNTED=""
     FAKE_AUTH_FAIL=""; FAKE_DD_FAIL=""; FAKE_PK_KEEPS_SETUP=""
     FAKE_AUTH_GARBAGE=""; FAKE_APPEND_IGNORED=""
-    export FAKE_APPEND_IGNORED
+    FAKE_PK_DECLINED=""; FAKE_PK_FOREIGN=""; FAKE_DD_ERR_AFTER_STORE=""
+    export FAKE_APPEND_IGNORED FAKE_PK_DECLINED FAKE_PK_FOREIGN FAKE_DD_ERR_AFTER_STORE
     export FAKE_GENHASH_FAIL FAKE_GENHASH_GARBAGE FAKE_IMPORT_FAIL \
            FAKE_IMPORT_NOOP FAKE_KEY_ENROLLED FAKE_KEY_IN_DB FAKE_CURL_BODY \
            FAKE_MOUNT_FAIL FAKE_UNMOUNTED FAKE_AUTH_FAIL FAKE_DD_FAIL \
            FAKE_PK_KEEPS_SETUP FAKE_AUTH_GARBAGE
     rm -f "$SANDBOX/calls" "$SANDBOX/staged" "$SANDBOX/.mokpwhash" >/dev/null 2>&1
-    rm -f "$SANDBOX"/*.auth "$SANDBOX"/.sbauth.* >/dev/null 2>&1
+    rm -f "$SANDBOX"/*.auth "$SANDBOX"/.sbauth.* "$SANDBOX"/handed-* >/dev/null 2>&1
     : > "$SANDBOX/calls"
 }
 
@@ -651,7 +681,7 @@ check "33. attribute prefix is 0x27 little-endian" \
 # or padded it would produce a signature the firmware rejects.
 new_case; make_firmware 1 0
 lib 'sbEnrollDb' >/dev/null 2>&1
-if od -An -c "$EFIVARS/db-$SECURITY_GUID" 2>/dev/null | tr -d ' \n' | grep -q 'AUTHBODY-db'; then
+if od -An -c "$SANDBOX/handed-db" 2>/dev/null | tr -d ' \n' | grep -q 'AUTHBODY-db'; then
     echo "PASS: 34. the .auth payload is written verbatim after the prefix"
     PASS=$((PASS + 1))
 else
@@ -713,17 +743,59 @@ else
 fi
 
 # 39. THE silent-failure guard for this path, mirroring case 23. dd can write
-# bytes into efivarfs that the firmware then declines to apply. SetupMode
-# flipping 1 -> 0 is the firmware confirming it took the PK, and it is the only
-# confirmation available before a reboot.
-new_case; make_firmware 1 0; FAKE_PK_KEEPS_SETUP=1; export FAKE_PK_KEEPS_SETUP
-check "39. writes succeed but SetupMode stays 1 -> refuse" \
-    "$(lib 'sbEnrollDb && echo ok || echo refused')" "refused"
+# bytes into efivarfs that the firmware then declines to apply. The PK read
+# back through GetVariable is the firmware's answer. SetupMode is not: some
+# firmware stores the PK and reports SetupMode=1 until the next reset, and the
+# task then said "failed" on an enrolled machine (forums topic 18307).
+new_case; make_firmware 1 0; FAKE_PK_KEEPS_SETUP=1
+check "39. PK stored, SetupMode still reads 1 -> success" \
+    "$(lib 'sbEnrollDb; echo "rc=$?"')" "rc=0"
+new_case; make_firmware 1 0; FAKE_PK_KEEPS_SETUP=1
+check "39a. ... and the task says why SetupMode still reads 1" \
+    "$(lib 'sbEnroll handleError' | grep -c 'still reports Setup Mode')" "1"
+
+new_case; make_firmware 1 0; FAKE_PK_DECLINED=1
+check "39b. dd succeeds, firmware keeps no PK -> rc 1 (still Setup Mode)" \
+    "$(lib 'sbEnrollDb; echo "rc=$?"')" "rc=1"
+
+new_case; make_firmware 1 0; FAKE_DD_FAIL=PK
+check "39c. PK write fails and stores nothing -> rc 1" \
+    "$(lib 'sbEnrollDb; echo "rc=$?"')" "rc=1"
+
+new_case; make_firmware 1 0; FAKE_DD_ERR_AFTER_STORE=PK
+check "39d. PK stored but dd reports an error -> success" \
+    "$(lib 'sbEnrollDb; echo "rc=$?"')" "rc=0"
+
+new_case; make_firmware 1 0; FAKE_PK_FOREIGN=1
+check "39e. a PK that is not FOG's after the write -> rc 2" \
+    "$(lib 'sbEnrollDb; echo "rc=$?"')" "rc=2"
+new_case; make_firmware 1 0; FAKE_PK_FOREIGN=1
+GOT="$(lib 'sbEnroll handleError')"
+check "39f. ... and the task reports it as unconfirmed" \
+    "$(grep -c '^HANDLEERROR: Automatic Secure Boot enrollment could not be confirmed' <<<"$GOT")" "1"
+check "39f2. ... without claiming Setup Mode" \
+    "$(grep -c 'still in Setup Mode' <<<"$GOT")" "0"
+
+new_case; make_firmware 1 0; FAKE_PK_DECLINED=1
+check "39g. no PK stored -> the task says it is still in Setup Mode" \
+    "$(lib 'sbEnroll handleError' | grep -c 'still in Setup Mode')" "1"
 
 # 40. Happy path: all three written, firmware left Setup Mode.
 new_case; make_firmware 1 0
 check "40. enrollment succeeds when the firmware leaves Setup Mode" \
     "$(lib 'sbEnrollDb && echo ok || echo refused')" "ok"
+
+# 40b-40c. The fixtures above share the parser's own reading of dwLength, so
+# they cannot catch a wrong one. fixtures/secureboot/ holds a REAL PK.auth from
+# efitools' sign-efi-sig-list (throwaway key, not kept) and the PK.esl it
+# signed, from cert-to-efi-sig-list. The payload must be exactly that list.
+FIXDIR="$HERE/fixtures/secureboot"
+new_case; make_firmware 1 0
+check "40b. a real PK.auth: the payload is exactly the signed EFI_SIGNATURE_LIST" \
+    "$(lib "sbAuthPayloadHex '$FIXDIR/PK.auth'")" "$(od -An -tx1 -v "$FIXDIR/PK.esl" | tr -d '[:space:]')"
+{ printf '\x27\x00\x00\x00'; cat "$FIXDIR/PK.esl"; } > "$EFIVARS/PK-$GLOBAL_GUID"
+check "40c. a real PK.auth matches the PK the firmware stored from it" \
+    "$(lib "sbPkReadback '$FIXDIR/PK.auth'; echo rc=\$?")" "rc=0"
 
 # --- the Microsoft 2023 CA update (User Mode, append) ---
 
