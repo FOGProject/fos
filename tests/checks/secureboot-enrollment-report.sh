@@ -104,7 +104,7 @@ drive() {
         web="http://fog.example/fog/"
         mac="00:11:22:33:44:55"
         sbReport "$@"
-        printf '\nRC=%s\n' "$?"
+        printf '\nRC=%s\nNOTASK=%s\n' "$?" "$sbNoTask"
     )
 }
 
@@ -150,7 +150,7 @@ done
 # perfectly fine, so the message has to name the RECORDING as the thing that
 # did not happen.
 for arm in "unreachable:FAKE_CURL_RC=7" "http404:FAKE_CODE=404" \
-           "emptybody:FAKE_CODE=200 FAKE_BODY=" "wrongbody:FAKE_CODE=200 FAKE_BODY=##notasking"; do
+           "emptybody:FAKE_CODE=200 FAKE_BODY=" "wrongbody:FAKE_CODE=200 FAKE_BODY=##badresult"; do
     name=${arm%%:*}
     env=${arm#*:}
     rm -f "$SANDBOX/curl.argv"
@@ -222,6 +222,52 @@ while read -r n line; do
 done < <(grep -n '^[[:space:]]*\(sbReport \|\. /bin/fog\.nonimgcomplete\)' \
     "$REPO_BIN/fog.enrollsb" | sed 's/:[[:space:]]*/ /')
 note "12. each exit reports before completing the task" "$err"
+
+# --- 13. no task on the server sets sbNoTask, and only that does -----------
+# The PXE menu item boots this task with nothing scheduled. The endpoint then
+# answers notasking (unknownhost for a machine never registered). That answer,
+# and no other, tells fog.enrollsb to skip fog.nonimgcomplete (forum 18307).
+for arm in "notasking:##notasking:1" "unknownhost:##unknownhost:1" \
+           "ok:##ok:0" "badresult:##badresult:0"; do
+    IFS=: read -r name body want <<<"$arm"
+    out=$(FAKE_CODE=200 FAKE_BODY="$body" drive 'db' 'AA:BB')
+    err=""
+    [[ $out == *"RC=0"* ]] || err="rc not 0"
+    [[ $out == *"NOTASK=$want"* ]] || err="$err; sbNoTask is not $want"
+    if [[ $want == 1 ]]; then
+        grep -qi 'could not be recorded' <<<"$out" && err="$err; reads as a recording failure"
+        grep -qi 'no Enroll Secure Boot task' <<<"$out" || err="$err; does not say no task exists"
+    fi
+    note "13. $name: sbNoTask=$want" "$err"
+done
+
+# --- 14. fog.enrollsb completes the task only when one exists --------------
+# Runs the real task script against stubs: sbReport sets sbNoTask from the
+# environment, and fog.nonimgcomplete only leaves a marker.
+cat > "$SANDBOX/stub-lib.sh" <<'EOF'
+clearScreen() { :; }
+displayBanner() { :; }
+handleError() { echo "HANDLEERROR $*"; exit 1; }
+sbEnroll() { sbOutcome=db; sbFingerprint=AA:BB; }
+sbReport() { sbNoTask=$FAKE_NOTASK; }
+EOF
+echo 'echo COMPLETED' > "$SANDBOX/nonimgcomplete"
+sed -e "s#^\. /usr/share/fog/lib/funcs\.sh#. $SANDBOX/stub-lib.sh#" \
+    -e "s#^\. /usr/share/fog/lib/secureboot-funcs\.sh#:#" \
+    -e "s#\. /bin/fog\.nonimgcomplete#. $SANDBOX/nonimgcomplete#" \
+    "$REPO_BIN/fog.enrollsb" > "$SANDBOX/fog.enrollsb"
+for arm in "0:completes" "1:skips"; do
+    want=${arm%%:*}
+    out=$(FAKE_NOTASK=$want bash "$SANDBOX/fog.enrollsb" 2>&1)
+    err=""
+    if [[ $want == 1 ]]; then
+        grep -q COMPLETED <<<"$out" && err="ran fog.nonimgcomplete with no task"
+        grep -q 'Task Complete' <<<"$out" || err="$err; says nothing at the end"
+    else
+        grep -q COMPLETED <<<"$out" || err="did not complete the scheduled task"
+    fi
+    note "14. sbNoTask=$want: the task script ${arm#*:} fog.nonimgcomplete" "$err"
+done
 
 echo "----"
 echo "$PASS passed, $FAIL failed"

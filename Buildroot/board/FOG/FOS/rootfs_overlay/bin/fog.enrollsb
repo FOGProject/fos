@@ -17,4 +17,9 @@ sbEnroll handleError
 # outcome is sbEnroll's own -- "mok" for a staged request is what stops the
 # server recording a machine as enrolled when a human has yet to confirm it.
 sbReport "$sbOutcome" "$sbFingerprint"
-. /bin/fog.nonimgcomplete
+# Started from the PXE menu, not scheduled: there is no task to complete.
+if [[ $sbNoTask -eq 1 ]]; then
+    echo " * Task Complete"
+else
+    . /bin/fog.nonimgcomplete
+fi

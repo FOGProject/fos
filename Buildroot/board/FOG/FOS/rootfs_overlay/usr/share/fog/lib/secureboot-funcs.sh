@@ -177,12 +177,20 @@ sbCertFingerprint() {
 # handleError and never fails the task; it says what it did and moves on. The
 # record is a convenience for the administrator, not a step in the enrollment.
 #
+# The PXE menu item "Enroll Secure Boot Key (Unattended)" boots this same task
+# with no task scheduled. The server then answers notasking (or unknownhost for
+# a machine never registered). That answer sets $sbNoTask=1, so the caller
+# skips fog.nonimgcomplete: with no task there is nothing to complete, and
+# Post_Wipe.php would answer "No Active Task found" eleven times and then fail
+# a task that enrolled correctly (forum topic 18307).
+#
 # $1 the result: db, trusted or mok
 # $2 the certificate's SHA-256 fingerprint
 sbReport() {
     local result="$1"
     local cert="$2"
     local mactosend="${mac}"
+    sbNoTask=0
     [[ -z $result || -z $cert ]] && return 0
     [[ -z $web ]] && return 0
     [[ -z $mactosend ]] && return 0
@@ -193,6 +201,13 @@ sbReport() {
     callServer "${web}service/secureboot.report.php" \
         "mac=${mactosend}&result=${result}&cert=${cert}&sbstate=$(sbState)"
     [[ $serverBody == "##ok" ]] && return 0
+    # Started from the PXE menu: no task exists, so the server keeps no record.
+    if [[ $serverBody == "##notasking" || $serverBody == "##unknownhost" ]]; then
+        sbNoTask=1
+        echo " * Note: no Enroll Secure Boot task is scheduled for this machine,"
+        echo "   so the FOG server keeps no record of this enrollment."
+        return 0
+    fi
     # Said out loud rather than swallowed. It is not a failure of the
     # enrollment, and the wording has to make that clear, or the next person
     # reads it as one and goes looking at firmware that is perfectly fine.
