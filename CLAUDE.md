@@ -427,9 +427,10 @@ and add a new ADR for any similarly hard-to-reverse decision:
   `osfamily=` and is optional: empty means a built-in fallback for the ids FOS
   knows (8, 9-11, 50/51, 99), and a non-empty family from the server wins. The
   family is an argument, not a global: `fog.checkin` and `fog.debug` pass it,
-  `fog.capone` does not and exports an empty `osfamily`, so a Capone image never
-  inherits one. Empty family plus unknown osid, or a bad family on a
-  non-frozen id, is fatal (ADR-0003). Do not add an osid comparison outside
+  `fog.capone` passes the eighth field of the chosen Capone line (empty from a
+  seven-field plugin) and exports it, so a Capone image never inherits
+  another's. Empty family plus unknown osid, or a bad family on a non-frozen
+  id, is fatal (ADR-0003). Do not add an osid comparison outside
   `determineOS()`. Guarded by `tests/checks/os-class.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
