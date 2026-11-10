@@ -53,9 +53,9 @@ for line in $imgret; do
     linedecode=$(echo $line | base64 -d)
     [[ -z $linedecode ]] && handleError "No image definition was found for $dmivalue ($0)\n   Args Passed: $*"
     let cnt+=1
-    awk_returned_vars=$(echo $linedecode | awk -F'|' "{printf(\"%s %s %s %s %s %s %s\",\$1,\$2,\$3,\$4,\$5,\$6,\$7)}")
-    read img osid imgType imgPartitionType imgFormat storage storageip <<< $awk_returned_vars
-    determineOS "$osid"
+    awk_returned_vars=$(echo $linedecode | awk -F'|' "{printf(\"%s %s %s %s %s %s %s %s\",\$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8)}")
+    read img osid imgType imgPartitionType imgFormat storage storageip osfamily <<< $awk_returned_vars
+    determineOS "$osid" "$osfamily"
     echo -n " ID $cnt) "
     echo -n " OS: $osname"
     echo -n " Image: "
@@ -92,9 +92,9 @@ case $cnt in
             linedecode=$(echo $line | base64 -d)
             let cnt+=1
             if [[ $cnt -eq $imgchoice ]]; then
-                awk_returned_vars=$(echo $linedecode | awk -F'|' "{printf(\"%s %s %s %s %s %s %s\",\$1,\$2,\$3,\$4,\$5,\$6,\$7)}")
-                read img osid imgType imgPartitionType imgFormat storage storageip <<< $awk_returned_vars
-                determineOS "$osid"
+                awk_returned_vars=$(echo $linedecode | awk -F'|' "{printf(\"%s %s %s %s %s %s %s %s\",\$1,\$2,\$3,\$4,\$5,\$6,\$7,\$8)}")
+                read img osid imgType imgPartitionType imgFormat storage storageip osfamily <<< $awk_returned_vars
+                determineOS "$osid" "$osfamily"
                 break
             fi
         done
@@ -105,9 +105,10 @@ export type="down"
 export mac=$(getMACAddresses)
 export img
 export osid
-# The Capone menu sends no osfamily=, and fog.checkin reads it again on the
-# way through fog -> fog.download. Clear it so a Capone image never inherits one.
-export osfamily=""
+# The family comes from the chosen Capone line (its eighth field). A plugin
+# that sends seven fields leaves it empty, which determineOS treats as "not
+# sent". fog.checkin reads it again on the way through fog -> fog.download.
+export osfamily
 export imgType
 export imgPartitionType
 export imgFormat

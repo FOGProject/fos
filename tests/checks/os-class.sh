@@ -285,13 +285,40 @@ grep -qF 'determineOS "$osid" "$osfamily"' "$BIN/fog.checkin"
 eq "fog.checkin passes the family" $? 0
 grep -qF 'determineOS "$osid" "$osfamily"' "$BIN/fog.debug"
 eq "fog.debug passes the family" $? 0
-# Capone has no family: its image comes from the Capone listing.
-eq "fog.capone passes no family" "$(grep -c 'determineOS "\$osid" ' "$BIN/fog.capone")" 0
-eq "fog.capone calls determineOS" "$(grep -c 'determineOS "\$osid"$' "$BIN/fog.capone")" 2
-# The handoff to fog -> fog.download -> fog.checkin must not inherit a family.
-grep -qxF 'export osfamily=""' "$BIN/fog.capone"
-eq "fog.capone exports an empty osfamily" $? 0
-exp="$(grep -nxF 'export osfamily=""' "$BIN/fog.capone" | cut -d: -f1)"
+# Capone sends the family as the eighth field of each image line.
+eq "fog.capone read lines name osfamily eighth" \
+    "$(grep -cE '^\s*read img osid imgType imgPartitionType imgFormat storage storageip osfamily <<< ' "$BIN/fog.capone")" 2
+eq "fog.capone passes the family to determineOS" "$(grep -cF 'determineOS "$osid" "$osfamily"' "$BIN/fog.capone")" 2
+eq "fog.capone has no bare determineOS" "$(grep -cE 'determineOS "\$osid"\s*$' "$BIN/fog.capone")" 0
+# Run the awk and read text from fog.capone itself, not a copy.
+CAPONE="$BIN/fog.capone"
+capone_pipe() { # capone_pipe <n> <decoded line>: the nth awk/read pair, prints the eight variables
+    (
+        linedecode="$2"
+        awkline="$(grep '^\s*awk_returned_vars=' "$CAPONE" | awk -v n="$1" 'NR == n')"
+        readline="$(grep '^\s*read img osid' "$CAPONE" | awk -v n="$1" 'NR == n')"
+        [[ -n $awkline && -n $readline ]] || { echo "NOEXTRACT"; exit 1; }
+        eval "$awkline"
+        eval "$readline"
+        echo "$img|$osid|$imgType|$imgPartitionType|$imgFormat|$storage|$storageip|$osfamily"
+    )
+}
+# Both the listing loop and the selection loop carry their own awk and read.
+eq "fog.capone awk lines carrying \$8" "$(grep -cE '^\s*awk_returned_vars=.*\\\$8' "$CAPONE")" 2
+for n in 1 2; do
+    awkno="$(grep -n '^\s*awk_returned_vars=' "$CAPONE" | awk -v n="$n" 'NR == n' | cut -d: -f1)"
+    if [[ -z $awkno ]]; then fail "extract awk_returned_vars pair $n from fog.capone"; continue; fi
+    eq "capone line with eight fields (pair $n, fog.capone:$awkno)" \
+        "$(capone_pipe "$n" 'win11|10|n|1|2|10.0.0.1:/images|10.0.0.1|windows')" \
+        'win11|10|n|1|2|10.0.0.1:/images|10.0.0.1|windows'
+    eq "capone line with seven fields (pair $n, fog.capone:$awkno)" \
+        "$(capone_pipe "$n" 'win11|10|n|1|2|10.0.0.1:/images|10.0.0.1')" \
+        'win11|10|n|1|2|10.0.0.1:/images|10.0.0.1|'
+done
+# The handoff to fog -> fog.download -> fog.checkin carries the chosen family.
+grep -qxF 'export osfamily' "$BIN/fog.capone"
+eq "fog.capone exports osfamily" $? 0
+exp="$(grep -nxF 'export osfamily' "$BIN/fog.capone" | cut -d: -f1)"
 run="$(grep -nE '^\s*(exec )?fog( |$)|/bin/fog( |$)' "$BIN/fog.capone" | tail -1 | cut -d: -f1)"
 if [[ -n $exp && -n $run && $exp -lt $run ]]; then pass; else fail "fog.capone exports osfamily before it runs fog" "export line '$exp', fog line '$run'"; fi
 

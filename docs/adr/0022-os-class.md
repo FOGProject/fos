@@ -35,13 +35,17 @@ branches on `osClass`.** `determineOS "$osid" "$family"` sets it.
 
 ## Why the family is an argument
 
-`fog.checkin` and `fog.debug` pass `"$osfamily"`. `fog.capone` does not,
-because its image comes from the Capone listing and not from the kernel
-command line. `fog.capone` also exports an empty `osfamily`, because `fog` runs
-`fog.download` and `fog.checkin` next, and they read `$osfamily` again. A
-global read inside `determineOS()` would let a Capone image inherit a family
-meant for another image. A new osid in a Capone listing still aborts. That
-needs a server change to the Capone string, and is a follow-on.
+`fog.checkin` and `fog.debug` pass `"$osfamily"`. `fog.capone` passes the
+family from the eighth field of the chosen Capone line, because its image comes
+from the Capone listing and not from the kernel command line. A plugin that
+sends seven fields leaves `osfamily` empty, which `determineOS()` treats as
+"not sent". `fog.capone` exports `osfamily`, because `fog` runs `fog.download`
+and `fog.checkin` next, and they read `$osfamily` again. A global read inside
+`determineOS()` would let a Capone image inherit a family meant for another
+image. A new osid in a Capone listing resolves from its family when the plugin
+sends the eighth field (fog-plugins v1.6.29 or later, on a core with
+`Image::getOSFamily()`). From an older plugin the field is empty, and an
+unknown osid still aborts (ADR-0003). See FOGProject/fog-plugins#43.
 
 ## Consequences
 
