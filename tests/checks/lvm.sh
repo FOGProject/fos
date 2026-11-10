@@ -333,6 +333,7 @@ run() {
         imgPartitionType="all"
         imgType="n"
         osid=50
+        determineOS "$osid"
         storage="STUBSTORE"
         img="STUBIMG"
         percent=25

@@ -481,8 +481,8 @@ processSfdisk() {
     local minstart=$(awk -F'[ ,]+' '/start/{if ($4) print $4}' $data | sort -n | head -1)
     local chunksize=""
     getPartBlockSize "$disk" "chunksize"
-    case $osid in
-        [1-2])
+    case $osClass in
+        xp|vista)
             [[ -z $minstart ]] && {
                 minstart=63
                 chunksize=$sectorsize

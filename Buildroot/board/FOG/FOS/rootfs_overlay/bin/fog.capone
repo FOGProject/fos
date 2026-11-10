@@ -105,6 +105,9 @@ export type="down"
 export mac=$(getMACAddresses)
 export img
 export osid
+# The Capone menu sends no osfamily=, and fog.checkin reads it again on the
+# way through fog -> fog.download. Clear it so a Capone image never inherits one.
+export osfamily=""
 export imgType
 export imgPartitionType
 export imgFormat

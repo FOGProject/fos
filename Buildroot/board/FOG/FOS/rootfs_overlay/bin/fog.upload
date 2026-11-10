@@ -38,7 +38,7 @@ beginUpload() {
             parts=""
             getPartitions "$hd"
             [[ ${#parts} -lt 1 ]] && handleError "No partitions found ($0)\n   Args Passed: $*"
-            [[ $osid == @([1-2]|[4-7]|9|10|11) ]] && win7partcnt=$(echo $parts | wc -w)
+            [[ $osClass == @(xp|vista|winother|win7|winmodern) ]] && win7partcnt=$(echo $parts | wc -w)
             dots "Checking for fixed partitions"
             part_number=0
             for part in $parts; do
@@ -85,8 +85,8 @@ beginUpload() {
             debugPause
             echo " * Total Partition count of: $partscnt"
             debugPause
-            case $osid in
-                [4-7]|9|10|11|50|51)
+            case $osClass in
+                winother|win7|winmodern|linux)
                     echo " * Setting up any additional fixed parts"
                     part_number=0
                     for part in $parts; do
@@ -183,7 +183,7 @@ beginUpload() {
             runPartprobe "$hd"
             echo "Done"
             debugPause
-            [[ $osid -eq 2 ]] && correctVistaMBR "$hd"
+            [[ $osClass == vista ]] && correctVistaMBR "$hd"
             getPartitions "$hd"
             for part in $parts; do
                 expandPartition "$part" "$fixed_size_partitions"

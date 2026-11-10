@@ -368,6 +368,7 @@ run_funcs() {
         uploadFormat() { :; }
         getServerDiskSpaceAvailable() { echo "lots"; }
         imgFormat=5; imgPartitionType="all"; imgType="n"; osid=50
+        determineOS "$osid"
         storage="STUBSTORE"; img="STUBIMG"
         eval "$1"
         echo "RETURNED"

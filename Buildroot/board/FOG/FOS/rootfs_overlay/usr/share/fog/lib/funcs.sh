@@ -111,7 +111,7 @@ verifyNetworkConnection() {
 }
 # Verifies that the OS is valid for resizing
 validResizeOS() {
-    [[ $osid != @([1-2]|4|[5-7]|9|10|11|50|51) ]] && handleError " * Invalid operating system id: $osname ($osid) (${FUNCNAME[0]})\n   Args Passed: $*"
+    [[ $osClass != @(xp|vista|winother|win7|winmodern|linux) ]] && handleError " * Invalid operating system id: $osname ($osid) (${FUNCNAME[0]})\n   Args Passed: $*"
 }
 # Gets the graphics information from the system
 getGraphics() {
@@ -734,12 +734,12 @@ shrinkPartition() {
                 debugPause
                 dots "Resizing partition $part"
                 getPartBlockSize "$part" "part_block_size"
-                case $osid in
-                    [1-2]|4)
+                case $osClass in
+                    xp|vista|winother)
                         resizePartition "$part" "$(calculate "$sizentfsresize*1024")" "$imagePath"
-                        [[ $osid -eq 2 ]] && correctVistaMBR "$disk"
+                        [[ $osClass == vista ]] && correctVistaMBR "$disk"
                         ;;
-                    [5-7]|9|10|11)
+                    win7|winmodern)
                         [[ $part_number -eq $win7partcnt ]] && part_start=$(blkid -po udev $part 2>/dev/null | awk -F= '/PART_ENTRY_OFFSET=/{printf("%.0f\n",$2*'$part_block_size'/1000)}') || part_start=1048576
                         if [[ -z $part_start || $part_start -lt 1 ]]; then
                             echo "Failed"
@@ -1117,11 +1117,11 @@ getValidRestorePartitions() {
                 continue
             fi
         fi
-        case $osid in
-            [1-2])
+        case $osClass in
+            xp|vista)
                 [[ ! -f $imagePath ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}" || imgpart="$imagePath"
                 ;;
-            4|[5-7]|9|10|11)
+            winother|win7|winmodern)
                 [[ ! -f $imagePath/sys.img.000 ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                 if [[ -z $imgpart ]]; then
                     case $win7partcnt in
@@ -1219,11 +1219,11 @@ changeHostname() {
     ntfs-3g -o remove_hiberfile,rw $part /ntfs >/tmp/ntfs-mount-output 2>&1
     checkStatus $? "done-pause" " * Could not mount $part (${FUNCNAME[0]})\n    Args Passed: $*\n    Reason: $(cat /tmp/ntfs-mount-output | tr -d \\0)"
     if [[ ! -f /usr/share/fog/lib/EOFREG ]]; then
-        case $osid in
-            1)
+        case $osClass in
+            xp)
                 regfile="$REG_LOCAL_MACHINE_XP"
                 ;;
-            2|4|[5-7]|9|10|11)
+            vista|winother|win7|winmodern)
                 regfile="$REG_LOCAL_MACHINE_7"
                 ;;
         esac
@@ -1266,7 +1266,7 @@ changeHostname() {
 fixWin7boot() {
     local part="$1"
     [[ -z $part ]] && handleError "No partition passed (${FUNCNAME[0]})\n   Args Passed: $*"
-    [[ $osid != [5-7] ]] && return
+    [[ $osClass != win7 ]] && return
     local fstype=""
     fsTypeSetting "$part"
     [[ $fstype != ntfs ]] && return
@@ -1328,8 +1328,8 @@ clearMountedDevices() {
                 ;;
         esac
     fi
-    case $osid in
-        4|[5-7]|9|10|11)
+    case $osClass in
+        winother|win7|winmodern)
             local fstype=""
             fsTypeSetting "$part"
             REG_HOSTNAME_MOUNTED_DEVICES_7="\MountedDevices"
@@ -1380,8 +1380,8 @@ removePageFile() {
     local fstype=""
     fsTypeSetting "$part"
     [[ ! $ignorepg -eq 1 ]] && return
-    case $osid in
-        [1-2]|4|[5-7]|9|10|11|50|51)
+    case $osClass in
+        xp|vista|winother|win7|winmodern|linux)
             case $fstype in
                 ntfs)
                     dots "Mounting partition ($part)"
@@ -1431,75 +1431,125 @@ removePageFile() {
 }
 # Sets OS mbr, as needed, and returns the Name
 #    based on the OS id passed.
+#    Also sets osClass, the one value every other site branches on (ADR-0022).
 #
 # $1 the osid to determine the os and mbr
+# $2 the OS family from the server (windows|linux|macos|other), optional
 determineOS() {
     local osid="$1"
+    local family="$2"
+    local fallback=""
+    local label=""
     [[ -z $osid ]] && handleError "No os id passed (${FUNCNAME[0]})\n   Args Passed: $*"
+    osClass=""
+    # Ids 1-7 are frozen: they keep their own class and ignore the family.
+    # Every other id takes its class from the family. The fallback is the
+    # family FOS assumes for an id it knows, when the server sends none.
     case $osid in
         1)
+            osClass="xp"
             osname="Windows XP"
             mbrfile="/usr/share/fog/mbr/xp.mbr"
             ;;
         2)
+            osClass="vista"
             osname="Windows Vista"
             mbrfile="/usr/share/fog/mbr/vista.mbr"
             ;;
         3)
+            osClass="win98"
             osname="Windows 98"
             mbrfile=""
             ;;
         4)
+            osClass="winother"
             osname="Windows (Other)"
             mbrfile=""
             ;;
         5)
+            osClass="win7"
             osname="Windows 7"
             mbrfile="/usr/share/fog/mbr/win7.mbr"
             defaultpart2start="206848s"
             ;;
         6)
+            osClass="win7"
             osname="Windows 8"
             mbrfile="/usr/share/fog/mbr/win8.mbr"
             defaultpart2start="718848s"
             ;;
         7)
+            osClass="win7"
             osname="Windows 8.1"
             mbrfile="/usr/share/fog/mbr/win8.mbr"
             defaultpart2start="718848s"
             ;;
         8)
+            fallback="macos"
             osname="Apple Mac OS"
             mbrfile=""
             ;;
         9)
+            fallback="windows"
             osname="Windows 10"
             mbrfile=""
             ;;
         10)
+            fallback="windows"
             osname="Windows 11"
             mbrfile=""
             ;;
         11)
+            fallback="windows"
             osname="Windows Server"
             mbrfile=""
             ;;
         50)
+            fallback="linux"
             osname="Linux"
             mbrfile=""
             ;;
         51)
+            fallback="linux"
             osname="Chromium OS"
             mbrfile=""
             ;;
         99)
+            fallback="other"
             osname="Other OS"
             mbrfile=""
             ;;
         *)
-            handleError " * Invalid OS ID ($osid) (${FUNCNAME[0]})\n   Args Passed: $*"
+            osname=""
+            mbrfile=""
             ;;
     esac
+    [[ -n $osClass ]] && return
+    # A non-empty family from the server wins over the fallback.
+    [[ -z $family ]] && family="$fallback"
+    [[ -z $family ]] && handleError " * Invalid OS ID ($osid) (${FUNCNAME[0]})\n   Args Passed: $*"
+    case $family in
+        windows)
+            osClass="winmodern"
+            label="Windows"
+            ;;
+        linux)
+            osClass="linux"
+            label="Linux"
+            ;;
+        macos)
+            osClass="mac"
+            label="macOS"
+            ;;
+        other)
+            osClass="other"
+            label="Other OS"
+            ;;
+        *)
+            handleError " * Invalid OS family ($family) for OS ID ($osid) (${FUNCNAME[0]})\n   Args Passed: $*"
+            ;;
+    esac
+    [[ -z $osname ]] && osname="$label (osid $osid)"
 }
 # Converts the string (seconds) passed to human understanding
 #
@@ -1817,7 +1867,12 @@ completeTasking() {
                 . ${postdownpath}fog.postdownload
             fi
             [[ $capone -eq 1 ]] && exit 0
-            if [[ $osid == +([1-2]|4|[5-7]|9|10|11) ]]; then
+            # `other` keeps osid 99, which the old +( ) pattern matched as "9" "9".
+            # changeHostname() has no 99/other arm, so no registry is written
+            # for 99, on the base or now. What 99 keeps is the NTFS mount with
+            # remove_hiberfile (it removes hiberfil.sys). Osid 51 shares the
+            # linux class with 50 and loses that mount. See ADR-0022.
+            if [[ $osClass == @(xp|vista|winother|win7|winmodern|other) ]]; then
                 for disk in $disks; do
                     getPartitions "$disk"
                     for part in $parts; do
@@ -2001,8 +2056,8 @@ handleError() {
     # Windows 2000/XP, Vista:
     # Linux:
     if [[ -n $2 ]]; then
-        case $osid in
-            [1-2]|4|[5-7]|9|10|11|50|51)
+        case $osClass in
+            xp|vista|winother|win7|winmodern|linux)
                 if [[ -n "$hd" ]]; then
                     getPartitions "$hd"
                     for part in $parts; do
@@ -2413,8 +2468,8 @@ savePartitionTablesAndBootLoaders() {
     case $hasgpt in
         0)
             strdots="Saving Partition Tables (MBR)"
-            case $osid in
-                4|50|51)
+            case $osClass in
+                winother|linux)
                     [[ $disk_number -eq 1 ]] && strdots="Saving Partition Tables and GRUB (MBR)"
                     ;;
             esac
@@ -2936,8 +2991,8 @@ restorePartitionTablesAndBootLoaders() {
         global_gptcheck="yes"
         echo "Done"
     else
-        case $osid in
-            50|51)
+        case $osClass in
+            linux)
                 strdots="Restoring Partition Tables and GRUB (MBR)"
                 ;;
             *)
@@ -3140,14 +3195,14 @@ restorePartition() {
             imgpart="$imagePath"
             ;;
         n|mps|mpa)
-            case $osid in
-                [1-2])
+            case $osClass in
+                xp|vista)
                     [[ -f $imagePath ]] && imgpart="$imagePath" || imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                     ;;
-                4|8|50|51|99)
+                winother|mac|linux|other)
                     imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                     ;;
-                [5-7]|9|10|11)
+                win7|winmodern)
                     [[ ! -f $imagePath/sys.img.000 ]] && imgpart="$imagePath/d${disk_number}p${part_number}.img${split}"
                     if [[ -z $imgpart ]] ;then
                         [[ -r $imagePath/sys.img.000 ]] && win7partcnt=1
@@ -3291,7 +3346,7 @@ performRestore() {
             restorePartition "$restorepart" "$disk_number" "$imagePath" "$mc"
             [[ $imgType =~ [Nn] ]] && restoreEBR "$restorepart" "$tmpebrfilename"
             [[ $imgType =~ [Nn] ]] && expandPartition "$restorepart" "$fixed_size_partitions"
-            [[ $osid == +([5-7]) && $imgType =~ [Nn] ]] && fixWin7boot "$restorepart"
+            [[ $osClass == win7 && $imgType =~ [Nn] ]] && fixWin7boot "$restorepart"
         done
         restoreparts=""
         echo " * Resetting UUIDs for $disk"

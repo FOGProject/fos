@@ -181,6 +181,7 @@ tests/checks/multicast-receiver.sh    # udp-receiver gets --start-timeout from m
 tests/checks/fixparts-binary-present.sh  # fs.patch builds fixparts, which runFixparts() calls (fos#194)
 tests/checks/tmp-size.sh                 # /tmp is real tmpfs, sized from ramdisk_size= and clamped (ADR-0021)
 tests/checks/perftest.sh                 # Performance Test task: rates, sampled image, dev/ share, bottleneck (fos#55)
+tests/checks/os-class.sh                 # osClass truth table vs the pre-change osid lists; new ids from osfamily=; errors; callers (ADR-0022, fos#204)
 
 tests/checks/package-mirrors.sh     # build.sh's package mirror fallback and hash enforcement
 ```
@@ -417,6 +418,19 @@ and add a new ADR for any similarly hard-to-reverse decision:
   `/tmp` was never capped. SHMEM/TMPFS are now on and `S00tmpsize` sizes `/tmp`
   from `ramdisk_size=` (FOG_KERNEL_RAMDISK_SIZE), clamped to half of RAM.
   Guarded by `tests/checks/initrd-format.sh` and `tests/checks/tmp-size.sh`.
+- **0022 — OS class.** Sites no longer branch on osid lists such as
+  `[5-7]|9|10|11`. `determineOS "$osid" "$family"` sets one global, `osClass`,
+  and every site tests it. Frozen ids stay osid-keyed: 1 `xp`, 2 `vista`,
+  3 `win98`, 4 `winother`, 5-7 `win7`. Every other id is family-keyed
+  (`windows` gives `winmodern`, `linux`, `macos` gives `mac`, `other`), so a new
+  Windows, Linux, macOS or Other id needs no FOS release. The family comes from
+  `osfamily=` and is optional: empty means a built-in fallback for the ids FOS
+  knows (8, 9-11, 50/51, 99), and a non-empty family from the server wins. The
+  family is an argument, not a global: `fog.checkin` and `fog.debug` pass it,
+  `fog.capone` does not and exports an empty `osfamily`, so a Capone image never
+  inherits one. Empty family plus unknown osid, or a bad family on a
+  non-frozen id, is fatal (ADR-0003). Do not add an osid comparison outside
+  `determineOS()`. Guarded by `tests/checks/os-class.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
