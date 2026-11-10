@@ -38,7 +38,7 @@ esac
 debugPause
 verifyNetworkConnection
 dots "Checking Operating System"
-[[ -z $deployed ]] && determineOS "$osid"
+[[ -z $deployed ]] && determineOS "$osid" "$osfamily"
 echo "$osname"
 dots "Checking CPU Cores"
 cores=$(nproc)

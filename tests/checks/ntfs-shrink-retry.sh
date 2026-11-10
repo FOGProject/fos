@@ -136,6 +136,7 @@ run_shrink() {
         resetFlag() { :; }
         percent=5
         osid=9
+        determineOS "$osid"
         win7partcnt=0
         imagePath="$SANDBOX/images"
         shrinkPartition /dev/sda3 "$SANDBOX/images/d1.original.fstypes" ""

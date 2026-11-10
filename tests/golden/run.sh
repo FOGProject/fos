@@ -133,6 +133,7 @@ generate() (
     hostname="GOLDENHOST"
     hostearly=1
     osid=2
+    determineOS "$osid"
     changeHostname "/dev/stubpart" >/dev/null 2>&1
     if [[ -f $SANDBOX/EOFREG.captured ]]; then
         cat "$SANDBOX/EOFREG.captured"

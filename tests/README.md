@@ -322,6 +322,16 @@ tests/checks/perftest.sh
                               # stream cut mid-way, scaling compressed rates
                               # to uncompressed, and which stage it blames.
                               # See fos#55
+tests/checks/os-class.sh
+                              # osClass (ADR-0022): a truth table of the osid
+                              # lists each site had before the change, run
+                              # against the osClass patterns in the real source
+                              # for every known osid with the family empty and
+                              # seeded; new ids resolved from the family, the
+                              # server-wins conflict and every error; the
+                              # callers that pass the family; and no osid
+                              # comparison left outside determineOS(). See
+                              # fos#204
 tests/checks/package-mirrors.sh
                               # build.sh's package-mirror seeding: resolves each
                               # package's version/source/site out of its own .mk

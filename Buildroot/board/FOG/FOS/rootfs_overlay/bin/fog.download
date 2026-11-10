@@ -24,12 +24,12 @@ preparePartitions() {
     echo " * Preparing Partition layout"
     case $imgType in
         [Nn])
-            case $osid in
-                4|50|51)
+            case $osClass in
+                winother|linux)
                     [[ ! -d $imagePath ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
                     prepareResizeDownloadPartitions "$hd" 1 "$imagePath" "$osid" "$imgPartitionType"
                     ;;
-                [1-2])
+                xp|vista)
                     [[ ! -f $imagePath && ! -f $imagePath/$img && ! -d $imagePath ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
                     [[ -d $imagePath && -f $imagePath/$img ]] && imagePath="$imagePath/$img"
                     if [[ -d $imagePath ]]; then
@@ -72,7 +72,7 @@ preparePartitions() {
                         done
                     fi
                     ;;
-                [5-7]|9|10|11)
+                win7|winmodern)
                     [[ ! -d $imagePath && ! -f $imagePath/sys.img.000 ]] && handleError "Unable to locate image store ($0)\n   Args Passed: $*"
                     sfdiskOriginalPartitionFileName "$imagePath" "1"
                     sfdiskLegacyOriginalPartitionFileName "$imagePath" "1"
@@ -241,14 +241,14 @@ putDataBack() {
             ;;
         n|mps|mpa)
             [[ $imgType == +(n|mps) ]] && disks="$hd"
-            case $osid in
-                [1-2])
+            case $osClass in
+                xp|vista)
                     [[ ! -f $imagePath && ! -d $imagePath ]] && handleError "Fatal Error: Could not locate file ($0)\n   Args Passed: $*"
                     ;;
-                [5-7]|9|10|11)
+                win7|winmodern)
                     [[ ! -d $imagePath && ! -f $imagePath/sys.img.000 ]] && handleError "Fatal Error: Could not locate file ($0)\n   Args Passed: $*"
                     ;;
-                4|50|51)
+                winother|linux)
                     [[ ! -d $imagePath ]] && handleError "Fatal Error: could not locate file ($0)\n   Args Passed: $*"
                     ;;
             esac
