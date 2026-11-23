@@ -30,6 +30,28 @@ dispatcher invoked by `etc/init.d/S99fog` at boot, branching on the `$mode`
 (wipe/checkdisk/inventory/…) or `$type` (down/up) kernel command-line
 variables.
 
+## Documentation
+
+User docs live in [FOGProject/fog-docs](https://github.com/FOGProject/fog-docs),
+published at <https://docs.fogproject.org/>. An ADR in `docs/adr/` is not user
+docs. Every pull request here ships with its docs decision. Write it as a
+`Docs:` line in the pull request body:
+
+- `Docs: FOGProject/fog-docs#<n>` names the fog-docs pull request for the change.
+- `Docs: none — <reason>` is for a change that a user cannot see.
+- `Docs: needed — <what>` is for when you cannot open the fog-docs pull request.
+
+Where the docs go, under fog-docs `docs/`:
+
+| What changed | fog-docs target |
+|---|---|
+| Post-download or post-init behavior, or a variable a script can read | `kb/how-tos/post-download-scripts.md`, `kb/how-tos/post-init-scripts.md` |
+| A small customization that needs no rebuild | `kb/how-tos/customize-the-fos-init.md`, `kb/customization/` |
+| An imaging behavior (disks, sectors, LVM, multicast) | the matching page under `kb/reference/` |
+| A refusal or error message, or a bug fix that a user can see | a `kb/troubleshooting/` entry: the message verbatim, the cause, the fixed-in version, and a workaround |
+
+Follow fog-docs `CLAUDE.md` for the page format.
+
 ## Build commands
 
 `build.sh` builds both the Buildroot-based filesystem (init) and the Linux
