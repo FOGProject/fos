@@ -18,12 +18,16 @@ umount /images >/dev/null 2>&1
 # rejects 'nolock' as an unknown parameter. A malformed or empty storage= then
 # reports a cascade of unrelated local-filesystem errors instead of one NFS
 # failure, which is what made forums topic 18229 so hard to read.
+#
+# No proto= option. The kernel rejects proto=tcp with an IPv6 server address
+# (Invalid argument). Without the option, the kernel uses TCP over the family
+# of the server address. This kernel has no NFS over UDP.
 case $type in
     up)
-        mount -t nfs -o nolock,proto=tcp,rsize=32768,wsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
+        mount -t nfs -o nolock,rsize=32768,wsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
         ;;
     down)
-        mount -t nfs -o nolock,proto=tcp,rsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
+        mount -t nfs -o nolock,rsize=32768,intr,noatime "$storage" /images >/tmp/mount-output 2>&1
         ;;
 esac
 case $? in

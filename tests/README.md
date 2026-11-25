@@ -90,6 +90,14 @@ tests/checks/error-report.sh  # the failure report handleError() sends to
                               # console, a failed report still lets handleError
                               # reach its reboot notice, and no $web means no
                               # attempt at all
+tests/checks/network-ipv6-fallback.sh
+                              # getAddress() in S40network. With ipv6boot=1 on
+                              # the kernel line, three IPv6 attempts run first
+                              # and make no IPv4 request. Then the same three
+                              # IPv4 attempts as a boot without ipv6boot run.
+                              # A stateful DHCPv6 lease and a SLAAC address
+                              # each count as success. ip, udhcpc and udhcpc6
+                              # are stubs, so no network is touched
 tests/checks/empty-mac-fallback.sh
                               # what $mac is when the server sent none
                               # (fogproject#1767). A FOG 1.5 server builds a
@@ -279,6 +287,12 @@ tests/checks/nfs-mount-type.sh
                               # each one rejecting 'nolock'. The console then
                               # blames ext2/ext4/vfat/f2fs for a bad NFS path.
                               # See forums topic 18229
+tests/checks/nfs-mount-ipv6.sh
+                              # no FOS NFS mount sets proto=. The kernel
+                              # rejects proto=tcp with an IPv6 server address
+                              # ("Invalid argument"). With no proto=, the
+                              # kernel uses tcp or tcp6 to match the server.
+                              # See fogproject#2152
 tests/checks/mdraid-gate.sh
                               # md arrays assemble only with mdraid=true:
                               # the overlay masks mdadm's udev

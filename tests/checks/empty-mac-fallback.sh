@@ -79,6 +79,28 @@ mkdir -p "$SANDBOX/bin"
 cat > "$SANDBOX/bin/ip" <<EOF
 #!/bin/bash
 echo "called" >> "$SANDBOX/ip.called"
+# The file "v6only": eth0 holds a global IPv6 address and no IPv4 address,
+# and a second NIC, eth1, has no address. That is a boot that S40network
+# served by its IPv6 fallback.
+if [[ -f "$SANDBOX/v6only" ]]; then
+    case "\$*" in
+        "-4 -o addr")
+            echo '1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever' ;;
+        "-o addr")
+            printf '%s\n' \\
+                '1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever' \\
+                '2: eth0    inet6 2001:db8::5/64 scope global \       valid_lft forever preferred_lft forever' ;;
+        "-0 addr")
+            printf '%s\n' \\
+                '1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue qlen 1000' \\
+                '    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00' \\
+                '2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc htb qlen 1000' \\
+                '    link/ether 02:00:00:00:0e:11 brd ff:ff:ff:ff:ff:ff' \\
+                '3: eth1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop qlen 1000' \\
+                '    link/ether 02:00:00:00:0e:22 brd ff:ff:ff:ff:ff:ff' ;;
+    esac
+    exit 0
+fi
 case "\$*" in
     "-4 -o addr")
         printf '%s\n' \\
@@ -177,6 +199,16 @@ got="$(
 why=""
 [[ $got != *"02:00:00:00:0e:11"* ]] && why="a child process sees '$got'"
 note "the resolved MAC is exported to child processes" "$why"
+
+# 6. A boot that S40network served by its IPv6 fallback has no IPv4 address.
+#    The lookup must still name only the NIC that holds the address, not every
+#    NIC: an empty interface list matches them all.
+touch "$SANDBOX/v6only"
+got="$(source_with "$BASE mac= storageip=10.0.0.1")"
+rm -f "$SANDBOX/v6only"
+why=""
+[[ $got != "02:00:00:00:0e:11" ]] && why="\$mac is '$got', not only the MAC of the NIC with the IPv6 address"
+note "an IPv6-only boot is answered from the NIC that holds the address" "$why"
 
 echo
 echo "$PASS passed, $FAIL failed"
