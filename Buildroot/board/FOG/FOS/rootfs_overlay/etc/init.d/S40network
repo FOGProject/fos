@@ -17,10 +17,129 @@ for var in $(cat /proc/cmdline); do
     eval "export ${var}" 2>/dev/null
 done
 
+# The number of IPv4 attempts, as it always was.
+ipv4Attempts=3
+# The number of IPv6 attempts.
+ipv6Attempts=3
+# The kernel's per-interface IPv6 switches.
+ipv6Conf=/proc/sys/net/ipv6/conf
+# Seconds to wait for an old udhcpc6 to exit after its release.
+udhcpc6StopWait=3
+
+# The family the PC booted over goes first, then the other one. The boot menu
+# sets ipv6boot=1 when the PC reached the server over IPv6.
+# The number of attempts in the first phase.
+firstPhaseAttempts() {
+    if [[ $ipv6boot == 1 ]]; then
+        echo $ipv6Attempts
+    else
+        echo $ipv4Attempts
+    fi
+}
+
+# The address family of attempt $1: 4 or 6.
+attemptFamily() {
+    local first=4 second=6
+    if [[ $ipv6boot == 1 ]]; then
+        first=6
+        second=4
+    fi
+    if [[ $1 -le $(firstPhaseAttempts) ]]; then
+        echo $first
+    else
+        echo $second
+    fi
+}
+
+# True when the interface has a usable IPv6 address of scope $2 (global or link).
+# An address in duplicate address detection (tentative), or one that failed
+# it, is not usable.
+hasIPv6Address() {
+    /sbin/ip -6 -o addr show dev "$1" scope "$2" 2>/dev/null | grep -qv -e tentative -e dadfailed
+}
+
+# Wait until the interface has a usable IPv6 address, for at most $3 seconds.
+# $1 = interface, $2 = scope (global or link).
+waitForIPv6Address() {
+    local waited=0
+    until hasIPv6Address "$1" "$2" || [[ $waited -ge $3 ]]; do
+        let waited+=1
+        sleep 1
+    done
+    hasIPv6Address "$1" "$2"
+}
+
+# Stop a udhcpc6 from an earlier attempt, and wait until it has exited.
+# Its exit releases the lease and runs deconfig. A new client that starts
+# before that ends can lose its address and DNS lines to the old deconfig.
+stopUdhcpc6() {
+    local waited=0
+    killall udhcpc6 2>/dev/null || return 0
+    while pidof udhcpc6 >/dev/null && [[ $waited -lt $udhcpc6StopWait ]]; do
+        let waited+=1
+        sleep 1
+    done
+}
+
+# Get an address and the DNS servers on one interface.
+# $1 = interface, $2 = the attempt number. attemptFamily picks the family.
+# An IPv4 attempt is the IPv4 DHCP request, as it always was.
+# An IPv6 attempt turns IPv6 on for the interface. It runs stateful udhcpc6
+# first, with a short time limit, then waits for SLAAC. Busybox cannot read
+# the router's M flag, so the stateful request is how a DHCPv6-only network
+# is found.
+getAddress() {
+    local iface=$1 attempt=$2
+    local raWait=10     # seconds to wait for the router advertisement
+    local dadWait=5     # seconds to wait for duplicate address detection
+    # -n: give up when the server does not answer. -R: release the lease on exit.
+    # -T 2 -t 2: send two requests, two seconds apart.
+    local dhcp6Opts="-n -R -T 2 -t 2"
+    if [[ $(attemptFamily $attempt) == 4 ]]; then
+        /sbin/udhcpc -i $iface --now
+        return $?
+    fi
+    # A kernel without IPv6 (ipv6.disable=1) has no switch, and no IPv6.
+    if [[ ! -e $ipv6Conf/$iface/disable_ipv6 ]]; then
+        echo "IPv6 is not available in this kernel."
+        return 1
+    fi
+    echo 0 > "$ipv6Conf/$iface/disable_ipv6"
+    # Two clients must never run on one interface.
+    stopUdhcpc6
+    # udhcpc6 needs the link-local address of the interface to send its requests
+    waitForIPv6Address $iface link $dadWait
+    if /usr/bin/udhcpc6 -i $iface $dhcp6Opts; then
+        # A lease. Its client keeps running and holds the address, so never
+        # stop it here. Wait for duplicate address detection to finish.
+        waitForIPv6Address $iface global $((dadWait + raWait)) && return 0
+        echo "No global IPv6 address on $iface."
+        return 1
+    fi
+    # No lease. With -n the client has exited, so only SLAAC can give the address.
+    if ! waitForIPv6Address $iface global $raWait; then
+        echo "No global IPv6 address on $iface."
+        return 1
+    fi
+    # A global address is what counts. No answer to the stateless DNS request is not fatal.
+    /usr/bin/udhcpc6 -i $iface $dhcp6Opts -l
+    return 0
+}
+
 # Enable loopback interface
 echo -e "auto lo\niface lo inet loopback\n\n" > /etc/network/interfaces
 /sbin/ip addr add 127.0.0.1/8 dev lo
 /sbin/ip link set lo up
+
+# IPv6 stays off until an IPv6 attempt turns it on for one interface.
+# Otherwise the kernel takes a SLAAC address from any router advertisement on
+# a link it brings up, even on a boot that IPv4 serves. Set this before any
+# network card goes up. Writing "all" also reaches lo, so lo gets ::1 back.
+if [[ -d $ipv6Conf ]]; then
+    echo 1 > "$ipv6Conf/default/disable_ipv6"
+    echo 1 > "$ipv6Conf/all/disable_ipv6"
+    echo 0 > "$ipv6Conf/lo/disable_ipv6"
+fi
 
 sleep 10
 
@@ -42,8 +161,19 @@ for iface in $ifaces; do
         [[ $linkstate -eq 0 ]] && sleep 1 || break
     done
     [[ $linkstate -eq 0 ]] && echo "No link detected on $iface for $timeout seconds, skipping it." && continue
-    for retry in $(seq 3); do
-        /sbin/udhcpc -i $iface --now
+    # The attempts of the family the PC booted over come first, then the
+    # attempts of the other family. Each phase has the spanning tree wait.
+    attempts=$((ipv4Attempts + ipv6Attempts))
+    firstAttempts=$(firstPhaseAttempts)
+    for attempt in $(seq $attempts); do
+        # retry is the attempt number within its phase, so each phase repeats
+        # its waits.
+        if [[ $attempt -le $firstAttempts ]]; then
+            retry=$attempt
+        else
+            retry=$((attempt - firstAttempts))
+        fi
+        getAddress $iface $attempt
         ustat="$?"
         fog.curl -Ifso /dev/null "${web}"/index.php --connect-timeout 5
         cstat="$?"
@@ -59,7 +189,7 @@ for iface in $ifaces; do
                     ip link set dev $iface down
                     ip link set dev $iface address $mac_sett
                     ip link set dev $iface up
-                    /sbin/udhcpc -i $iface --now
+                    getAddress $iface $attempt
                     ustat="$?"
                     fog.curl -Ifso /dev/null "${web}"/index.php --connect-timeout 5
                     cstat="$?"

@@ -197,6 +197,8 @@ tests/checks/initrd-format.sh       # each arch's kernel can unpack the init bui
 tests/checks/arm64-platform-config.sh  # arm64 kernel describes a real ARM platform (ADR-0015)
 
 tests/checks/nfs-mount-type.sh       # FOS's NFS mounts name -t nfs instead of relying on busybox inference
+tests/checks/nfs-mount-ipv6.sh       # no NFS mount sets proto=; proto=tcp breaks an IPv6 server (fogproject#2152)
+tests/checks/network-ipv6-fallback.sh  # S40network: boot family first, then the other, then error; IPv6 off until an IPv6 attempt (fogproject#2152)
 tests/checks/mdraid-gate.sh          # md arrays auto-assemble only with mdraid=true (forums 18202)
 tests/checks/multicast-receiver.sh    # udp-receiver gets --start-timeout from mcastMaxWait; an empty stream says no sender answered (fos#48)
 

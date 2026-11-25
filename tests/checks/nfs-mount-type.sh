@@ -5,7 +5,7 @@
 #   tests/checks/nfs-mount-type.sh
 #
 # Why this exists. FOS mounts the storage node with a hardcoded NFS option
-# list (nolock,proto=tcp,rsize=...,intr,noatime) and, until now, no -t. That
+# list (nolock,rsize=...,intr,noatime) and, until now, no -t. That
 # worked only because busybox mount infers NFS on its own -- and it does so
 # from the SOURCE STRING, not from the options: singlemount() in
 # util-linux/mount.c takes the NFS branch only when the source contains a ':'
@@ -48,7 +48,8 @@ while IFS=: read -r file line text; do
     else
         echo "  checked $(basename "$file"):$line"
     fi
-done < <(grep -rn '^[[:space:]]*mount .*nolock' "$BIN")
+# An optional "if " prefix covers a mount used as a condition (fog.perftest).
+done < <(grep -rn '^[[:space:]]*\(if \)\{0,1\}mount .*nolock' "$BIN")
 
 if [[ $checked -eq 0 ]]; then
     echo "FAIL: found no nolock mounts at all -- has the storage mount moved?"

@@ -1,4 +1,15 @@
 #!/bin/bash
+# Stop udhcpc6 if an IPv6 attempt in S40network started it.
+# It runs with -R, so it releases its lease on exit.
+killall udhcpc6 2>/dev/null
+# Wait for the release to go out before the links go down. The same wait as
+# stopUdhcpc6 in S40network, which this script cannot source.
+stopWait=3
+waited=0
+while pidof udhcpc6 >/dev/null && [[ $waited -lt $stopWait ]]; do
+    let waited+=1
+    sleep 1
+done
 ifaces=$(ls -1 /sys/class/net | tr -d '@')
 for iface in $ifaces; do
     if [[ x$iface == xlo ]]; then

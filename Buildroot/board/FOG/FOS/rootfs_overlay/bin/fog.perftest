@@ -73,8 +73,8 @@ umount /images >/dev/null 2>&1
 # (BootMenuBase::getTasking). The stored images a deploy reads are its parent.
 imgroot=$(perfImageRoot "$storage")
 dots "Mounting storage read-only"
-# -t nfs is load-bearing, see the comment in fog.mount.
-if mount -t nfs -o ro,nolock,proto=tcp,rsize=32768,intr,noatime "$imgroot" /images >/tmp/mount-output 2>&1; then
+# -t nfs is load-bearing, and proto= must stay out. See the comments in fog.mount.
+if mount -t nfs -o ro,nolock,rsize=32768,intr,noatime "$imgroot" /images >/tmp/mount-output 2>&1; then
     echo "Done"
     sample=$(perfPickSample /images)
 else

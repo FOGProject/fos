@@ -1,0 +1,9 @@
+# Busybox settings that FOS adds to Buildroot's stock busybox.config.
+# The fs*.config files name this file in BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES.
+# It enables udhcpc6, the DHCPv6 client. S40network runs it for its IPv6
+# attempts: first on a boot with ipv6boot=1, and after IPv4 failed on any other
+# boot. RFC 3646 gives the DNS servers and the search list.
+# The script is in the rootfs overlay. The stock default.script is IPv4 only.
+CONFIG_UDHCPC6=y
+CONFIG_FEATURE_UDHCPC6_RFC3646=y
+CONFIG_UDHCPC6_DEFAULT_SCRIPT="/usr/share/udhcpc/default6.script"

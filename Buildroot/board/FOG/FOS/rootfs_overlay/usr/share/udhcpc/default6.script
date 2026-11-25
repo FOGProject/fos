@@ -1,0 +1,72 @@
+#!/bin/sh
+#
+# udhcpc6 script.
+# Busybox runs this for every DHCPv6 event. It is the IPv6 sibling of the
+# stock udhcpc default.script, which only knows how to handle DHCPv4. The
+# stock script would reset the IPv4 address of the interface on "deconfig".
+# This one touches only the IPv6 state and the resolver.
+#
+# Busybox gives it these variables:
+#   interface  the interface name
+#   ipv6       the address the server leased (stateful DHCPv6 only)
+#   dns        the DNS servers, separated by spaces (RFC 3646)
+#   search     the domain search list (RFC 3646)
+# It reads no other variable. The kernel arguments of FOS are in the
+# environment too, so any other name can hold an unrelated value.
+
+[ -z "$1" ] && echo "Error: should be called from udhcpc6" && exit 1
+
+ACTION="$1"
+RESOLV_CONF="/etc/resolv.conf"
+# The leased address, so that "deconfig" can delete it. "deconfig" gets no ipv6 variable.
+LEASE_FILE="/var/run/udhcpc6-$interface.addr"
+[ -e "$RESOLV_CONF" ] || touch "$RESOLV_CONF"
+
+# Remove the lines an earlier run wrote for this interface. The same
+# "# <interface>" tag is used by the IPv4 script, so a fallback to IPv4 cleans up too.
+# resolv.conf may be a symlink, so write through it with cat.
+drop_resolv_lines() {
+    local TMPFILE
+    TMPFILE=$(mktemp)
+    grep -vE "# $interface\$" "$RESOLV_CONF" > "$TMPFILE"
+    cat "$TMPFILE" > "$RESOLV_CONF"
+    rm -f "$TMPFILE"
+}
+
+# Delete the address that an earlier "bound" added. A retry then cannot reuse
+# a lease that the server has freed.
+drop_leased_address() {
+    local addr
+    [ -f "$LEASE_FILE" ] || return 0
+    addr=$(cat "$LEASE_FILE")
+    [ -n "$addr" ] && /sbin/ip -6 addr del "$addr/128" dev "$interface" 2>/dev/null
+    rm -f "$LEASE_FILE"
+}
+
+case "$ACTION" in
+    deconfig)
+        drop_leased_address
+        drop_resolv_lines
+        ;;
+
+    leasefail|nak)
+        ;;
+
+    renew|bound)
+        # Stateful DHCPv6 leases an address. Stateless mode (-l) gives none:
+        # the address then comes from SLAAC and the kernel has set it already.
+        if [ -n "$ipv6" ]; then
+            /sbin/ip -6 addr add "$ipv6/128" dev "$interface" 2>/dev/null
+            echo "$ipv6" > "$LEASE_FILE"
+        fi
+
+        drop_resolv_lines
+        [ -n "$search" ] && echo "search $search # $interface" >> "$RESOLV_CONF"
+        for i in $dns ; do
+            echo "Adding DNS server $i."
+            echo "nameserver $i # $interface" >> "$RESOLV_CONF"
+        done
+        ;;
+esac
+
+exit 0

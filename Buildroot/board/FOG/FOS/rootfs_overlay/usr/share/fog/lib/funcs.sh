@@ -61,7 +61,11 @@ displayBanner() {
 #}
 # Gets all system mac addresses except for loopback
 getMACAddresses() {
+    # The interfaces with a global IPv4 address, as always. S40network falls
+    # back to IPv6 when IPv4 fails, so with no IPv4 address look at both
+    # families. An empty list would match every interface below.
     read ifaces <<< $(/sbin/ip -4 -o addr | awk -F'([ /])+' '/global/ {print $2}' | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
+    [[ -z $ifaces ]] && read ifaces <<< $(/sbin/ip -o addr | awk -F'([ /])+' '/global/ {print $2}' | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
     read mac_addresses <<< $(/sbin/ip -0 addr | awk 'ORS=NR%2?FS:RS' | awk "/$ifaces/ {print \$11}" | tr '[:space:]' '|' | sed -e 's/^[|]//g' -e 's/[|]$//g')
     echo $mac_addresses
 }
