@@ -109,6 +109,11 @@ is the only source it knows about. That cost two release builds (2026-08-03 and
 2026-08-17, both cabextract) and is the usual cause of a local build failing
 behind corporate egress filtering.
 
+`Buildroot/package/udpcast/` is different: udpcast is a Buildroot package, and
+FOS overrides it. FOS adds the IPv6 patches 0002-0004 after Buildroot's own
+0001, and a copy of `udpcast.mk` with `UDPCAST_AUTORECONF = YES`. Re-diff that
+`.mk` against upstream on a `BUILDROOT_VERSION` bump.
+
 `seedFragileSources()` is the mirror list Buildroot has nowhere to put. It lives
 in `package-funcs.sh` alongside the `.mk` parsing, because `build.sh`,
 `bump-package.sh` and the test harness all need it and `build.sh` cannot be

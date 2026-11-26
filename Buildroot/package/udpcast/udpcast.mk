@@ -4,6 +4,9 @@
 #
 ################################################################################
 
+# FOS override: a copy of Buildroot 2026.02.1's udpcast.mk plus
+# UDPCAST_AUTORECONF. Re-diff it against upstream on a BUILDROOT_VERSION bump.
+# Patch 0001 is Buildroot's own (musl); FOS's IPv6 patches are 0002-0004.
 UDPCAST_VERSION = 20250223
 UDPCAST_SITE = https://www.udpcast.linux.lu/download
 UDPCAST_DEPENDENCIES = host-m4

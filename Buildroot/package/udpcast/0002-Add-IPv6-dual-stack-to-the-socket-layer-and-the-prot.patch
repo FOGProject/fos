@@ -1,6 +1,6 @@
-From fa45a7210fbc675c5507a4cc76c18d6594c7e152 Mon Sep 17 00:00:00 2001
+From 7a18f6877e8aed57efb34026248dde72d69a5b45 Mon Sep 17 00:00:00 2001
 From: Tom Elliott <mastacontrola@users.noreply.github.com>
-Date: Thu, 26 Nov 2026 12:40:53 -0600
+Date: Thu, 26 Nov 2026 13:07:02 -0600
 Subject: [PATCH 2/4] Add IPv6 (dual-stack) to the socket layer and the
  protocol
 
@@ -25,13 +25,13 @@ Claude-Session: https://claude.ai/code/session_01JAdRb6RNDituib56k4zavB
  participants.h   |   6 +-
  receivedata.c    |   6 +-
  senddata.c       |  10 +-
- socklib.c        | 708 ++++++++++++++++++++++++++++++++++++++---------
+ socklib.c        | 711 ++++++++++++++++++++++++++++++++++++++---------
  socklib.h        |  91 ++++--
  udp-receiver.h   |   2 +-
  udpcast.h        |   4 +-
  udpr-negotiate.c |  24 +-
  udps-negotiate.c |  40 ++-
- 10 files changed, 717 insertions(+), 188 deletions(-)
+ 10 files changed, 720 insertions(+), 188 deletions(-)
 
 diff --git a/participants.c b/participants.c
 index d03613b..6e0238d 100644
@@ -204,7 +204,7 @@ index 13ac73f..a6fbadf 100644
  	unsigned int pos = pc_getConsumerPosition(returnChannel->freeSpace);
  	pc_consumeAny(returnChannel->freeSpace);
 diff --git a/socklib.c b/socklib.c
-index b88af9d..a5fbca5 100644
+index b88af9d..34ebf5f 100644
 --- a/socklib.c
 +++ b/socklib.c
 @@ -4,6 +4,8 @@
@@ -228,7 +228,7 @@ index b88af9d..a5fbca5 100644
  #ifdef __MINGW32__
  
  #include <ws2tcpip.h>
-@@ -188,6 +195,61 @@ int makeSockAddr(char *hostname, in_port_t port, struct sockaddr_in *addr)
+@@ -188,6 +195,64 @@ int makeSockAddr(char *hostname, in_port_t port, struct sockaddr_in *addr)
      return 0;
  }
  
@@ -271,11 +271,14 @@ index b88af9d..a5fbca5 100644
 +	return 0;
 +    if(percent != NULL) {
 +	char *end;
-+	unsigned long index = strtoul(percent + 1, &end, 10);
++	unsigned long index;
 +	/* A numeric scope is digits only and fits an interface index.
-+	 * strtoul alone would take a sign or spaces, and wrap. */
++	 * strtoul alone would take a sign or spaces, and wrap. ERANGE
++	 * catches an overflow where unsigned long is 32 bits. */
++	errno = 0;
++	index = strtoul(percent + 1, &end, 10);
 +	if(isdigit((unsigned char) percent[1]) && *end == '\0') {
-+	    if(index == 0 || index > UINT32_MAX)
++	    if(errno == ERANGE || index == 0 || index > UINT32_MAX)
 +		return 0;
 +	    *scope = (uint32_t) index;
 +	} else
@@ -290,7 +293,7 @@ index b88af9d..a5fbca5 100644
  #ifdef HAVE_PTON
  # define INET_ATON(a,i) inet_pton(AF_INET,a,i)
  #else
-@@ -209,18 +271,66 @@ static inline int INET_ATON(const char *a, struct in_addr *i) {
+@@ -209,18 +274,66 @@ static inline int INET_ATON(const char *a, struct in_addr *i) {
  #endif
  
  
@@ -362,7 +365,7 @@ index b88af9d..a5fbca5 100644
      switch(addr_type) {
      case ADDR_TYPE_UCAST:
  	addr->sin_addr = net_if->addr;
-@@ -229,33 +339,34 @@ static int initSockAddress(addr_type_t addr_type,
+@@ -229,33 +342,34 @@ static int initSockAddress(addr_type_t addr_type,
  	addr->sin_addr = net_if->bcast;
  	break;
      case ADDR_TYPE_MCAST:
@@ -409,7 +412,7 @@ index b88af9d..a5fbca5 100644
  
  static int safe_inet_aton(const char *address, struct in_addr *ip) {
      if(!INET_ATON(address, ip))
-@@ -264,35 +375,41 @@ static int safe_inet_aton(const char *address, struct in_addr *ip) {
+@@ -264,35 +378,41 @@ static int safe_inet_aton(const char *address, struct in_addr *ip) {
  }
  
  
@@ -466,7 +469,7 @@ index b88af9d..a5fbca5 100644
  
      slen = sizeof(*from);
  #ifdef LOSSTEST
-@@ -301,11 +418,11 @@ ssize_t doReceive(int s, void *message, size_t len,
+@@ -301,11 +421,11 @@ ssize_t doReceive(int s, void *message, size_t len,
      r = recvfrom(s, message, len, 0, (struct sockaddr *)from, &slen);
      if (r < 0)
  	return r;
@@ -480,7 +483,7 @@ index b88af9d..a5fbca5 100644
  	return -1;
      }
  /*    flprintf("recv: %08x %d\n", *(int*) message, r);*/
-@@ -348,6 +465,15 @@ int setSocketToBroadcast(int sock) {
+@@ -348,6 +468,15 @@ int setSocketToBroadcast(int sock) {
  }
  
  int setTtl(int sock, int ttl) {
@@ -496,7 +499,7 @@ index b88af9d..a5fbca5 100644
      /* set the socket to broadcast */
      return setsockopt(sock, SOL_IP, IP_MULTICAST_TTL, (char*)&ttl, sizeof(int));
  }
-@@ -358,9 +484,6 @@ int setTtl(int sock, int ttl) {
+@@ -358,9 +487,6 @@ int setTtl(int sock, int ttl) {
  # define IP_MREQN ip_mreq
  #endif
  
@@ -506,7 +509,7 @@ index b88af9d..a5fbca5 100644
  
  /**
   * Fill in the mreq structure with the given interface and address
-@@ -408,16 +531,33 @@ struct in_addr getSinAddr(struct sockaddr_in *addr) {
+@@ -408,16 +534,33 @@ struct in_addr getSinAddr(struct sockaddr_in *addr) {
   * get traffic sent to another multicast address with same port.
   * For SSM networks (232.0.0.0/8), pass source of server as well, if available.
   */
@@ -545,7 +548,7 @@ index b88af9d..a5fbca5 100644
  	r=setsockopt(sock, SOL_IP, IP_ADD_SOURCE_MEMBERSHIP,
  			  (char*)&ms, sizeof(ms));
  	if(r < 0) {
-@@ -432,11 +572,24 @@ static int mcastListen(int sock, net_if_t *net_if, struct sockaddr_in *addr,
+@@ -432,11 +575,24 @@ static int mcastListen(int sock, net_if_t *net_if, struct sockaddr_in *addr,
  }
  
  
@@ -572,7 +575,7 @@ index b88af9d..a5fbca5 100644
      struct in_addr if_addr;
      getMyAddress(net_if, &interface_addr);
      if_addr = getSinAddr(&interface_addr);
-@@ -557,6 +710,157 @@ int isFullDuplex(int s, const char *ifname) {
+@@ -557,6 +713,157 @@ int isFullDuplex(int s, const char *ifname) {
  }
  
  
@@ -730,7 +733,7 @@ index b88af9d..a5fbca5 100644
  /**
   * Canonize interface name. If attempt is not NULL, pick the interface
   * which has that address.
-@@ -567,8 +871,13 @@ int isFullDuplex(int s, const char *ifname) {
+@@ -567,8 +874,13 @@ int isFullDuplex(int s, const char *ifname) {
   * 4. Anything else
   * 5. localhost
   * 6. zero address
@@ -745,7 +748,7 @@ index b88af9d..a5fbca5 100644
  #ifndef __MINGW32__
  	struct ifreq *ifrp, *chosen;
  	uintptr_t ifend;
-@@ -601,6 +910,26 @@ net_if_t *getNetIf(const char *wanted) {
+@@ -601,6 +913,26 @@ net_if_t *getNetIf(const char *wanted) {
  	    wanted = getenv("IFNAME");
  	}
  
@@ -772,7 +775,7 @@ index b88af9d..a5fbca5 100644
  	if(wanted && INET_ATON(wanted, &wantedAddress))
  	    isAddress=1;
  	else
-@@ -654,42 +983,11 @@ net_if_t *getNetIf(const char *wanted) {
+@@ -654,42 +986,11 @@ net_if_t *getNetIf(const char *wanted) {
  	    if(ifrp->ifr_addr.sa_family != PF_INET)
  		continue;
  
@@ -820,7 +823,7 @@ index b88af9d..a5fbca5 100644
  
  	    if(hasLink(s, ifrp->ifr_name))
  	      /* Good or unknown link status privileged over known
-@@ -716,24 +1014,42 @@ net_if_t *getNetIf(const char *wanted) {
+@@ -716,24 +1017,42 @@ net_if_t *getNetIf(const char *wanted) {
  	}
  
  
@@ -865,7 +868,7 @@ index b88af9d..a5fbca5 100644
  	net_if->name = strdup(chosen->ifr_name);
  
  #ifdef HAVE_STRUCT_IP_MREQN_IMR_IFINDEX
-@@ -857,12 +1173,13 @@ net_if_t *getNetIf(const char *wanted) {
+@@ -857,12 +1176,13 @@ net_if_t *getNetIf(const char *wanted) {
  	    fprintf(stderr, "The following interfaces are available:\n");
  
  	    for(i=0; i<iptab->dwNumEntries; i++) {
@@ -882,7 +885,7 @@ index b88af9d..a5fbca5 100644
  		ifrow = getIfRow(iftab, iprow->dwIndex);
  		name = fmtName(ifrow);
  		fprintf(stderr, " %15s  %s\n",
-@@ -874,6 +1191,7 @@ net_if_t *getNetIf(const char *wanted) {
+@@ -874,6 +1194,7 @@ net_if_t *getNetIf(const char *wanted) {
  	    exit(1);
  	}
  
@@ -890,7 +893,7 @@ index b88af9d..a5fbca5 100644
  	net_if->bcast.s_addr = net_if->addr.s_addr = chosen->dwAddr;
  	if(chosen->dwBCastAddr)
  	    net_if->bcast.s_addr |= ~chosen->dwMask;
-@@ -903,12 +1221,11 @@ net_if_t *getNetIf(const char *wanted) {
+@@ -903,12 +1224,11 @@ net_if_t *getNetIf(const char *wanted) {
   */
  int makeSocket(addr_type_t addr_type,
  	       net_if_t *net_if,
@@ -906,7 +909,7 @@ index b88af9d..a5fbca5 100644
  
  #ifdef WINDOWS
      static int lastSocket=-1;
-@@ -921,28 +1238,32 @@ int makeSocket(addr_type_t addr_type,
+@@ -921,28 +1241,32 @@ int makeSocket(addr_type_t addr_type,
  	return -1;
  #endif
  
@@ -947,7 +950,7 @@ index b88af9d..a5fbca5 100644
  	udpc_fatal(1, "bind socket to %s:%d (%s)\n",
  		   udpc_getIpString(&myaddr, buffer),
  		   udpc_getPort(&myaddr),
-@@ -959,15 +1280,24 @@ int makeSocket(addr_type_t addr_type,
+@@ -959,15 +1283,24 @@ int makeSocket(addr_type_t addr_type,
  
  void printMyIp(net_if_t *net_if)
  {
@@ -976,7 +979,7 @@ index b88af9d..a5fbca5 100644
      sprintf(buffer,"%ld.%ld.%ld.%ld",
  	    (iaddr >> 24) & 0xff,
  	    (iaddr >> 16) & 0xff,
-@@ -976,60 +1306,183 @@ char *udpc_getIpString(struct sockaddr_in *addr, char *buffer) {
+@@ -976,60 +1309,183 @@ char *udpc_getIpString(struct sockaddr_in *addr, char *buffer) {
      return buffer;
  }
  
@@ -1181,7 +1184,7 @@ index b88af9d..a5fbca5 100644
  unsigned int parseSize(char *sizeString) {
      char *eptr;
      unsigned int size = strtoui(sizeString, &eptr, 10);
-@@ -1115,8 +1568,13 @@ void closeSock(int *socks, int nr, int target) {
+@@ -1115,8 +1571,13 @@ void closeSock(int *socks, int nr, int target) {
      closesocket(sock);
  }
  
