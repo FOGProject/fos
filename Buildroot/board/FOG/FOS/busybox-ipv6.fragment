@@ -7,3 +7,8 @@
 CONFIG_UDHCPC6=y
 CONFIG_FEATURE_UDHCPC6_RFC3646=y
 CONFIG_UDHCPC6_DEFAULT_SCRIPT="/usr/share/udhcpc/default6.script"
+# Take the address order that glibc gives, not "IPv4 first". For a name with A
+# and AAAA records, glibc puts the family the client can reach first. With
+# IPv4 first, busybox mount took the A record on an IPv6-only client, and an
+# NFS mount by name failed with "Network is unreachable" (fogproject#2152).
+# CONFIG_FEATURE_PREFER_IPV4_ADDRESS is not set

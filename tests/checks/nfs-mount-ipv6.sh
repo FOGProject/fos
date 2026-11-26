@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Assertion harness: no FOS NFS mount sets proto=.
+# Assertion harness: no FOS NFS mount sets proto=, and busybox does not
+# prefer IPv4 addresses. Both break an NFS mount over IPv6.
 #
 #   tests/checks/nfs-mount-ipv6.sh
 #
@@ -48,10 +49,24 @@ if [[ $checked -eq 0 ]]; then
     exit 1
 fi
 
+# A server name with A and AAAA records. busybox mount resolves the name and
+# passes addr= to the kernel. With FEATURE_PREFER_IPV4_ADDRESS, busybox took the
+# A record. On an IPv6-only client the mount then failed with "Network is
+# unreachable" (fogproject#2152). The FOS fragment must turn the feature off.
+FRAGMENT="${FOS_FRAGMENT:-$HERE/../../Buildroot/board/FOG/FOS/busybox-ipv6.fragment}"
+prefer=0
+if grep -qx '# CONFIG_FEATURE_PREFER_IPV4_ADDRESS is not set' "$FRAGMENT"; then
+    echo "  checked busybox-ipv6.fragment: IPv4 is not preferred"
+else
+    echo "FAIL [busybox-ipv6.fragment] busybox prefers IPv4, so a mount by name fails on an IPv6-only client"
+    prefer=1
+fi
+
 echo
-if [[ $fails -eq 0 ]]; then
-    echo "PASS: $checked NFS mount(s) leave proto= to the kernel"
+if [[ $fails -eq 0 && $prefer -eq 0 ]]; then
+    echo "PASS: $checked NFS mount(s) leave proto= to the kernel, and busybox does not prefer IPv4"
     exit 0
 fi
-echo "FAILED: $fails of $checked NFS mount(s) set proto="
+[[ $fails -ne 0 ]] && echo "FAILED: $fails of $checked NFS mount(s) set proto="
+[[ $prefer -ne 0 ]] && echo "FAILED: busybox prefers IPv4 addresses"
 exit 1

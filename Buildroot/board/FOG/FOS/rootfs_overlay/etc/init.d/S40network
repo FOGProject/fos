@@ -96,6 +96,21 @@ getAddress() {
     # -T 2 -t 2: send two requests, two seconds apart.
     local dhcp6Opts="-n -R -T 2 -t 2"
     if [[ $(attemptFamily $attempt) == 4 ]]; then
+        # After failed IPv6 attempts, stop their client first. Its exit
+        # releases the lease and removes its address and its DNS servers.
+        # The IPv4 client no longer removes them, because they carry no tag.
+        stopUdhcpc6
+        # Turn IPv6 off again on each interface an IPv6 attempt turned on.
+        # Otherwise the interface keeps its SLAAC address and route. A name
+        # with an AAAA record can then resolve to an address this boot does
+        # not use. An ordinary IPv4 boot turned nothing on, so nothing changes.
+        local conf
+        for conf in "$ipv6Conf"/*/disable_ipv6; do
+            case $conf in
+                */all/*|*/default/*|*/lo/*) continue ;;
+            esac
+            [[ -e $conf && $(cat "$conf") == 0 ]] && echo 1 > "$conf"
+        done
         /sbin/udhcpc -i $iface --now
         return $?
     fi

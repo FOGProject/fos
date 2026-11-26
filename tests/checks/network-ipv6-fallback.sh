@@ -173,6 +173,58 @@ for a in 4 5 6; do
     note "ipv6boot=1, no IPv6 address, attempt $a: IPv4 fallback runs" "$why"
 done
 
+# 3b. An IPv4 attempt stops the IPv6 client before IPv4 DHCP. The client's exit
+# removes its DNS servers. They carry no interface tag, so the IPv4 client
+# cannot remove them (udhcpc6-resolv.sh).
+out="$(run_case 1 4 "")"
+why=""
+first=$(sed -n '2p' <<<"$out")
+[[ $first != "killall udhcpc6" ]] && why="the first call was not a stop of udhcpc6: $out"
+note "IPv4 attempt after IPv6 stops the IPv6 client first" "$why"
+
+# 3c. The IPv4 attempt turns IPv6 off again on each interface an IPv6 attempt
+# turned on. Otherwise the interface keeps its address. A name with an AAAA
+# record can then resolve to it. lo, all and default keep their values.
+out="$(
+    rm -rf "$SANDBOX/calls" "$SANDBOX/conf"
+    for d in all default lo eth0 eth1; do mkdir -p "$SANDBOX/conf/$d"; done
+    echo 1 > "$SANDBOX/conf/all/disable_ipv6"
+    echo 1 > "$SANDBOX/conf/default/disable_ipv6"
+    echo 0 > "$SANDBOX/conf/lo/disable_ipv6"
+    echo 0 > "$SANDBOX/conf/eth0/disable_ipv6"
+    echo 0 > "$SANDBOX/conf/eth1/disable_ipv6"
+    ipv6boot=1
+    . "$SANDBOX/funcs.sh"
+    sleep() { :; }
+    killall() { :; }
+    pidof() { return 1; }
+    getAddress eth1 4 >/dev/null 2>&1
+    for d in all default lo eth0 eth1; do printf '%s=%s ' $d "$(cat "$SANDBOX/conf/$d/disable_ipv6")"; done
+)"
+why=""
+[[ $out != "all=1 default=1 lo=0 eth0=1 eth1=1 " ]] && why="got: $out"
+note "IPv4 attempt after IPv6 turns IPv6 off again, lo stays on" "$why"
+
+# 3d. An ordinary IPv4 boot turned no IPv6 on, so its IPv4 attempt writes no switch.
+out="$(
+    rm -rf "$SANDBOX/calls" "$SANDBOX/conf"
+    for d in all lo eth0; do mkdir -p "$SANDBOX/conf/$d"; done
+    echo 1 > "$SANDBOX/conf/all/disable_ipv6"
+    echo 0 > "$SANDBOX/conf/lo/disable_ipv6"
+    echo 1 > "$SANDBOX/conf/eth0/disable_ipv6"
+    touch -d '2000-01-01' "$SANDBOX"/conf/*/disable_ipv6
+    ipv6boot=
+    . "$SANDBOX/funcs.sh"
+    sleep() { :; }
+    killall() { :; }
+    pidof() { return 1; }
+    getAddress eth0 1 >/dev/null 2>&1
+    find "$SANDBOX/conf" -name disable_ipv6 -newermt '2001-01-01'
+)"
+why=""
+[[ -n $out ]] && why="an ordinary IPv4 attempt wrote: $out"
+note "ordinary IPv4 attempt writes no IPv6 switch" "$why"
+
 # 4. A DHCPv6-only network: the stateful request gives the address.
 out="$(run_case 1 1 "lease rc6ok")"
 why=""
