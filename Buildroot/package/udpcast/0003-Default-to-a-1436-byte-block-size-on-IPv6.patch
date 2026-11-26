@@ -1,0 +1,58 @@
+From 486678b429c16fe269ed59108bff464509fb3f6c Mon Sep 17 00:00:00 2001
+From: Tom Elliott <mastacontrola@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 12:40:53 -0600
+Subject: [PATCH 3/4] Default to a 1436 byte block size on IPv6
+
+The default 1456 fills a 1500 byte packet with the 20 byte IPv4
+header. The IPv6 header is 40 bytes, so every data packet would be
+fragmented. An explicit --blocksize is still honored.
+
+Upstream: not yet submitted
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JAdRb6RNDituib56k4zavB
+---
+ udp-sender.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/udp-sender.c b/udp-sender.c
+index 40d5190..cad952d 100644
+--- a/udp-sender.c
++++ b/udp-sender.c
+@@ -257,6 +257,7 @@ int main(int argc, char **argv)
+     char *ifName = NULL;
+ 
+     int dataMcastSupplied = 0;
++    int blockSizeSupplied = 0;
+     int mainSock;
+ 
+     /* argument parsing */
+@@ -354,6 +355,7 @@ int main(int argc, char **argv)
+ 		case 'b':
+ 		    net_config.blockSize = strtoui(optarg,0,0);
+ 		    net_config.blockSize -= net_config.blockSize % 4;
++		    blockSizeSupplied = 1;
+ 		    if (net_config.blockSize <= 0) {
+ 			perror("block size too small");
+ 			exit(1);
+@@ -658,6 +660,17 @@ int main(int argc, char **argv)
+ 	exit(1);
+     }
+ 
++    /* The default 1456 fills a 1500 byte packet with the 20 byte IPv4
++     * header. The IPv6 header is 40 bytes, so take 20 off the default,
++     * or every data packet would be fragmented. The receivers learn the
++     * block size from the sender. */
++#ifdef UDPC_IPV6
++    if(net_config.net_if->family == AF_INET6 && !blockSizeSupplied)
++	net_config.blockSize = 1436;
++#else
++    (void) blockSizeSupplied;
++#endif
++
+ #ifdef HAVE_DAEMON
+     if(daemon_mode == 2) {
+ 	net_config.flags |= FLAG_NOKBD;
+-- 
+2.56.1
+

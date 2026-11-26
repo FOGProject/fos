@@ -200,6 +200,7 @@ tests/checks/nfs-mount-type.sh       # FOS's NFS mounts name -t nfs instead of r
 tests/checks/nfs-mount-ipv6.sh       # no NFS mount sets proto=; busybox does not prefer IPv4, so a mount by an A+AAAA name works over IPv6 (fogproject#2152)
 tests/checks/network-ipv6-fallback.sh  # S40network: boot family first, then the other, then error; IPv6 off until an IPv6 attempt; an IPv4 attempt stops udhcpc6 first (fogproject#2152)
 tests/checks/udhcpc6-resolv.sh       # default6.script: untagged nameserver/search lines; removes only its own lines; IPv4-tagged lines survive (fogproject#2152)
+tests/checks/udpcast-ipv6.sh         # udpcast IPv6 patches + UDPCAST_AUTORECONF; built udp-receiver has the IPv6 text (UDP_RECEIVER=); writeImage() strips [] from the rendezvous address
 tests/checks/mdraid-gate.sh          # md arrays auto-assemble only with mdraid=true (forums 18202)
 tests/checks/multicast-receiver.sh    # udp-receiver gets --start-timeout from mcastMaxWait; an empty stream says no sender answered (fos#48)
 

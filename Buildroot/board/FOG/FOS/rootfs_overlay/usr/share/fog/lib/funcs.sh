@@ -1025,6 +1025,8 @@ writeImage()  {
             [[ -z $file ]] && handleError "No source file passed (${FUNCNAME[0]})\n   Args Passed: $*"
             local rdvaddress="$storageip"
             [[ -n $mcastrdv ]] && rdvaddress="$mcastrdv"
+            # udpcast needs a bare address: strip the brackets of an IPv6 [addr].
+            [[ $rdvaddress == \[*\] ]] && rdvaddress="${rdvaddress:1:-1}"
             # Empty unless the server sent mcastMaxWait; see mcStartTimeout.
             local mcsto="$(mcStartTimeout)"
             mcStreamIdSupported
