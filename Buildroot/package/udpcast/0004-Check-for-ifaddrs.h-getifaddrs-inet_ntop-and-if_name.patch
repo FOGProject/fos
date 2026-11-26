@@ -1,0 +1,42 @@
+From 38701e69c3d448e6ab3c460ee8a01a6bb507bee8 Mon Sep 17 00:00:00 2001
+From: Tom Elliott <mastacontrola@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 12:40:53 -0600
+Subject: [PATCH 4/4] Check for ifaddrs.h, getifaddrs, inet_ntop and
+ if_nametoindex
+
+The IPv6 code needs all four. Run autoreconf after this patch, so that
+configure tests for them.
+
+Upstream: not yet submitted
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JAdRb6RNDituib56k4zavB
+---
+ configure.ac | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/configure.ac b/configure.ac
+index b25bd72..a9989e6 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -40,6 +40,8 @@ AC_CHECK_HEADERS(net/if.h netinet/in.h, [], [],
+ #endif
+ ])
+ AC_CHECK_HEADERS(termios.h sys/termios.h, [break])
++dnl getifaddrs() lists IPv6 addresses; SIOCGIFCONF lists only IPv4 ones
++AC_CHECK_HEADERS(ifaddrs.h)
+ 
+ dnl Check for structures
+ AC_CHECK_MEMBERS([struct ip_mreqn.imr_ifindex],[],[],[#ifdef HAVE_NETINET_IN_H
+@@ -89,6 +91,8 @@ AC_STRUCT_TM
+ 
+ dnl Checks for library functions.
+ AC_CHECK_FUNCS(atexit tcsetattr lseek64 snprintf inet_pton inet_aton getopt_long dlsym strtoull strndup)
++dnl IPv6 needs these too; without them the build is IPv4-only
++AC_CHECK_FUNCS(inet_ntop getifaddrs if_nametoindex)
+ 
+ [
+ host_os0=`echo $host_os | sed 's/-/_/g'`
+-- 
+2.56.1
+

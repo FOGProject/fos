@@ -1,0 +1,1579 @@
+From 7a18f6877e8aed57efb34026248dde72d69a5b45 Mon Sep 17 00:00:00 2001
+From: Tom Elliott <mastacontrola@users.noreply.github.com>
+Date: Thu, 26 Nov 2026 13:07:02 -0600
+Subject: [PATCH 2/4] Add IPv6 (dual-stack) to the socket layer and the
+ protocol
+
+udpcast was IPv4 only. Addresses are now sockaddr_storage, and the
+helpers switch on the address family. A session is IPv6 when the
+rendezvous address, the data address or the interface is IPv6. IPv4
+sessions put the same defined bytes on the wire as before.
+
+IPv6 uses IPV6_JOIN_GROUP, IPV6_MULTICAST_IF and IPV6_MULTICAST_HOPS
+(from --ttl). IPv6 has no broadcast, so the default rendezvous is
+ff02::1. The default data group is ff15::7564:0:<low 32 bits of the
+sender address>. Interfaces are found with getifaddrs(). Scoped text
+such as fe80::1%eth0 is accepted. Without IPv6 support from the
+platform (UDPC_IPV6 unset), the build stays IPv4 only.
+
+Upstream: not yet submitted
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JAdRb6RNDituib56k4zavB
+---
+ participants.c   |  14 +-
+ participants.h   |   6 +-
+ receivedata.c    |   6 +-
+ senddata.c       |  10 +-
+ socklib.c        | 711 ++++++++++++++++++++++++++++++++++++++---------
+ socklib.h        |  91 ++++--
+ udp-receiver.h   |   2 +-
+ udpcast.h        |   4 +-
+ udpr-negotiate.c |  24 +-
+ udps-negotiate.c |  40 ++-
+ 10 files changed, 720 insertions(+), 188 deletions(-)
+
+diff --git a/participants.c b/participants.c
+index d03613b..6e0238d 100644
+--- a/participants.c
++++ b/participants.c
+@@ -12,7 +12,7 @@ struct  participantsDb {
+     uint32_t nrParticipants;
+     
+     struct clientDesc {
+-	struct sockaddr_in addr;
++	struct sockaddr_storage addr;
+ 	int used;
+ 	uint32_t capabilities;
+ 	unsigned int rcvbuf;
+@@ -20,7 +20,7 @@ struct  participantsDb {
+ };
+ 
+ uint32_t addParticipant(participantsDb_t,
+-			struct sockaddr_in *addr, 
++			struct sockaddr_storage *addr, 
+ 			uint32_t capabilities, 
+ 			unsigned int rcvbuf,
+ 			int pointopoint);
+@@ -31,7 +31,7 @@ int isParticipantValid(struct participantsDb *db, uint32_t i) {
+ 
+ int removeParticipant(struct participantsDb *db, uint32_t i) {
+     if(isParticipantValid(db,i)) {
+-	char ipBuffer[16];	
++	char ipBuffer[INET6_ADDRSTRLEN];	
+ 	flprintf("Disconnecting #%d (%s)\n", i, 
+ 		 getIpString(&db->clientTable[i].addr, ipBuffer));
+ #ifdef USE_SYSLOG
+@@ -45,7 +45,7 @@ int removeParticipant(struct participantsDb *db, uint32_t i) {
+ }
+ 
+ uint32_t lookupParticipant(struct participantsDb *db,
+-			   struct sockaddr_in *addr) {
++			   struct sockaddr_storage *addr) {
+     unsigned int i;
+     for (i=0; i < MAX_CLIENTS; i++) {
+ 	if (db->clientTable[i].used && 
+@@ -61,7 +61,7 @@ uint32_t nrParticipants(participantsDb_t db) {
+ }
+ 
+ uint32_t addParticipant(participantsDb_t db,
+-			struct sockaddr_in *addr, 
++			struct sockaddr_storage *addr, 
+ 			uint32_t capabilities,
+ 			unsigned int rcvbuf,
+ 			int pointopoint) {
+@@ -72,7 +72,7 @@ uint32_t addParticipant(participantsDb_t db,
+ 
+     for (i=0; i < MAX_CLIENTS; i++) {
+ 	if (!db->clientTable[i].used) {
+-	    char ipBuffer[16];
++	    char ipBuffer[INET6_ADDRSTRLEN];
+ 	    db->clientTable[i].addr = *addr;
+ 	    db->clientTable[i].used = 1;
+ 	    db->clientTable[i].capabilities = capabilities;
+@@ -108,7 +108,7 @@ unsigned int getParticipantRcvBuf(participantsDb_t db, uint32_t i)
+     return db->clientTable[i].rcvbuf;
+ }
+ 
+-struct sockaddr_in *getParticipantIp(participantsDb_t db,
++struct sockaddr_storage *getParticipantIp(participantsDb_t db,
+ 				     uint32_t i)
+ {
+     return &db->clientTable[i].addr;
+diff --git a/participants.h b/participants.h
+index ce107a7..2a94eae 100644
+--- a/participants.h
++++ b/participants.h
+@@ -23,17 +23,17 @@ typedef struct participantsDb *participantsDb_t;
+ 
+ int udpc_isParticipantValid(participantsDb_t, uint32_t slot);
+ int udpc_removeParticipant(participantsDb_t, uint32_t slot);
+-uint32_t udpc_lookupParticipant(participantsDb_t, struct sockaddr_in *addr);
++uint32_t udpc_lookupParticipant(participantsDb_t, struct sockaddr_storage *addr);
+ uint32_t udpc_nrParticipants(participantsDb_t);
+ uint32_t udpc_addParticipant(participantsDb_t,
+-			     struct sockaddr_in *addr, 
++			     struct sockaddr_storage *addr, 
+ 			     uint32_t capabilities, 
+ 			     unsigned int rcvbuf,
+ 			int pointopoint);
+ participantsDb_t udpc_makeParticipantsDb(void);
+ uint32_t udpc_getParticipantCapabilities(participantsDb_t db, uint32_t i);
+ unsigned int udpc_getParticipantRcvBuf(participantsDb_t db, uint32_t i);
+-struct sockaddr_in *udpc_getParticipantIp(participantsDb_t db, uint32_t i);
++struct sockaddr_storage *udpc_getParticipantIp(participantsDb_t db, uint32_t i);
+ void udpc_printNotSet(participantsDb_t db, char *d);
+ void udpc_printSet(participantsDb_t db, char *d);
+ 
+diff --git a/receivedata.c b/receivedata.c
+index a5ed7e8..7c01910 100644
+--- a/receivedata.c
++++ b/receivedata.c
+@@ -945,7 +945,7 @@ static void closeAllExcept(struct clientState *clst, int fd) {
+ static ssize_t dispatchMessage(struct clientState *clst)
+ {
+     ssize_t ret;
+-    struct sockaddr_in lserver;
++    struct sockaddr_storage lserver;
+     struct fifo *fifo = clst->fifo;
+     int fd = -1;
+     struct client_config *client_config = clst->client_config;
+@@ -965,7 +965,7 @@ static ssize_t dispatchMessage(struct clientState *clst)
+     clst->data_hdr.msg_iovlen = 2;
+ 
+     clst->data_hdr.msg_name = &lserver;
+-    clst->data_hdr.msg_namelen = sizeof(struct sockaddr_in);
++    clst->data_hdr.msg_namelen = sizeof(lserver);
+ 
+     while(clst->endReached || clst->netEndReached) {
+ 	int oldEndReached = clst->endReached;
+@@ -1091,7 +1091,7 @@ static ssize_t dispatchMessage(struct clientState *clst)
+ 
+     if(!udpc_isAddressEqual(&lserver, 
+ 			    &clst->client_config->serverAddr)) {
+-	char buffer1[16], buffer2[16];
++	char buffer1[INET6_ADDRSTRLEN], buffer2[INET6_ADDRSTRLEN];
+ 	udpc_flprintf("Rogue packet received %s:%d, expecting %s:%d\n",
+ 		      udpc_getIpString(&lserver, buffer1), getPort(&lserver),
+ 		      udpc_getIpString(&clst->client_config->serverAddr, buffer2),
+diff --git a/senddata.c b/senddata.c
+index 13ac73f..a6fbadf 100644
+--- a/senddata.c
++++ b/senddata.c
+@@ -207,13 +207,13 @@ static int sendRawData(int sock,
+     iov[1].iov_len = dataSize;
+ 
+     hdr.msg_name = &config->dataMcastAddr;
+-    hdr.msg_namelen = sizeof(struct sockaddr_in);
++    hdr.msg_namelen = getSockLen(&config->dataMcastAddr);
+     hdr.msg_iov = iov;
+     hdr.msg_iovlen  = 2;
+     initMsgHdr(&hdr);
+ 
+     packetSize = dataSize + headerSize;
+-    rgWaitAll(config, sock, config->dataMcastAddr.sin_addr.s_addr, packetSize);
++    rgWaitAll(config, sock, getIpv4Addr(&config->dataMcastAddr), packetSize);
+ 
+ #ifdef DEBUG_DROP
+     if(random() % 1000 < DEBUG_DROP) {
+@@ -224,7 +224,7 @@ static int sendRawData(int sock,
+ 
+     ret = sendmsg(sock, &hdr, 0);
+     if (ret < 0) {
+-	char ipBuffer[16];
++	char ipBuffer[INET6_ADDRSTRLEN];
+ 	udpc_fatal(1, "Could not broadcast data packet to %s:%d (%s)\n",
+ 		   getIpString(&config->dataMcastAddr, ipBuffer),
+ 		   getPort(&config->dataMcastAddr),
+@@ -497,7 +497,7 @@ static int sendReqack(struct slice *slice, struct net_config *net_config,
+     slice->sl_reqack.ra.rxmit = htonl(slice->rxmitId);
+     
+     rgWaitAll(net_config, sock,
+-	      net_config->dataMcastAddr.sin_addr.s_addr,
++	      getIpv4Addr(&net_config->dataMcastAddr),
+ 	      sizeof(slice->sl_reqack));
+ #if DEBUG
+     flprintf("sending reqack for slice %d\n", slice->sliceNo);
+@@ -692,7 +692,7 @@ static THREAD_RETURN returnChannelMain(void *args) {
+     struct returnChannel *returnChannel = (struct returnChannel *) args;
+ 
+     while(1) {
+-	struct sockaddr_in from;
++	struct sockaddr_storage from;
+ 	uint32_t clNo;
+ 	unsigned int pos = pc_getConsumerPosition(returnChannel->freeSpace);
+ 	pc_consumeAny(returnChannel->freeSpace);
+diff --git a/socklib.c b/socklib.c
+index b88af9d..34ebf5f 100644
+--- a/socklib.c
++++ b/socklib.c
+@@ -4,6 +4,8 @@
+ #include <unistd.h>
+ #include <string.h>
+ #include <stdlib.h>
++#include <ctype.h>
++#include <stdint.h>
+ #include <errno.h>
+ 
+ #include <fcntl.h>
+@@ -24,6 +26,11 @@
+ # include <sys/ioctl.h>
+ #endif
+ 
++#ifdef HAVE_IFADDRS_H
++/* For getifaddrs(): SIOCGIFCONF lists only IPv4 addresses */
++# include <ifaddrs.h>
++#endif
++
+ #ifdef __MINGW32__
+ 
+ #include <ws2tcpip.h>
+@@ -188,6 +195,64 @@ int makeSockAddr(char *hostname, in_port_t port, struct sockaddr_in *addr)
+     return 0;
+ }
+ 
++#define getSockaddrIn(addr) ((struct sockaddr_in *)(void*)(addr))
++#define getSinAddr(addr) (getSockaddrIn(addr)->sin_addr)
++#define getSockaddrIn6(addr) ((struct sockaddr_in6 *)(void*)(addr))
++
++socklen_t getSockLen(struct sockaddr_storage *addr) {
++#ifdef UDPC_IPV6
++    if(addr->ss_family == AF_INET6)
++	return sizeof(struct sockaddr_in6);
++#endif
++    return sizeof(struct sockaddr_in);
++}
++
++#ifdef UDPC_IPV6
++/* Link-local unicast and link-scope multicast addresses only mean
++ * something together with an interface. bind() refuses them without
++ * one. */
++static int needsScope(struct in6_addr *addr) {
++    return IN6_IS_ADDR_LINKLOCAL(addr) || IN6_IS_ADDR_MC_LINKLOCAL(addr) ||
++	IN6_IS_ADDR_MC_NODELOCAL(addr);
++}
++
++/* Parses an IPv6 address with an optional "%scope", as in fe80::1%eth0.
++ * The scope is an interface name or index; it is 0 when not given.
++ * Returns 1 if the text is valid. */
++static int parseIp6(const char *text, struct in6_addr *addr,
++		    uint32_t *scope) {
++    char buffer[INET6_ADDRSTRLEN];
++    const char *percent = strchr(text, '%');
++    size_t len = percent ? (size_t) (percent - text) : strlen(text);
++
++    *scope = 0;
++    if(len >= sizeof(buffer))
++	return 0;
++    memcpy(buffer, text, len);
++    buffer[len] = '\0';
++    if(inet_pton(AF_INET6, buffer, addr) != 1)
++	return 0;
++    if(percent != NULL) {
++	char *end;
++	unsigned long index;
++	/* A numeric scope is digits only and fits an interface index.
++	 * strtoul alone would take a sign or spaces, and wrap. ERANGE
++	 * catches an overflow where unsigned long is 32 bits. */
++	errno = 0;
++	index = strtoul(percent + 1, &end, 10);
++	if(isdigit((unsigned char) percent[1]) && *end == '\0') {
++	    if(errno == ERANGE || index == 0 || index > UINT32_MAX)
++		return 0;
++	    *scope = (uint32_t) index;
++	} else
++	    *scope = if_nametoindex(percent + 1);
++	if(*scope == 0)
++	    return 0;
++    }
++    return 1;
++}
++#endif /* UDPC_IPV6 */
++
+ #ifdef HAVE_PTON
+ # define INET_ATON(a,i) inet_pton(AF_INET,a,i)
+ #else
+@@ -209,18 +274,66 @@ static inline int INET_ATON(const char *a, struct in_addr *i) {
+ #endif
+ 
+ 
++/* mcast is the multicast address for ADDR_TYPE_MCAST, else unused.
++ * A multicast address brings its own family; the other types take the
++ * family of the interface, which is the family of the session. */
+ static int initSockAddress(addr_type_t addr_type,
+ 			   net_if_t *net_if,
+-			   in_addr_t ip,
++			   struct sockaddr_storage *mcast,
+ 			   unsigned short port,
+-			   struct sockaddr_in *addr) {
+-    memset ((char *) addr, 0, sizeof(struct sockaddr_in));
+-    addr->sin_family = AF_INET;
+-    addr->sin_port = htons(port);
++			   struct sockaddr_storage *sa) {
++    struct sockaddr_in *addr = getSockaddrIn(sa);
++    int family;
+ 
+     if(!net_if && addr_type != ADDR_TYPE_MCAST)
+ 	udpc_fatal(1, "initSockAddr without ifname\n");
+ 
++    if(addr_type == ADDR_TYPE_MCAST)
++	family = mcast ? mcast->ss_family : AF_INET;
++    else
++	family = net_if->family;
++
++    memset ((char *) sa, 0, sizeof(*sa));
++
++#ifdef UDPC_IPV6
++    if(family == AF_INET6) {
++	struct sockaddr_in6 *addr6 = getSockaddrIn6(sa);
++	addr6->sin6_family = AF_INET6;
++	addr6->sin6_port = htons(port);
++	switch(addr_type) {
++	case ADDR_TYPE_UCAST:
++	    addr6->sin6_addr = net_if->addr6;
++	    break;
++	case ADDR_TYPE_BCAST:
++	    /* IPv6 has no broadcast. A zero address already means
++	     * "no broadcast on this interface" to the callers. */
++	    break;
++	case ADDR_TYPE_MCAST:
++	    if(mcast) {
++		addr6->sin6_addr = getSockaddrIn6(mcast)->sin6_addr;
++		/* A scope given in the text (ff02::1%eth0) is kept. The
++		 * group join and the send use the interface, so the two
++		 * must name the same one. */
++		addr6->sin6_scope_id = getSockaddrIn6(mcast)->sin6_scope_id;
++		if(addr6->sin6_scope_id != 0 && net_if &&
++		   net_if->ifindex6 != 0 &&
++		   addr6->sin6_scope_id != net_if->ifindex6)
++		    udpc_fatal(1, "Address scope and interface differ\n");
++	    }
++	    break;
++	}
++	if(addr6->sin6_scope_id == 0 && net_if &&
++	   needsScope(&addr6->sin6_addr))
++	    addr6->sin6_scope_id = net_if->ifindex6;
++	return 0;
++    }
++#else
++    (void) family;
++#endif
++
++    addr->sin_family = AF_INET;
++    addr->sin_port = htons(port);
++
+     switch(addr_type) {
+     case ADDR_TYPE_UCAST:
+ 	addr->sin_addr = net_if->addr;
+@@ -229,33 +342,34 @@ static int initSockAddress(addr_type_t addr_type,
+ 	addr->sin_addr = net_if->bcast;
+ 	break;
+     case ADDR_TYPE_MCAST:
+-	addr->sin_addr.s_addr = ip;
++	addr->sin_addr.s_addr = mcast ? getSinAddr(mcast).s_addr : 0;
+ 	break;
+     }
+     return 0;
+ }
+ 
+-int getMyAddress(net_if_t *net_if, struct sockaddr_in *addr) {
+-    return initSockAddress(ADDR_TYPE_UCAST, net_if, INADDR_ANY, 0, addr);
++int getMyAddress(net_if_t *net_if, struct sockaddr_storage *addr) {
++    return initSockAddress(ADDR_TYPE_UCAST, net_if, NULL, 0, addr);
+ }
+ 
+ 
+-int getBroadCastAddress(net_if_t *net_if, struct sockaddr_in *addr,
++int getBroadCastAddress(net_if_t *net_if, struct sockaddr_storage *addr,
+ 			in_port_t port){
+-    int r= initSockAddress(ADDR_TYPE_BCAST, net_if, INADDR_ANY, port, addr);
+-    if(addr->sin_addr.s_addr == 0) {
++    int r= initSockAddress(ADDR_TYPE_BCAST, net_if, NULL, port, addr);
++    if(addr->ss_family == AF_INET && getSinAddr(addr).s_addr == 0) {
+       /* Quick hack to make it work for loopback */
+-      struct sockaddr_in ucast;
+-      initSockAddress(ADDR_TYPE_UCAST, net_if, INADDR_ANY, port, &ucast);
++      struct sockaddr_storage ucast;
++      initSockAddress(ADDR_TYPE_UCAST, net_if, NULL, port, &ucast);
+ 
+-      if((ntohl(ucast.sin_addr.s_addr) & 0xff000000) == 0x7f000000)
+-	addr->sin_addr.s_addr = ucast.sin_addr.s_addr;
++      if((ntohl(getSinAddr(&ucast).s_addr) & 0xff000000) == 0x7f000000)
++	getSinAddr(addr).s_addr = getSinAddr(&ucast).s_addr;
+     }
+     return r;
+ }
+ 
+-static int mcastListen(int sock, net_if_t *net_if, struct sockaddr_in *addr,
+-		       struct in_addr *src);
++static int mcastListen(int sock, net_if_t *net_if,
++		       struct sockaddr_storage *addr,
++		       struct sockaddr_storage *src);
+ 
+ static int safe_inet_aton(const char *address, struct in_addr *ip) {
+     if(!INET_ATON(address, ip))
+@@ -264,35 +378,41 @@ static int safe_inet_aton(const char *address, struct in_addr *ip) {
+ }
+ 
+ 
+-int getMcastAllAddress(struct sockaddr_in *addr, const char *address,
+-		       in_port_t port){
+-    struct in_addr ip;
+-    int ret;
++int getMcastAllAddress(net_if_t *net_if, struct sockaddr_storage *addr,
++		       const char *address, in_port_t port){
++    struct sockaddr_storage ip;
+ 
+-    if(address == NULL || address[0] == '\0')
+-	safe_inet_aton("224.0.0.1", &ip);
+-    else {
+-	if((ret=safe_inet_aton(address, &ip))<0)
+-	   return ret;
+-    }
+-    return initSockAddress(ADDR_TYPE_MCAST, NULL, ip.s_addr, port, addr);
++    clearIp(&ip);
++    if(address == NULL || address[0] == '\0') {
++#ifdef UDPC_IPV6
++	/* IPv6 has no 224.0.0.1. Its all-nodes group ff02::1 has the
++	 * same link scope and the same members. Snooping switches flood
++	 * both. */
++	if(net_if && net_if->family == AF_INET6)
++	    setIpFromString(&ip, "ff02::1");
++	else
++#endif
++	    setIpFromString(&ip, "224.0.0.1");
++    } else
++	setIpFromString(&ip, address);
++    return initSockAddress(ADDR_TYPE_MCAST, net_if, &ip, port, addr);
+ }
+ 
+ 
+-ssize_t doSend(int s, void *message, size_t len, struct sockaddr_in *to) {
++ssize_t doSend(int s, void *message, size_t len, struct sockaddr_storage *to) {
+ /*    flprintf("sent: %08x %d\n", *(int*) message, len);*/
+ #ifdef LOSSTEST
+     loseSendPacket();
+ #endif
+-    return sendto(s, message, len, 0, (struct sockaddr*) to, sizeof(*to));
++    return sendto(s, message, len, 0, (struct sockaddr*) to, getSockLen(to));
+ }
+ 
+ ssize_t doReceive(int s, void *message, size_t len,
+-		  struct sockaddr_in *from, in_port_t portBase) {
++		  struct sockaddr_storage *from, in_port_t portBase) {
+     socklen_t slen;
+     ssize_t r;
+     unsigned short port;
+-    char ipBuffer[16];
++    char ipBuffer[INET6_ADDRSTRLEN];
+ 
+     slen = sizeof(*from);
+ #ifdef LOSSTEST
+@@ -301,11 +421,11 @@ ssize_t doReceive(int s, void *message, size_t len,
+     r = recvfrom(s, message, len, 0, (struct sockaddr *)from, &slen);
+     if (r < 0)
+ 	return r;
+-    port = ntohs(from->sin_port);
++    port = getPort(from);
+     if(port != RECEIVER_PORT(portBase) && port != SENDER_PORT(portBase)) {
+ 	udpc_flprintf("Bad message from port %s.%d\n",
+ 		      getIpString(from, ipBuffer),
+-		      ntohs(((struct sockaddr_in *)from)->sin_port));
++		      port);
+ 	return -1;
+     }
+ /*    flprintf("recv: %08x %d\n", *(int*) message, r);*/
+@@ -348,6 +468,15 @@ int setSocketToBroadcast(int sock) {
+ }
+ 
+ int setTtl(int sock, int ttl) {
++#ifdef UDPC_IPV6
++    struct sockaddr_storage me;
++    socklen_t len = sizeof(me);
++    /* IPv6 calls the TTL the hop limit. It is set on the IPv6 level. */
++    if(getsockname(sock, (struct sockaddr *) &me, &len) == 0 &&
++       me.ss_family == AF_INET6)
++	return setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS,
++			  (char*)&ttl, sizeof(int));
++#endif
+     /* set the socket to broadcast */
+     return setsockopt(sock, SOL_IP, IP_MULTICAST_TTL, (char*)&ttl, sizeof(int));
+ }
+@@ -358,9 +487,6 @@ int setTtl(int sock, int ttl) {
+ # define IP_MREQN ip_mreq
+ #endif
+ 
+-#define getSockaddrIn(addr) ((struct sockaddr_in *)(void*)(addr))
+-#define getSinAddr(addr) (getSockaddrIn(addr)->sin_addr)
+-
+ 
+ /**
+  * Fill in the mreq structure with the given interface and address
+@@ -408,16 +534,33 @@ struct in_addr getSinAddr(struct sockaddr_in *addr) {
+  * get traffic sent to another multicast address with same port.
+  * For SSM networks (232.0.0.0/8), pass source of server as well, if available.
+  */
+-static int mcastListen(int sock, net_if_t *net_if, struct sockaddr_in *addr,
+-		       struct in_addr *src) {
++static int mcastListen(int sock, net_if_t *net_if,
++		       struct sockaddr_storage *addr,
++		       struct sockaddr_storage *src) {
++#ifdef UDPC_IPV6
++    if(addr->ss_family == AF_INET6) {
++	/* IPv6 joins every group any-source. Source-specific joins
++	 * (ff3x::) are not ported; an any-source join still receives
++	 * the data. */
++	struct ipv6_mreq mreq6;
++	mreq6.ipv6mr_multiaddr = getSockaddrIn6(addr)->sin6_addr;
++	mreq6.ipv6mr_interface = net_if->ifindex6;
++	if(setsockopt(sock, IPPROTO_IPV6, IPV6_JOIN_GROUP,
++		      (char*)&mreq6, sizeof(mreq6)) < 0) {
++	    perror("Subscribe to multicast group");
++	    exit(1);
++	}
++	return 0;
++    }
++#endif
+ #ifdef IP_ADD_SOURCE_MEMBERSHIP
+-    if((addr->sin_addr.s_addr & htonl(0xff000000)) == htonl(0xe8000000) &&
++    if((getSinAddr(addr).s_addr & htonl(0xff000000)) == htonl(0xe8000000) &&
+        src != NULL) {
+ 	int r;
+ 	struct ip_mreq_source ms;
+-	ms.imr_multiaddr = addr->sin_addr;
++	ms.imr_multiaddr = getSinAddr(addr);
+ 	ms.imr_interface = net_if->addr;
+-	ms.imr_sourceaddr = *src;
++	ms.imr_sourceaddr = getSinAddr(src);
+ 	r=setsockopt(sock, SOL_IP, IP_ADD_SOURCE_MEMBERSHIP,
+ 			  (char*)&ms, sizeof(ms));
+ 	if(r < 0) {
+@@ -432,11 +575,24 @@ static int mcastListen(int sock, net_if_t *net_if, struct sockaddr_in *addr,
+ }
+ 
+ 
+-int setMcastDestination(int sock, net_if_t *net_if, struct sockaddr_in *addr) {
++int setMcastDestination(int sock, net_if_t *net_if,
++			struct sockaddr_storage *addr) {
++#ifdef UDPC_IPV6
++    if(addr->ss_family == AF_INET6) {
++	/* IPv6 names the outgoing interface by its index */
++	unsigned int ifindex = net_if->ifindex6;
++	if(setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_IF,
++		      (char*)&ifindex, sizeof(ifindex)) < 0) {
++	    perror("Set multicast send interface");
++	    exit(1);
++	}
++	return 0;
++    }
++#endif
+ #ifdef WINDOWS
+     /* IP_MULTICAST_IF not correctly supported on Cygwin */
+     int r;
+-    struct sockaddr_in interface_addr;
++    struct sockaddr_storage interface_addr;
+     struct in_addr if_addr;
+     getMyAddress(net_if, &interface_addr);
+     if_addr = getSinAddr(&interface_addr);
+@@ -557,6 +713,157 @@ int isFullDuplex(int s, const char *ifname) {
+ }
+ 
+ 
++#ifndef __MINGW32__
++/**
++ * Base score of one interface address for getNetIf(), before the link
++ * and broadcast bonuses. The IPv4 and the IPv6 scan share it, so both
++ * rank interfaces the same way. Returns -1 if the interface does not
++ * match "wanted".
++ */
++static int ifGoodness(const char *wanted, size_t wantedLen,
++		      const char *name, int isWantedAddress,
++		      int isZero, int isLoopback) {
++    if(wanted) {
++	if(isWantedAddress) {
++	    return 8;
++	} else if(strcmp(wanted, name) ==0) {
++	    /* perfect match on interface name */
++	    return 12;
++	} else if(strncmp(wanted, name, wantedLen) ==0) {
++	    /* prefix match on interface name */
++	    return 7;
++	} else {
++	    /* no match, try next */
++	    return -1;
++	}
++    } else {
++	if(isZero) {
++	    /* disregard interfaces whose address is zero */
++	    return 1;
++	} else if(isLoopback) {
++	    /* disregard localhost type devices */
++	    return 2;
++	} else if(strcmp("eth0", name) == 0 ||
++		  strcmp("en0",  name) == 0) {
++	    /* prefer first ethernet interface */
++	    return 6;
++	} else if(strncmp("eth0:", name, 5) == 0) {
++	    /* second choice: any secondary addresses of first ethernet */
++	    return 5;
++	} else if(strncmp("eth", name, 3) == 0 ||
++		  strncmp("en",  name, 2) == 0) {
++	    /* and, if not available, any other ethernet device */
++	    return 4;
++	} else {
++	    return 3;
++	}
++    }
++}
++#endif /* __MINGW32__ */
++
++#ifdef UDPC_IPV6
++/**
++ * IPv6 counterpart of the SIOCGIFCONF scan in getNetIf(). SIOCGIFCONF
++ * returns only IPv4 addresses, so this uses getifaddrs(). It scores
++ * addresses with the same ifGoodness(). IPv6 has no broadcast, so the
++ * bonus that IPv4 gives a broadcast-capable interface goes to an
++ * address that is not link-local instead: that is the address the
++ * peers can route to.
++ * If nothing matches, it returns NULL, or exits when mustFind is set.
++ */
++static net_if_t *getNetIf6(const char *wanted, int mustFind) {
++    struct ifaddrs *ifap, *ifa, *chosen=NULL;
++    struct in6_addr wantedAddress;
++    uint32_t wantedScope;
++    int isAddress=0;
++    int lastGoodness=0;
++    size_t wantedLen = wanted ? strlen(wanted) : 0;
++    net_if_t *net_if;
++    int s;
++
++    if(wanted && parseIp6(wanted, &wantedAddress, &wantedScope))
++	isAddress=1;
++
++    if(getifaddrs(&ifap) < 0) {
++	perror("udpcast: getifaddrs: ");
++	exit(1);
++    }
++
++    s = socket(PF_INET6, SOCK_DGRAM, 0);
++    if (s < 0) {
++	perror("make socket");
++	exit(1);
++    }
++
++    for(ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
++	struct in6_addr *iaddr;
++	int goodness;
++
++	if(ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != AF_INET6)
++	    continue;
++	iaddr = &getSockaddrIn6(ifa->ifa_addr)->sin6_addr;
++
++	/* No "zero address" rung: getifaddrs() never lists :: */
++	goodness = ifGoodness(wanted, wantedLen, ifa->ifa_name,
++			      isAddress &&
++			      IN6_ARE_ADDR_EQUAL(iaddr, &wantedAddress) &&
++			      /* The same link-local can sit on two
++			       * interfaces; a scope picks one of them */
++			      (wantedScope == 0 ||
++			       if_nametoindex(ifa->ifa_name) == wantedScope),
++			      0, IN6_IS_ADDR_LOOPBACK(iaddr));
++	if(goodness < 0)
++	    continue;
++
++	if(hasLink(s, ifa->ifa_name))
++	    goodness += 3;
++
++	goodness = goodness * 2;
++	if(!IN6_IS_ADDR_LINKLOCAL(iaddr))
++	    goodness++;
++
++	if(goodness > lastGoodness) {
++	    chosen = ifa;
++	    lastGoodness = goodness;
++	}
++    }
++    close(s);
++
++    if(!chosen) {
++	if(mustFind) {
++	    fprintf(stderr, "No suitable IPv6 network interface found\n");
++	    fprintf(stderr, "The following interfaces are available:\n");
++	    for(ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
++		char buffer[INET6_ADDRSTRLEN];
++		if(ifa->ifa_addr == NULL ||
++		   ifa->ifa_addr->sa_family != AF_INET6)
++		    continue;
++		fprintf(stderr, "\t%s\t%s\n", ifa->ifa_name,
++			inet_ntop(AF_INET6,
++				  &getSockaddrIn6(ifa->ifa_addr)->sin6_addr,
++				  buffer, sizeof(buffer)));
++	    }
++	    exit(1);
++	}
++	freeifaddrs(ifap);
++	return NULL;
++    }
++
++    net_if = MALLOC(net_if_t);
++    if(net_if == NULL)
++	udpc_fatal(1, "Out of memory error");
++    net_if->family = AF_INET6;
++    net_if->name = strdup(chosen->ifa_name);
++    net_if->addr6 = getSockaddrIn6(chosen->ifa_addr)->sin6_addr;
++    net_if->ifindex6 = if_nametoindex(chosen->ifa_name);
++#ifdef SIOCGIFINDEX
++    net_if->index = (int) net_if->ifindex6;
++#endif
++    freeifaddrs(ifap);
++    return net_if;
++}
++#endif /* UDPC_IPV6 */
++
+ /**
+  * Canonize interface name. If attempt is not NULL, pick the interface
+  * which has that address.
+@@ -567,8 +874,13 @@ int isFullDuplex(int s, const char *ifname) {
+  * 4. Anything else
+  * 5. localhost
+  * 6. zero address
++ * family is the address family that the addresses given on the command
++ * line chose: AF_INET, AF_INET6, or AF_UNSPEC when none was given.
++ * AF_INET6 scans the IPv6 addresses only. AF_UNSPEC is decided by an
++ * IPv6 address given as the interface; otherwise IPv4 is scanned first,
++ * as before, and IPv6 only if no IPv4 address matches.
+  */
+-net_if_t *getNetIf(const char *wanted) {
++net_if_t *getNetIf(const char *wanted, int family) {
+ #ifndef __MINGW32__
+ 	struct ifreq *ifrp, *chosen;
+ 	uintptr_t ifend;
+@@ -601,6 +913,26 @@ net_if_t *getNetIf(const char *wanted) {
+ 	    wanted = getenv("IFNAME");
+ 	}
+ 
++#ifdef UDPC_IPV6
++	{
++	    /* An address given as the interface must have the family that
++	     * the other addresses chose. An IPv6 one alone makes the
++	     * session IPv6. Without any hint, IPv4 is tried first. */
++	    int wantedFamily = getAddrFamily(wanted);
++	    if(family != AF_UNSPEC && wantedFamily != AF_UNSPEC &&
++	       wantedFamily != family)
++		udpc_fatal(1, "interface, mcast-rdv-address and "
++			   "mcast-data-address are not the same address "
++			   "family\n");
++	    if(family == AF_UNSPEC && wantedFamily == AF_INET6)
++		family = AF_INET6;
++	    if(family == AF_INET6)
++		return getNetIf6(wanted, 1);
++	}
++#else
++	(void) family;
++#endif /* UDPC_IPV6 */
++
+ 	if(wanted && INET_ATON(wanted, &wantedAddress))
+ 	    isAddress=1;
+ 	else
+@@ -654,42 +986,11 @@ net_if_t *getNetIf(const char *wanted) {
+ 	    if(ifrp->ifr_addr.sa_family != PF_INET)
+ 		continue;
+ 
+-	    if(wanted) {
+-		if(isAddress && iaddr == wantedAddress.s_addr) {
+-		    goodness=8;
+-		} else if(strcmp(wanted, ifrp->ifr_name) ==0) {
+-		    /* perfect match on interface name */
+-		    goodness=12;
+-		} else if(wanted != NULL &&
+-			  strncmp(wanted, ifrp->ifr_name, wantedLen) ==0) {
+-		    /* prefix match on interface name */
+-		    goodness=7;
+-		} else {
+-		    /* no match, try next */
+-		    continue;
+-		}
+-	    } else {
+-		if(iaddr == 0) {
+-		    /* disregard interfaces whose address is zero */
+-		    goodness = 1;
+-		} else if(iaddr == htonl(0x7f000001)) {
+-		    /* disregard localhost type devices */
+-		    goodness = 2;
+-		} else if(strcmp("eth0", ifrp->ifr_name) == 0 ||
+-			  strcmp("en0",  ifrp->ifr_name) == 0) {
+-		    /* prefer first ethernet interface */
+-		    goodness = 6;
+-		} else if(strncmp("eth0:", ifrp->ifr_name, 5) == 0) {
+-		    /* second choice: any secondary addresses of first ethernet */
+-		    goodness = 5;
+-		} else if(strncmp("eth", ifrp->ifr_name, 3) == 0 ||
+-			  strncmp("en",  ifrp->ifr_name, 2) == 0) {
+-		    /* and, if not available, any other ethernet device */
+-		    goodness = 4;
+-		} else {
+-		    goodness = 3;
+-		}
+-	    }
++	    goodness = ifGoodness(wanted, wantedLen, ifrp->ifr_name,
++				  isAddress && iaddr == wantedAddress.s_addr,
++				  iaddr == 0, iaddr == htonl(0x7f000001));
++	    if(goodness < 0)
++		continue;
+ 
+ 	    if(hasLink(s, ifrp->ifr_name))
+ 	      /* Good or unknown link status privileged over known
+@@ -716,24 +1017,42 @@ net_if_t *getNetIf(const char *wanted) {
+ 	}
+ 
+ 
++#ifdef UDPC_IPV6
++	if(!chosen && family == AF_UNSPEC) {
++	    /* No IPv4 address matched. The interface may be IPv6-only.
++	     * This changes only a case that used to fail with "No
++	     * suitable network interface found"; a match on IPv4 still
++	     * wins as before. */
++	    net_if_t *net_if6 = getNetIf6(wanted, 0);
++	    if(net_if6 != NULL) {
++		close(s);
++		free(ifc.ifc_buf);
++		free(net_if);
++		return net_if6;
++	    }
++	}
++#endif
++
+ 	if(!chosen) {
+ 	    fprintf(stderr, "No suitable network interface found\n");
+ 	    fprintf(stderr, "The following interfaces are available:\n");
+ 
+ 	    for (ifrp = ifc.ifc_req ; (uintptr_t)ifrp < ifend; ifrp++) {
+-		char buffer[16];
++		char buffer[INET6_ADDRSTRLEN];
+ 
+ 		if(ifrp->ifr_addr.sa_family != PF_INET)
+ 		    continue;
+ 
+ 		fprintf(stderr, "\t%s\t%s\n",
+ 			ifrp->ifr_name,
+-			udpc_getIpString(getSockaddrIn(&ifrp->ifr_addr), buffer)
++			udpc_getIpString((struct sockaddr_storage *)
++					 (void *) &ifrp->ifr_addr, buffer)
+ 			);
+ 	    }
+ 	    exit(1);
+ 	}
+ 
++	net_if->family = AF_INET;
+ 	net_if->name = strdup(chosen->ifr_name);
+ 
+ #ifdef HAVE_STRUCT_IP_MREQN_IMR_IFINDEX
+@@ -857,12 +1176,13 @@ net_if_t *getNetIf(const char *wanted) {
+ 	    fprintf(stderr, "The following interfaces are available:\n");
+ 
+ 	    for(i=0; i<iptab->dwNumEntries; i++) {
+-		char buffer[16];
+-		struct sockaddr_in addr;
++		char buffer[INET6_ADDRSTRLEN];
++		struct sockaddr_storage addr;
+ 		MIB_IFROW *ifrow;
+ 		char *name=NULL;
+ 		iprow = &iptab->table[i];
+-		addr.sin_addr.s_addr = iprow->dwAddr;
++		addr.ss_family = AF_INET;
++		getSinAddr(&addr).s_addr = iprow->dwAddr;
+ 		ifrow = getIfRow(iftab, iprow->dwIndex);
+ 		name = fmtName(ifrow);
+ 		fprintf(stderr, " %15s  %s\n",
+@@ -874,6 +1194,7 @@ net_if_t *getNetIf(const char *wanted) {
+ 	    exit(1);
+ 	}
+ 
++	net_if->family = AF_INET;
+ 	net_if->bcast.s_addr = net_if->addr.s_addr = chosen->dwAddr;
+ 	if(chosen->dwBCastAddr)
+ 	    net_if->bcast.s_addr |= ~chosen->dwMask;
+@@ -903,12 +1224,11 @@ net_if_t *getNetIf(const char *wanted) {
+  */
+ int makeSocket(addr_type_t addr_type,
+ 	       net_if_t *net_if,
+-	       struct sockaddr_in *tmpl,
++	       struct sockaddr_storage *tmpl,
+ 	       in_port_t port,
+-	       struct in_addr *src) {
++	       struct sockaddr_storage *src) {
+     int ret, s;
+-    struct sockaddr_in myaddr;
+-    in_addr_t ip=0;
++    struct sockaddr_storage myaddr;
+ 
+ #ifdef WINDOWS
+     static int lastSocket=-1;
+@@ -921,28 +1241,32 @@ int makeSocket(addr_type_t addr_type,
+ 	return -1;
+ #endif
+ 
++    /* All sockets of a session have the family of its interface */
++#ifdef UDPC_IPV6
++    s = socket(net_if->family == AF_INET6 ? PF_INET6 : PF_INET,
++	       SOCK_DGRAM, 0);
++#else
+     s = socket(PF_INET, SOCK_DGRAM, 0);
++#endif
+     if (s < 0) {
+ 	perror("make socket");
+ 	exit(1);
+     }
+ 
+-    if(addr_type == ADDR_TYPE_MCAST && tmpl != NULL) {
+-	ip = tmpl->sin_addr.s_addr;
+-    }
+-
+-    ret = initSockAddress(addr_type, net_if, ip, port, &myaddr);
++    ret = initSockAddress(addr_type, net_if,
++			  addr_type == ADDR_TYPE_MCAST ? tmpl : NULL,
++			  port, &myaddr);
+     if(ret < 0)
+ 	udpc_fatal(1, "Could not get socket address fot %d/%s",
+ 		   addr_type, net_if->name);
+-    if(addr_type == ADDR_TYPE_BCAST && myaddr.sin_addr.s_addr == 0) {
++    if(addr_type == ADDR_TYPE_BCAST && ipIsZero(&myaddr)) {
+       /* Attempting to bind to broadcast address on not-broadcast media ... */
+       closesocket(s);
+       return -1;
+     }
+-    ret = bind(s, (struct sockaddr *) &myaddr, sizeof(myaddr));
++    ret = bind(s, (struct sockaddr *) &myaddr, getSockLen(&myaddr));
+     if (ret < 0) {
+-	char buffer[16];
++	char buffer[INET6_ADDRSTRLEN];
+ 	udpc_fatal(1, "bind socket to %s:%d (%s)\n",
+ 		   udpc_getIpString(&myaddr, buffer),
+ 		   udpc_getPort(&myaddr),
+@@ -959,15 +1283,24 @@ int makeSocket(addr_type_t addr_type,
+ 
+ void printMyIp(net_if_t *net_if)
+ {
+-    char buffer[16];
+-    struct sockaddr_in myaddr;
++    char buffer[INET6_ADDRSTRLEN];
++    struct sockaddr_storage myaddr;
+ 
+     getMyAddress(net_if, &myaddr);
+     udpc_flprintf("%s", udpc_getIpString(&myaddr,buffer));
+ }
+ 
+-char *udpc_getIpString(struct sockaddr_in *addr, char *buffer) {
+-    unsigned long iaddr = htonl(getSinAddr(addr).s_addr);
++char *udpc_getIpString(struct sockaddr_storage *addr, char *buffer) {
++    unsigned long iaddr;
++#ifdef UDPC_IPV6
++    if(addr->ss_family == AF_INET6) {
++	/* Plain address, no brackets and no %scope, so that it stays one
++	 * word in "New connection from %s" and "Disconnecting #%d (%s)" */
++	return (char *) inet_ntop(AF_INET6, &getSockaddrIn6(addr)->sin6_addr,
++				  buffer, INET6_ADDRSTRLEN);
++    }
++#endif
++    iaddr = htonl(getSinAddr(addr).s_addr);
+     sprintf(buffer,"%ld.%ld.%ld.%ld",
+ 	    (iaddr >> 24) & 0xff,
+ 	    (iaddr >> 16) & 0xff,
+@@ -976,60 +1309,183 @@ char *udpc_getIpString(struct sockaddr_in *addr, char *buffer) {
+     return buffer;
+ }
+ 
+-int ipIsEqual(struct sockaddr_in *left, struct sockaddr_in *right) {
++int ipIsEqual(struct sockaddr_storage *left, struct sockaddr_storage *right) {
++#ifdef UDPC_IPV6
++    if(left->ss_family == AF_INET6 || right->ss_family == AF_INET6)
++	return left->ss_family == right->ss_family &&
++	    IN6_ARE_ADDR_EQUAL(&getSockaddrIn6(left)->sin6_addr,
++			       &getSockaddrIn6(right)->sin6_addr);
++#endif
+     return getSinAddr(left).s_addr == getSinAddr(right).s_addr;
+ }
+ 
+-int ipIsZero(struct sockaddr_in *ip) {
++int ipIsZero(struct sockaddr_storage *ip) {
++#ifdef UDPC_IPV6
++    if(ip->ss_family == AF_INET6)
++	return IN6_IS_ADDR_UNSPECIFIED(&getSockaddrIn6(ip)->sin6_addr);
++#endif
+     return getSinAddr(ip).s_addr == 0;
+ }
+ 
+-unsigned short udpc_getPort(struct sockaddr_in *addr) {
++/* sin_port and sin6_port sit at the same offset, so the port helpers
++ * work for both families unchanged */
++unsigned short udpc_getPort(struct sockaddr_storage *addr) {
+     return ntohs(((struct sockaddr_in *) addr)->sin_port);
+ }
+ 
+-void setPort(struct sockaddr_in *addr, unsigned short port) {
++void setPort(struct sockaddr_storage *addr, unsigned short port) {
+     ((struct sockaddr_in *) addr)->sin_port = htons(port);
+ }
+ 
+ 
+-void clearIp(struct sockaddr_in *addr) {
+-    addr->sin_addr.s_addr = 0;
+-    addr->sin_family = AF_INET;
++void clearIp(struct sockaddr_storage *addr) {
++    /* Also clear the IPv6 fields, so that the address reads as zero
++     * whatever family is set on it later. The port is kept, as before. */
++#ifdef UDPC_IPV6
++    getSockaddrIn6(addr)->sin6_flowinfo = 0;
++    memset(&getSockaddrIn6(addr)->sin6_addr, 0, sizeof(struct in6_addr));
++    getSockaddrIn6(addr)->sin6_scope_id = 0;
++#endif
++    getSinAddr(addr).s_addr = 0;
++    addr->ss_family = AF_INET;
+ }
+ 
+-void setIpFromString(struct sockaddr_in *addr, char *ip) {
+-    safe_inet_aton(ip, &addr->sin_addr);
+-    addr->sin_family = AF_INET;
++void setIpFromString(struct sockaddr_storage *addr, const char *ip) {
++#ifdef UDPC_IPV6
++    /* Only IPv6 addresses contain a colon. Everything else is parsed
++     * as before, with the same error. A "%scope" suffix is kept in
++     * sin6_scope_id. */
++    if(strchr(ip, ':') != NULL) {
++	struct sockaddr_in6 *addr6 = getSockaddrIn6(addr);
++	uint32_t scope;
++	if(!parseIp6(ip, &addr6->sin6_addr, &scope))
++	    udpc_fatal(-1, "Bad address %s", ip);
++	addr6->sin6_flowinfo = 0;
++	addr6->sin6_scope_id = scope;
++	addr6->sin6_family = AF_INET6;
++	return;
++    }
++#endif
++    safe_inet_aton(ip, &getSinAddr(addr));
++    addr->ss_family = AF_INET;
+ }
+ 
+-void copyIpFrom(struct sockaddr_in *dst, struct sockaddr_in *src) {
+-    dst->sin_addr = src->sin_addr;
+-    dst->sin_family = src->sin_family;
++void copyIpFrom(struct sockaddr_storage *dst, struct sockaddr_storage *src) {
++#ifdef UDPC_IPV6
++    if(src->ss_family == AF_INET6) {
++	getSockaddrIn6(dst)->sin6_flowinfo = 0;
++	getSockaddrIn6(dst)->sin6_addr = getSockaddrIn6(src)->sin6_addr;
++	getSockaddrIn6(dst)->sin6_scope_id = getSockaddrIn6(src)->sin6_scope_id;
++    } else
++#endif
++	getSinAddr(dst) = getSinAddr(src);
++    dst->ss_family = src->ss_family;
+ }
+ 
+-void getDefaultMcastAddress(net_if_t *net_if, struct sockaddr_in *mcast) {
++void getDefaultMcastAddress(net_if_t *net_if, struct sockaddr_storage *mcast) {
+     getMyAddress(net_if, mcast);
+-    mcast->sin_addr.s_addr &= htonl(0x0001ffff);
+-    mcast->sin_addr.s_addr |= htonl(0xe9fe0000);
++#ifdef UDPC_IPV6
++    if(mcast->ss_family == AF_INET6) {
++	/* ff15::7564:0:X:Y, where X:Y are the low 32 bits of the sender's
++	 * address. Like the IPv4 default (233.254/15 plus the low address
++	 * bits), senders on one link get different groups, and the low 32
++	 * bits are also the Ethernet multicast MAC (33:33:...), so
++	 * switches keep them apart. ff15 is a transient, site-scope
++	 * group: like the IPv4 group, it can cross routers as far as
++	 * --ttl allows. 7564 is "ud", for udpcast. */
++	struct sockaddr_in6 *mcast6 = getSockaddrIn6(mcast);
++	memset(mcast6->sin6_addr.s6_addr, 0, 12);
++	mcast6->sin6_addr.s6_addr[0] = 0xff;
++	mcast6->sin6_addr.s6_addr[1] = 0x15;
++	mcast6->sin6_addr.s6_addr[8] = 0x75;
++	mcast6->sin6_addr.s6_addr[9] = 0x64;
++	mcast6->sin6_scope_id = 0;
++	return;
++    }
++#endif
++    getSinAddr(mcast).s_addr &= htonl(0x0001ffff);
++    getSinAddr(mcast).s_addr |= htonl(0xe9fe0000);
+     
+ }
+ 
+ 
+-void copyToMessage(unsigned char *dst, struct sockaddr_in *src) {
+-    memcpy(dst, (char *) &((struct sockaddr_in *)src)->sin_addr,
++/* family is the session's. The message has room for 16 bytes. IPv4
++ * still copies only 4, so an IPv4 session sends what it always sent. An
++ * IPv6 session always fills all 16, zero if the address is cleared. */
++void copyToMessage(unsigned char *dst, struct sockaddr_storage *src,
++		   int family) {
++#ifdef UDPC_IPV6
++    if(family == AF_INET6) {
++	if(src->ss_family == AF_INET6)
++	    memcpy(dst, &getSockaddrIn6(src)->sin6_addr,
++		   sizeof(struct in6_addr));
++	else
++	    memset(dst, 0, sizeof(struct in6_addr));
++	return;
++    }
++#else
++    (void) family;
++#endif
++    memcpy(dst, (char *) &getSinAddr(src),
+ 	   sizeof(struct in_addr));
+ }
+ 
+ 
+-void copyFromMessage(struct sockaddr_in *dst, unsigned char *src) {
+-    memcpy((char *) &dst->sin_addr, src, sizeof(struct in_addr));
++/* family is the session's, taken from the sender's address. */
++void copyFromMessage(struct sockaddr_storage *dst, unsigned char *src,
++		     int family) {
++#ifdef UDPC_IPV6
++    if(family == AF_INET6) {
++	struct sockaddr_in6 *dst6 = getSockaddrIn6(dst);
++	dst6->sin6_family = AF_INET6;
++	dst6->sin6_flowinfo = 0;
++	dst6->sin6_scope_id = 0;
++	memcpy(&dst6->sin6_addr, src, sizeof(struct in6_addr));
++	return;
++    }
++#else
++    (void) family;
++#endif
++    memcpy((char *) &getSinAddr(dst), src, sizeof(struct in_addr));
+ }
+ 
+-int isAddressEqual(struct sockaddr_in *a, struct sockaddr_in *b) {
++int isAddressEqual(struct sockaddr_storage *a, struct sockaddr_storage *b) {
++#ifdef UDPC_IPV6
++    if(a->ss_family == AF_INET6 || b->ss_family == AF_INET6)
++	/* Family, port and address, like the 8 bytes compared for IPv4 */
++	return a->ss_family == b->ss_family &&
++	    getSockaddrIn6(a)->sin6_port == getSockaddrIn6(b)->sin6_port &&
++	    IN6_ARE_ADDR_EQUAL(&getSockaddrIn6(a)->sin6_addr,
++			       &getSockaddrIn6(b)->sin6_addr);
++#endif
+     return !memcmp((char *) a, (char *)b, 8);
+ }
+ 
++int getAddrFamily(const char *address) {
++    struct in_addr addr;
++    if(address == NULL)
++	return AF_UNSPEC;
++    if(strchr(address, ':') != NULL) {
++#ifdef UDPC_IPV6
++	struct in6_addr addr6;
++	uint32_t scope;
++	return parseIp6(address, &addr6, &scope) ? AF_INET6 : AF_UNSPEC;
++#else
++	/* An IPv4-only build has no other family to offer */
++	return AF_UNSPEC;
++#endif
++    }
++    return INET_ATON(address, &addr) ? AF_INET : AF_UNSPEC;
++}
++
++in_addr_t getIpv4Addr(struct sockaddr_storage *addr) {
++#ifdef UDPC_IPV6
++    if(addr->ss_family == AF_INET6)
++	return 0;
++#endif
++    return getSinAddr(addr).s_addr;
++}
++
+ unsigned int parseSize(char *sizeString) {
+     char *eptr;
+     unsigned int size = strtoui(sizeString, &eptr, 10);
+@@ -1115,8 +1571,13 @@ void closeSock(int *socks, int nr, int target) {
+     closesocket(sock);
+ }
+ 
+-int isMcastAddress(struct sockaddr_in *addr) {
+-    int ip = ntohl(addr->sin_addr.s_addr) >> 24;
++int isMcastAddress(struct sockaddr_storage *addr) {
++    int ip;
++#ifdef UDPC_IPV6
++    if(addr->ss_family == AF_INET6)
++	return IN6_IS_ADDR_MULTICAST(&getSockaddrIn6(addr)->sin6_addr);
++#endif
++    ip = ntohl(getSinAddr(addr).s_addr) >> 24;
+     return ip >= 0xe0 && ip < 0xf0;
+ }
+ 
+diff --git a/socklib.h b/socklib.h
+index e31bb3d..81ed73c 100644
+--- a/socklib.h
++++ b/socklib.h
+@@ -28,6 +28,11 @@
+ #include <winsock2.h>
+ #endif
+ 
++#ifdef __MINGW32__
++/* socklen_t, for getSockLen() */
++#include <ws2tcpip.h>
++#endif
++
+ #ifdef HAVE_SYS_UIO_H
+ #include <sys/uio.h>
+ #endif
+@@ -50,6 +55,19 @@ typedef unsigned long in_addr_t;
+ typedef unsigned short in_port_t;
+ #endif
+ 
++/* Large enough for an IPv6 address in text form */
++#ifndef INET6_ADDRSTRLEN
++#define INET6_ADDRSTRLEN 46
++#endif
++
++/* IPv6 needs the address family and these functions. Without them the
++ * build is IPv4-only, and behaves as before. */
++#if defined(AF_INET6) && defined(HAVE_INET_PTON) && \
++    defined(HAVE_INET_NTOP) && defined(HAVE_IFADDRS_H) && \
++    defined(HAVE_GETIFADDRS) && defined(HAVE_IF_NAMETOINDEX)
++# define UDPC_IPV6 1
++#endif
++
+ #define RECEIVER_PORT(x) (x)
+ #define SENDER_PORT(x) ((x)+1)
+ 
+@@ -90,6 +108,9 @@ typedef unsigned short in_port_t;
+ #define copyToMessage udpc_copyToMessage
+ #define copyFromMessage udpc_copyFromMessage
+ #define isAddressEqual udpc_isAddressEqual
++#define getAddrFamily udpc_getAddrFamily
++#define getIpv4Addr udpc_getIpv4Addr
++#define getSockLen udpc_getSockLen
+ #define parseSize udpc_parseSize
+ 
+ #define zeroSockArray udpc_zeroSockArray
+@@ -113,6 +134,17 @@ struct net_if {
+     struct in_addr addr;
+     struct in_addr bcast;
+     const char *name;
++    /* The new fields stay above "index": SIOCGIFINDEX is defined only
++     * in files that include the ioctl headers first, so the struct
++     * layout after that point differs between files. */
++    /* AF_INET or AF_INET6: the address family of the whole session */
++    int family;
++#ifdef UDPC_IPV6
++    /* IPv6 only: the address, and the interface index used for
++     * multicast and for the scope of link-local addresses */
++    struct in6_addr addr6;
++    unsigned int ifindex6;
++#endif
+ #ifdef SIOCGIFINDEX
+     int index;
+ #endif
+@@ -129,30 +161,34 @@ void doAutoRateLimit(int sock, int dir, int qsize, int size);
+ 
+ int makeSockAddr(char *hostname, in_port_t port, struct sockaddr_in *addr);
+ 
+-int getMyAddress(net_if_t *net_if, struct sockaddr_in *addr);
++/* Addresses are held in a sockaddr_storage, so that one variable can hold
++ * either an IPv4 or an IPv6 address. ss_family tells which. */
++int getMyAddress(net_if_t *net_if, struct sockaddr_storage *addr);
+ int getBroadCastAddress(net_if_t *net_if,
+-			struct sockaddr_in *addr, in_port_t port);
+-int getMcastAllAddress(struct sockaddr_in *addr,
++			struct sockaddr_storage *addr, in_port_t port);
++int getMcastAllAddress(net_if_t *net_if, struct sockaddr_storage *addr,
+ 		       const char *address, in_port_t port);
+ 
+ 
+-ssize_t doSend(int s, void *message, size_t len, struct sockaddr_in *to);
++ssize_t doSend(int s, void *message, size_t len, struct sockaddr_storage *to);
+ ssize_t doReceive(int s, void *message, size_t len,
+-		  struct sockaddr_in *from, in_port_t portBase);
++		  struct sockaddr_storage *from, in_port_t portBase);
+ 
+ void printMyIp(net_if_t *net_if);
+ 
+ 
+ int makeSocket(addr_type_t addr_type, net_if_t *net_if, 
+-	       struct sockaddr_in *tmpl, in_port_t port,
+-	       struct in_addr *src);
++	       struct sockaddr_storage *tmpl, in_port_t port,
++	       struct sockaddr_storage *src);
+ 
+ int setSocketToBroadcast(int sock);
+ int setTtl(int sock, int ttl);
+ 
+-int setMcastDestination(int,net_if_t *,struct sockaddr_in *);
++int setMcastDestination(int,net_if_t *,struct sockaddr_storage *);
+ int isFullDuplex(int sock, const char *ifName);
+-net_if_t *getNetIf(const char *ifName);
++/* family is AF_INET, AF_INET6, or AF_UNSPEC to choose from the
++ * interface */
++net_if_t *getNetIf(const char *ifName, int family);
+ 
+ int getSendBuf(int sock);
+ void setSendBuf(int sock, unsigned int bufsize);
+@@ -169,23 +205,34 @@ void setRcvBuf(int sock, unsigned int bufsize);
+ #define BCAST_CONTROL(s, msg) \
+ 	doSend(s, &msg, sizeof(msg), &net_config->controlMcastAddr)
+ 
+-unsigned short getPort(struct sockaddr_in *addr);
+-void setPort(struct sockaddr_in *addr, unsigned short port);
+-char *getIpString(struct sockaddr_in *addr, char *buffer);
+-int ipIsEqual(struct sockaddr_in *left, struct sockaddr_in *right);
+-int ipIsZero(struct sockaddr_in *ip);
++unsigned short getPort(struct sockaddr_storage *addr);
++void setPort(struct sockaddr_storage *addr, unsigned short port);
++/* buffer must hold INET6_ADDRSTRLEN bytes */
++char *getIpString(struct sockaddr_storage *addr, char *buffer);
++int ipIsEqual(struct sockaddr_storage *left, struct sockaddr_storage *right);
++int ipIsZero(struct sockaddr_storage *ip);
++
++void clearIp(struct sockaddr_storage *addr);
++void setIpFromString(struct sockaddr_storage *addr, const char *ip);
+ 
+-void clearIp(struct sockaddr_in *addr);
+-void setIpFromString(struct sockaddr_in *addr, char *ip);
++void copyIpFrom(struct sockaddr_storage *dst, struct sockaddr_storage *src);
+ 
+-void copyIpFrom(struct sockaddr_in *dst, struct sockaddr_in *src);
++void getDefaultMcastAddress(net_if_t *net_if, struct sockaddr_storage *mcast);
+ 
+-void getDefaultMcastAddress(net_if_t *net_if, struct sockaddr_in *mcast);
++void copyToMessage(unsigned char *dst, struct sockaddr_storage *src,
++		   int family);
++void copyFromMessage(struct sockaddr_storage *dst, unsigned char *src,
++		     int family);
+ 
+-void copyToMessage(unsigned char *dst, struct sockaddr_in *src);
+-void copyFromMessage(struct sockaddr_in *dst, unsigned char *src);
++int isAddressEqual(struct sockaddr_storage *a, struct sockaddr_storage *b);
+ 
+-int isAddressEqual(struct sockaddr_in *a, struct sockaddr_in *b);
++/* AF_INET or AF_INET6 for a numeric address, AF_UNSPEC otherwise */
++int getAddrFamily(const char *address);
++/* The IPv4 address, or 0 for IPv6. For the rate governor interface,
++ * which passes an in_addr_t. */
++in_addr_t getIpv4Addr(struct sockaddr_storage *addr);
++/* Length to pass to bind(), sendto() and sendmsg() for this address */
++socklen_t getSockLen(struct sockaddr_storage *addr);
+ 
+ unsigned int parseSize(char *sizeString);
+ 
+@@ -195,7 +242,7 @@ int prepareForSelect(int *socks, int nr, fd_set *read_set);
+ int getSelectedSock(int *socks, int nr, fd_set *read_set);
+ void closeSock(int *socks, int nr, int target);
+ 
+-int isMcastAddress(struct sockaddr_in *addr);
++int isMcastAddress(struct sockaddr_storage *addr);
+ 
+ int udpc_socklibFatal(int code);
+ 
+diff --git a/udp-receiver.h b/udp-receiver.h
+index 057c7f4..3a79ab0 100644
+--- a/udp-receiver.h
++++ b/udp-receiver.h
+@@ -14,7 +14,7 @@
+ 
+ struct client_config {
+     int socks[NR_CLIENT_SOCKS];
+-    struct sockaddr_in serverAddr;
++    struct sockaddr_storage serverAddr;
+     uint32_t clientNumber;
+     int isStarted;
+     pthread_t thread;
+diff --git a/udpcast.h b/udpcast.h
+index 388cca9..aeff55b 100644
+--- a/udpcast.h
++++ b/udpcast.h
+@@ -57,8 +57,8 @@ struct net_config {
+     in_port_t portBase; /* Port base */
+     unsigned int blockSize;
+     unsigned int sliceSize;
+-    struct sockaddr_in controlMcastAddr;
+-    struct sockaddr_in dataMcastAddr;
++    struct sockaddr_storage controlMcastAddr;
++    struct sockaddr_storage dataMcastAddr;
+     const char *mcastRdv;
+     int ttl;
+     int nrGovernors;
+diff --git a/udpr-negotiate.c b/udpr-negotiate.c
+index 0d99035..aa021f9 100644
+--- a/udpr-negotiate.c
++++ b/udpr-negotiate.c
+@@ -118,13 +118,13 @@ int startReceiver(int doWarn,
+ 		  struct stat_config *stat_config,
+ 		  const char *ifName)
+ {
+-    char ipBuffer[16];
++    char ipBuffer[INET6_ADDRSTRLEN];
+     union serverControlMsg Msg;
+     int connectReqSent=0;
+     struct client_config client_config;
+     int outFile=1;
+     int pipedOutFile;
+-    struct sockaddr_in myIp;
++    struct sockaddr_storage myIp;
+     int pipePid = 0;
+     int origOutFile;
+     int haveServerAddress;
+@@ -132,7 +132,9 @@ int startReceiver(int doWarn,
+ 
+     client_config.sender_is_newgen = 0;
+ 
+-    net_config->net_if = getNetIf(ifName);
++    /* The rendezvous address, if given, chooses the address family.
++     * Without it, getNetIf() chooses it from the interface. */
++    net_config->net_if = getNetIf(ifName, getAddrFamily(net_config->mcastRdv));
+     zeroSockArray(client_config.socks, NR_CLIENT_SOCKS);
+ 
+     client_config.S_UCAST = makeSocket(ADDR_TYPE_UCAST,
+@@ -144,13 +146,17 @@ int startReceiver(int doWarn,
+ 				       0, RECEIVER_PORT(net_config->portBase),
+ 				       NULL);
+ 
+-    if(net_config->ttl == 1 && net_config->mcastRdv == NULL) {
++    /* IPv6 has no broadcast: it uses the default multicast group of
++     * getMcastAllAddress() below instead */
++    if(net_config->ttl == 1 && net_config->mcastRdv == NULL &&
++       net_config->net_if->family == AF_INET) {
+ 	getBroadCastAddress(net_config->net_if,
+ 			    &net_config->controlMcastAddr,
+ 			    SENDER_PORT(net_config->portBase));
+ 	setSocketToBroadcast(client_config.S_UCAST);
+     } else {
+-	getMcastAllAddress(&net_config->controlMcastAddr,
++	getMcastAllAddress(net_config->net_if,
++			   &net_config->controlMcastAddr,
+ 			   net_config->mcastRdv,
+ 			   SENDER_PORT(net_config->portBase));
+ 	if(isMcastAddress(&net_config->controlMcastAddr)) {
+@@ -222,7 +228,8 @@ int startReceiver(int doWarn,
+ 		if(ntohl(Msg.connectReply.capabilities) & CAP_NEW_GEN) {
+ 		    client_config.sender_is_newgen = 1;
+ 		    copyFromMessage(&net_config->dataMcastAddr,
+-				    Msg.connectReply.mcastAddr);
++				    Msg.connectReply.mcastAddr,
++				    client_config.serverAddr.ss_family);
+ 		}
+ 		if (client_config.clientNumber == UINT32_MAX) {
+ 		    udpc_fatal(1, "Too many clients already connected\n");
+@@ -238,7 +245,8 @@ int startReceiver(int doWarn,
+ 		if(ntohl(Msg.hello.capabilities) & CAP_NEW_GEN) {
+ 		    client_config.sender_is_newgen = 1;
+ 		    copyFromMessage(&net_config->dataMcastAddr,
+-				    Msg.hello.mcastAddr);
++				    Msg.hello.mcastAddr,
++				    client_config.serverAddr.ss_family);
+ 		    net_config->blockSize = ntohs(Msg.hello.blockSize);
+ 		    if(ntohl(Msg.hello.capabilities) & CAP_ASYNC)
+ 			net_config->flags |= FLAG_PASSIVE;
+@@ -279,7 +287,7 @@ int startReceiver(int doWarn,
+ 	  makeSocket(ADDR_TYPE_MCAST, net_config->net_if, 
+ 		     &net_config->dataMcastAddr, 
+ 		     RECEIVER_PORT(net_config->portBase),
+-		     &client_config.serverAddr.sin_addr);
++		     &client_config.serverAddr);
+     }
+ 
+ 
+diff --git a/udps-negotiate.c b/udps-negotiate.c
+index 1259c3f..1e3bd41 100644
+--- a/udps-negotiate.c
++++ b/udps-negotiate.c
+@@ -44,7 +44,7 @@ static int isPointToPoint(participantsDb_t db, int flags) {
+ static int sendConnectionReply(participantsDb_t db,
+ 			       int sock,
+ 			       struct net_config *config,
+-			       struct sockaddr_in *client, 
++			       struct sockaddr_storage *client, 
+ 			       unsigned int capabilities,
+ 			       unsigned int rcvbuf) {
+     struct connectReply reply;
+@@ -72,9 +72,10 @@ static int sendConnectionReply(participantsDb_t db,
+ 
+     /* new parameters: always big endian */
+     reply.capabilities = ntohl(config->capabilities);
+-    copyToMessage(reply.mcastAddr,&config->dataMcastAddr);
++    copyToMessage(reply.mcastAddr,&config->dataMcastAddr,
++		  config->net_if->family);
+     /*reply.mcastAddress = mcastAddress;*/
+-    rgWaitAll(config, sock, client->sin_addr.s_addr, sizeof(reply));
++    rgWaitAll(config, sock, getIpv4Addr(client), sizeof(reply));
+     if(SEND(sock, reply, *client) < 0) {
+ 	perror("reply add new client");
+ 	return -1;
+@@ -92,10 +93,11 @@ void sendHello(struct net_config *net_config, int sock,
+ 	hello.opCode = htons(CMD_HELLO);
+     hello.reserved = 0;
+     hello.capabilities = htonl(net_config->capabilities);
+-    copyToMessage(hello.mcastAddr,&net_config->dataMcastAddr);
++    copyToMessage(hello.mcastAddr,&net_config->dataMcastAddr,
++		  net_config->net_if->family);
+     assert(net_config->blockSize <= UINT16_MAX);
+     hello.blockSize = htons((uint16_t)net_config->blockSize);
+-    rgWaitAll(net_config, sock, net_config->controlMcastAddr.sin_addr.s_addr,
++    rgWaitAll(net_config, sock, getIpv4Addr(&net_config->controlMcastAddr),
+ 	      sizeof(hello));
+     BCAST_CONTROL(sock, hello);
+ }
+@@ -163,7 +165,7 @@ static int mainDispatcher(int *fd, int nr,
+ 			  console_t **console, int *tries,
+ 			  time_t *firstConnected)
+ {
+-    struct sockaddr_in client;
++    struct sockaddr_storage client;
+     union message fromClient;
+     fd_set read_set;
+     unsigned int ret;
+@@ -290,7 +292,17 @@ static int mainDispatcher(int *fd, int nr,
+ int udpc_openMainSenderSock(struct net_config *net_config,
+ 			    const char *ifName)
+ {
+-    net_config->net_if = getNetIf(ifName);
++    /* The addresses given choose the address family of the session.
++     * Without any, getNetIf() chooses it from the interface. */
++    int family = getAddrFamily(net_config->mcastRdv);
++    int dataFamily = ipIsZero(&net_config->dataMcastAddr) ?
++	AF_UNSPEC : net_config->dataMcastAddr.ss_family;
++    if(family == AF_UNSPEC)
++	family = dataFamily;
++    else if(dataFamily != AF_UNSPEC && dataFamily != family)
++	udpc_fatal(1, "mcast-rdv-address and mcast-data-address are not "
++		   "the same address family\n");
++    net_config->net_if = getNetIf(ifName, family);
+     return makeSocket(ADDR_TYPE_UCAST,
+ 		      net_config->net_if,
+ 		      NULL,
+@@ -303,7 +315,7 @@ int startSender(struct disk_config *disk_config,
+ 		struct stat_config *stat_config,
+ 		int mainSock)
+ {
+-    char ipBuffer[16];
++    char ipBuffer[INET6_ADDRSTRLEN];
+     int tries;
+     int r; /* return value for maindispatch. If 1, start transfer */
+     int j;
+@@ -344,16 +356,20 @@ int startSender(struct disk_config *disk_config,
+     if(net_config->requestedBufSize)
+ 	setSendBuf(sock[0], net_config->requestedBufSize);
+ 
+-    net_config->controlMcastAddr.sin_addr.s_addr =0;
+-    if(net_config->ttl == 1 && net_config->mcastRdv == NULL) {
++    clearIp(&net_config->controlMcastAddr);
++    /* IPv6 has no broadcast: it uses the default multicast group of
++     * getMcastAllAddress() below instead */
++    if(net_config->ttl == 1 && net_config->mcastRdv == NULL &&
++       net_config->net_if->family == AF_INET) {
+ 	getBroadCastAddress(net_config->net_if,
+ 			    &net_config->controlMcastAddr,
+ 			    RECEIVER_PORT(net_config->portBase));
+ 	setSocketToBroadcast(sock[0]);
+     } 
+ 
+-    if(net_config->controlMcastAddr.sin_addr.s_addr == 0) {
+-	getMcastAllAddress(&net_config->controlMcastAddr,
++    if(ipIsZero(&net_config->controlMcastAddr)) {
++	getMcastAllAddress(net_config->net_if,
++			   &net_config->controlMcastAddr,
+ 			   net_config->mcastRdv,
+ 			   RECEIVER_PORT(net_config->portBase));
+ 	/* Only do the following if controlMcastAddr is indeed an
+-- 
+2.56.1
+
