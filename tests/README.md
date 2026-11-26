@@ -96,8 +96,16 @@ tests/checks/network-ipv6-fallback.sh
                               # and make no IPv4 request. Then the same three
                               # IPv4 attempts as a boot without ipv6boot run.
                               # A stateful DHCPv6 lease and a SLAAC address
-                              # each count as success. ip, udhcpc and udhcpc6
-                              # are stubs, so no network is touched
+                              # each count as success. An IPv4 attempt stops
+                              # udhcpc6 first, so its DNS lines go. ip, udhcpc
+                              # and udhcpc6 are stubs, so no network is touched
+tests/checks/udhcpc6-resolv.sh
+                              # the resolv.conf lines of default6.script. They
+                              # carry no "# <interface>" tag, because busybox
+                              # nslookup rejects a tagged address. The script
+                              # removes only the lines it wrote. The tagged
+                              # lines of the IPv4 script survive. See
+                              # fogproject#2152
 tests/checks/empty-mac-fallback.sh
                               # what $mac is when the server sent none
                               # (fogproject#1767). A FOG 1.5 server builds a
@@ -292,6 +300,10 @@ tests/checks/nfs-mount-ipv6.sh
                               # rejects proto=tcp with an IPv6 server address
                               # ("Invalid argument"). With no proto=, the
                               # kernel uses tcp or tcp6 to match the server.
+                              # Also: the busybox fragment turns off
+                              # FEATURE_PREFER_IPV4_ADDRESS. With it on, a
+                              # mount by a name with A and AAAA records took
+                              # the A record, and an IPv6-only client failed.
                               # See fogproject#2152
 tests/checks/mdraid-gate.sh
                               # md arrays assemble only with mdraid=true:

@@ -20,17 +20,30 @@ ACTION="$1"
 RESOLV_CONF="/etc/resolv.conf"
 # The leased address, so that "deconfig" can delete it. "deconfig" gets no ipv6 variable.
 LEASE_FILE="/var/run/udhcpc6-$interface.addr"
+# The resolv.conf lines this script wrote, so that a later run can remove them.
+# The lines carry no "# <interface>" tag: busybox nslookup reads everything
+# after "nameserver" as the address, and rejects an address with a tag.
+RESOLV_LINES="/var/run/udhcpc6-$interface.resolv"
 [ -e "$RESOLV_CONF" ] || touch "$RESOLV_CONF"
 
-# Remove the lines an earlier run wrote for this interface. The same
-# "# <interface>" tag is used by the IPv4 script, so a fallback to IPv4 cleans up too.
+# Remove the lines an earlier run wrote for this interface, and only those.
 # resolv.conf may be a symlink, so write through it with cat.
 drop_resolv_lines() {
     local TMPFILE
-    TMPFILE=$(mktemp)
-    grep -vE "# $interface\$" "$RESOLV_CONF" > "$TMPFILE"
-    cat "$TMPFILE" > "$RESOLV_CONF"
-    rm -f "$TMPFILE"
+    # Skip an empty list. grep -v -f with no patterns is not safe.
+    if [ -s "$RESOLV_LINES" ]; then
+        TMPFILE=$(mktemp)
+        grep -vxF -f "$RESOLV_LINES" "$RESOLV_CONF" > "$TMPFILE"
+        cat "$TMPFILE" > "$RESOLV_CONF"
+        rm -f "$TMPFILE"
+    fi
+    rm -f "$RESOLV_LINES"
+}
+
+# Add one line to resolv.conf, and record it for drop_resolv_lines.
+add_resolv_line() {
+    echo "$1" >> "$RESOLV_CONF"
+    echo "$1" >> "$RESOLV_LINES"
 }
 
 # Delete the address that an earlier "bound" added. A retry then cannot reuse
@@ -61,10 +74,10 @@ case "$ACTION" in
         fi
 
         drop_resolv_lines
-        [ -n "$search" ] && echo "search $search # $interface" >> "$RESOLV_CONF"
+        [ -n "$search" ] && add_resolv_line "search $search"
         for i in $dns ; do
             echo "Adding DNS server $i."
-            echo "nameserver $i # $interface" >> "$RESOLV_CONF"
+            add_resolv_line "nameserver $i"
         done
         ;;
 esac
