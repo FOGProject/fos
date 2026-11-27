@@ -1,0 +1,4 @@
+# From https://github.com/FOGProject/udpcast/releases/download/v20250223-fog.1/udpcast-v20250223-fog.1.tar.gz.sha256
+sha256  d99a95f0d616c91c49964368c5bbac5c7af2a374c8a75de86d16612afd6653ad  udpcast-v20250223-fog.1.tar.gz
+# Locally computed, from COPYING in udpcast-v20250223-fog.1.tar.gz (unchanged from upstream 20250223)
+sha256  422befd3503b1f39a6027017f639874c1f274e37ec60ba3174894646b584ccbc  COPYING

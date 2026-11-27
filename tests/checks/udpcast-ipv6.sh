@@ -4,14 +4,16 @@
 #
 #   tests/checks/udpcast-ipv6.sh
 #
-# Why this exists. Buildroot's udpcast 20250223 is IPv4 only. FOS carries three
-# patches that add IPv6 dual stack, and the build has to apply them and run
-# autoreconf, because patch 0004 changes configure.ac. Without autoreconf the
-# build succeeds and silently stays IPv4 only. The rendezvous address also has
-# to reach udp-receiver bare: udpcast rejects "[fd00::1]".
+# Why this exists. Buildroot's udpcast 20250223 is IPv4 only. FOS builds udpcast
+# from the FOGProject/udpcast release instead. That release carries the IPv6
+# dual stack port and a generated configure. If the build goes back to the
+# upstream tarball, or the old FOS patches return, it silently stays IPv4 only
+# or fails to apply. The rendezvous address also has to reach udp-receiver
+# bare: udpcast rejects "[fd00::1]".
 #
 # Three assertions:
-#   (a) the three patches exist and udpcast.mk sets UDPCAST_AUTORECONF = YES
+#   (a) udpcast.mk fetches the FOGProject/udpcast release, udpcast.hash pins
+#       that tarball, and FOS carries no udpcast patch of its own
 #   (b) a built udp-receiver carries the IPv6 text. Skipped when no build exists.
 #   (c) the bracket strip in writeImage(), taken from funcs.sh itself, maps
 #       [fd00::1] to fd00::1 and leaves fd00::1 and 10.0.0.1 unchanged
@@ -29,20 +31,30 @@ RECEIVER="${UDP_RECEIVER:-$ROOT/fssourcex64/output/target/usr/sbin/udp-receiver}
 
 fails=0
 
-# (a) patches and autoreconf
-for n in 0002 0003 0004; do
-    if compgen -G "$PKG/$n-*.patch" >/dev/null; then
-        echo "  checked patch $n present"
-    else
-        echo "FAIL [udpcast] patch $n is missing from $PKG"
-        fails=$((fails + 1))
-    fi
-done
-if grep -qx 'UDPCAST_AUTORECONF = YES' "$PKG/udpcast.mk" 2>/dev/null; then
-    echo "  checked udpcast.mk: UDPCAST_AUTORECONF = YES"
+# (a) the release source, its hash, and no leftover patches
+if grep -q '^UDPCAST_SITE = .*github\.com/FOGProject/udpcast/releases/download' "$PKG/udpcast.mk" 2>/dev/null; then
+    echo "  checked udpcast.mk: UDPCAST_SITE is the FOGProject/udpcast release"
 else
-    echo "FAIL [udpcast.mk] UDPCAST_AUTORECONF = YES is missing, so the build stays IPv4 only"
+    echo "FAIL [udpcast.mk] UDPCAST_SITE is not github.com/FOGProject/udpcast/releases/download, so the build stays IPv4 only"
     fails=$((fails + 1))
+fi
+version="$(sed -n 's/^UDPCAST_VERSION = //p' "$PKG/udpcast.mk" 2>/dev/null | head -n 1)"
+if [[ -n $version ]] && grep -Eq "^sha256[[:space:]]+[0-9a-f]{64}[[:space:]]+udpcast-${version}\.tar\.gz\$" "$PKG/udpcast.hash" 2>/dev/null; then
+    echo "  checked udpcast.hash: sha256 line for udpcast-$version.tar.gz"
+else
+    echo "FAIL [udpcast.hash] no sha256 line for udpcast-${version:-<no UDPCAST_VERSION>}.tar.gz"
+    fails=$((fails + 1))
+fi
+# FOS carries no udpcast patch. Buildroot's own 0001 (musl) is not in this
+# directory. A change to udpcast goes to FOGProject/udpcast, so a patch here is
+# a second copy: the old 0002-0004 are already in the release and would apply twice.
+patches="$(compgen -G "$PKG/*.patch")"
+if [[ -n $patches ]]; then
+    echo "FAIL [udpcast] patch file(s) in $PKG; change FOGProject/udpcast instead:"
+    printf '    %s\n' $patches
+    fails=$((fails + 1))
+else
+    echo "  checked no FOS udpcast patches"
 fi
 
 # (b) the built receiver
@@ -81,7 +93,7 @@ fi
 
 echo
 if [[ $fails -eq 0 ]]; then
-    echo "PASS: udpcast IPv6 patches, autoreconf, receiver text and bracket strip"
+    echo "PASS: udpcast release source, hash, no old patches, receiver text and bracket strip"
     exit 0
 fi
 echo "FAILED: $fails udpcast IPv6 check(s)"
