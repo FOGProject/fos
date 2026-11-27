@@ -236,6 +236,15 @@ function buildFilesystem() {
         touch .packConfDone
     fi
     rsync -avPrI ../Buildroot/ . > /dev/null
+    # rsync never deletes, so a reused fssource tree keeps files FOS no longer
+    # ships. The udpcast IPv6 patches 0002-0004 moved into the FOGProject/udpcast
+    # release (#212); left in the tree, they apply twice and the build fails.
+    # Remove one only when this checkout does not ship it.
+    for retired in package/udpcast/000[234]-*.patch; do
+        if [[ -e $retired && ! -e ../Buildroot/$retired ]]; then
+            rm -f "$retired"
+        fi
+    done
     sed -i "s/^export initversion=[0-9][0-9]*$/export initversion=$(date +%Y%m%d)/" board/FOG/FOS/rootfs_overlay/usr/share/fog/lib/funcs.sh
     if [[ ! -f .config ]]; then
         cp "../configs/fs$arch.config" .config
