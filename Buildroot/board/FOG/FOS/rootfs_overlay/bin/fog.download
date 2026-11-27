@@ -16,7 +16,7 @@ mac=$(getMACAddresses | base64)
 mac="$origmac"
 origmac=""
 layPartSize="-1s"
-fog.statusreporter "$mac" "$web" & disown
+fog.statusreporter "$mac" "$web" "$fogtoken" & disown
 statusReporter="$!"
 fixed_size_partitions=""
 echo " * Using Image: $img"

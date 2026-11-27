@@ -87,4 +87,9 @@ esac
 sysuuid=$(dmidecode -s system-uuid)
 sysuuid=${sysuuid,,}
 poststring="sysuuid=${sysuuid}&mac=$mac&type=$type"
-[[ ! $capone -eq 1 ]] && checkin "$poststring" "$php_post"
+# The boot token names the hostless task of an unregistered or pending host. The
+# server looks it up before it looks for a host, so it goes on every call.
+[[ -n $fogtoken ]] && poststring="${poststring}&fogtoken=$fogtoken"
+# A capone task with a token is a real task on the server and must check in so
+# it starts. One without a token has nothing to check in against.
+[[ ! $capone -eq 1 || -n $fogtoken ]] && checkin "$poststring" "$php_post"

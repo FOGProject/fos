@@ -406,7 +406,7 @@ while [[ -z $askme ]]; do
             ;;
         [Yy]|[Yy][Ee][Ss])
             if fogLogin; then
-                echo " * This host will reboot and deployment will start!"
+                echo " * Deployment will start (this host may reboot first)"
                 realdoimage=$(echo -n 1 | base64)
             else
                 echo " * This host will be registered without deploying an image."
@@ -435,4 +435,7 @@ done
 # After the host is registered and inventoried, so a failed enrollment costs
 # neither. Does nothing unless sbenroll=true; see sbEnrollAtRegistration().
 sbEnrollAtRegistration
+# Deploy now without a reboot when the server says the next boot would be the
+# same as this one. Returns at once otherwise, and the host reboots as before.
+[[ $realdoimage == "$(echo -n 1 | base64)" ]] && continueIntoTask
 usleep 2000000

@@ -947,6 +947,53 @@ new_case; make_firmware 0 0 32
 check "57. handleWarning: 32-bit UEFI returns 1 and enrolls nothing" \
     "$(outcome handleWarning)|$(grep -c '^curl ' "$SANDBOX/calls")" "rc=1 outcome=|0"
 
+# --- sbEnrollWrote: did this run write state that needs a reboot? ---
+#
+# continueIntoTask() (funcs.sh) deploys in the registration boot only when
+# sbEnrollWrote is 0. A db write or a staged MOK request only takes effect after
+# a reboot, so a deploy in this boot would run before it. "Already trusted"
+# writes nothing. The cases that expect 0 start the variable at 1, to prove
+# sbEnroll resets it. The cases that expect 1 start it at 0, to prove sbEnroll sets it.
+wrote() { lib "sbEnrollWrote=${2:-1}; sbEnroll $1 >/dev/null; echo \"wrote=\$sbEnrollWrote\""; }
+
+# 64. Setup Mode: db was written.
+new_case; make_firmware 1 0
+check "64. Setup Mode db write -> sbEnrollWrote=1" "$(wrote handleError 0)" "wrote=1"
+
+# 64b. A staged MOK request.
+new_case; make_firmware 0 0
+check "64b. staged MOK request -> sbEnrollWrote=1" "$(wrote handleError 0)" "wrote=1"
+
+# 64c. Already trusted: nothing written, and a stale 1 is cleared.
+new_case; make_firmware 0 0; FAKE_KEY_IN_DB=1
+check "64c. already trusted -> sbEnrollWrote=0" "$(wrote handleError)" "wrote=0"
+
+# 64d. A staging that failed may still have touched firmware state, so the flag
+# is set before the attempt. A wrong 1 costs one reboot; a wrong 0 deploys on
+# firmware that changed this boot.
+new_case; make_firmware 0 0; FAKE_IMPORT_FAIL=1
+check "64d. failed staging -> sbEnrollWrote=1" "$(wrote handleWarning 0)" "wrote=1"
+
+# 64e. The Microsoft 2023 CA append is a db write. The certificate is already
+# trusted here, so the append is the only write in this run.
+new_case; make_firmware 0 1; FAKE_KEY_IN_DB=1
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der"
+check "64e. Microsoft CA append -> sbEnrollWrote=1" "$(wrote handleError 0)" "wrote=1"
+
+# 64f. A failed append may have written too.
+new_case; make_firmware 0 1; FAKE_KEY_IN_DB=1; FAKE_DD_FAIL=db; export FAKE_DD_FAIL
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der"
+check "64f. failed Microsoft CA append -> sbEnrollWrote=1" "$(wrote handleWarning 0)" "wrote=1"
+
+# 64g. A db that already holds the 2023 CAs is not written, so a machine with
+# current CAs does not reboot for nothing.
+new_case; make_firmware 0 1; FAKE_KEY_IN_DB=1
+make_sigdb KEK "$SBFILES/MicCorKEKCA2011.der"
+make_sigdb db "$SBFILES/MicWinProPCA2011.der" "$SBFILES/WindowsUEFICA2023.der"
+check "64g. current Microsoft CAs, trusted cert -> sbEnrollWrote=0" "$(wrote handleError 0)" "wrote=0"
+
 # --- sbEnrollAtRegistration(): the opt-in gate ---
 # callServer and $mac are stubbed so case 60 can see a report if one is sent:
 # funcs.sh is not sourced here, and without them sbReport would fail silently.
