@@ -59,11 +59,15 @@ function checkDependencies() {
     local running_os
     running_os=$(grep "^ID=" /etc/os-release | cut -d'=' -f2 | tr -d '"')
     package_manager=""
+    package_refresh=""
 
     case $running_os in
         "debian" | "ubuntu")
             dependencies=("${common_dependencies[@]}" "${deb_dependencies[@]}")
             package_manager="sudo apt install -y"
+            # A fresh CI runner can carry a package index older than its
+            # mirrors, so "apt install" asks for files that are gone (404).
+            package_refresh="sudo apt-get update"
             pkginstalled() {
                 dpkg -s "$1" 2> /dev/null | grep -q "^Status:.*ok installed"
             }
@@ -108,10 +112,18 @@ function installDependencies() {
 
     if [[ -n $missing_packages ]]; then
         echo "Atempting to install missing dependencies..."
-        $package_manager "${dependencies[@]}" > /dev/null 2>&1
+        local log
+        log=$(mktemp)
+        [[ -n $package_refresh ]] && $package_refresh > "$log" 2>&1
+        $package_manager "${dependencies[@]}" >> "$log" 2>&1
         if [[ $? -ne 0 ]]; then
+            # Show why. The output used to go to /dev/null, so a CI failure
+            # said only that the install failed.
+            tail -n 20 "$log"
+            rm -f "$log"
             echo "Failed to install dependencies, please install the packages manually. Exiting now."
             exit 1
         fi
+        rm -f "$log"
     fi
 }
