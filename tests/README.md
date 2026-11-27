@@ -306,11 +306,12 @@ tests/checks/nfs-mount-ipv6.sh
                               # the A record, and an IPv6-only client failed.
                               # See fogproject#2152
 tests/checks/udpcast-ipv6.sh
-                              # udpcast receives multicast over IPv6. The three
-                              # IPv6 patches exist and udpcast.mk sets
-                              # UDPCAST_AUTORECONF = YES (patch 0004 changes
-                              # configure.ac). A built udp-receiver carries
-                              # the IPv6 text; UDP_RECEIVER=<path> names it,
+                              # udpcast receives multicast over IPv6. udpcast.mk
+                              # builds from the FOGProject/udpcast release,
+                              # and udpcast.hash pins that tarball. FOS
+                              # carries no udpcast patch: a change goes to
+                              # FOGProject/udpcast. A built udp-receiver
+                              # carries the IPv6 text; UDP_RECEIVER=<path> names it,
                               # and the check skips when none is built. The
                               # bracket strip in writeImage() maps [fd00::1]
                               # to fd00::1 and leaves IPv4 unchanged
