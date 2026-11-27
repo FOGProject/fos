@@ -162,6 +162,20 @@ tests/checks/tls-trust.sh
                               # warns once and falls back to -k; a network
                               # failure records nothing. No call site may run
                               # curl directly or hand fog.curl a -k
+tests/checks/boot-token-reporting.sh
+                              # fogtoken= (forum 18086): an unregistered host's
+                              # boot token rides on check-in, progress,
+                              # completion, the error report and blame, even
+                              # with capone=1; with no token every post is
+                              # unchanged and capone still skips check-in and
+                              # completion; handleError never prints the token
+tests/checks/register-continue.sh
+                              # continueIntoTask: after registering with deploy
+                              # now, FOS deploys in the same boot when the server
+                              # says samebootok='1' and no Secure Boot key was
+                              # written; otherwise (or on an old server) it
+                              # returns and the host reboots as before. The
+                              # host-info reply stays 0600 and is removed
 tests/checks/status-reporting.sh
                               # fog.statusreporter: what actually reaches
                               # service/progress.php while a task images. It

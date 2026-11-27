@@ -105,4 +105,7 @@ debugPause
 # After the host is registered and inventoried, so a failed enrollment costs
 # neither. Does nothing unless sbenroll=true; see sbEnrollAtRegistration().
 sbEnrollAtRegistration
+# Deploy now without a reboot when the server says the next boot would be the
+# same as this one. Returns at once otherwise, and the host reboots as before.
+continueIntoTask
 count=0

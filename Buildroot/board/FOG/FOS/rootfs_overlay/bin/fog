@@ -2,20 +2,11 @@
 . /usr/share/fog/lib/funcs.sh
 ### If USB Boot device we need a way to get the kernel args properly
 if [[ $boottype == usb && ! -z $web ]]; then
-    sysuuid=$(dmidecode -s system-uuid)
-    sysuuid=${sysuuid,,}
-    mac=$(getMACAddresses)
-    base64mac=$(echo $mac | base64)
-    callServer "${web}status/hostgetkey.php" "mac=$base64mac"
-    token="$serverBody"
-    # Said nothing at all when the key could not be fetched. The next call then
-    # posts an empty hosttoken, and whatever comes back is written to
-    # /tmp/hinfo.txt and SOURCED -- so a failure here surfaced much later, as
-    # missing kernel arguments rather than as a failed request.
-    [[ -z $token ]] && echo " * Could not get this host's key: ${serverReason:-the server returned no key}"
-    # Left as a raw curl deliberately: -o writes a file rather than returning a
-    # body, which is not what callServer is for.
-    fog.curl -Ls -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$mac&hosttoken=${token}" "${web}service/hostinfo.php" -A ''
+    # The key and hostinfo requests are shared with continueIntoTask() in
+    # funcs.sh. It sets $sysuuid, says so when no key came back, and writes the
+    # reply to /tmp/hinfo.txt with mode 0600.
+    fetchHostInfo
+    mac="$hostInfoMac"
     [[ -f /tmp/hinfo.txt ]] && . /tmp/hinfo.txt
 fi
 dots "Running post init scripts"

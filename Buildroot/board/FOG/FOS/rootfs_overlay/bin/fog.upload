@@ -14,7 +14,7 @@ hd=""
 echo " * Preparing to send image file to server"
 percent="$pct"
 [[ $pct -lt 5 || $pct -ge 100 ]] && percent=5
-fog.statusreporter "$mac" "$web" & disown
+fog.statusreporter "$mac" "$web" "$fogtoken" & disown
 statusReporter="$!"
 prepareUploadLocation "$imagePath"
 echo " * Using Image: $img"

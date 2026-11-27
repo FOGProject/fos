@@ -603,10 +603,14 @@ sbMsDbUpdate() {
 sbEnroll() {
     local fail="$1"
     local cert="/tmp/MOK.der"
-    local state added ca password
+    local state added ca password msrc msWrote
     [[ -z $fail ]] && handleError "No failure handler passed (${FUNCNAME[0]})\n   Args Passed: $*"
     sbOutcome=""
     sbFingerprint=""
+    # 1 once this run wrote firmware state that only takes effect after a reboot
+    # (a db enrollment or a staged MOK request). continueIntoTask() in funcs.sh
+    # then lets registration reboot instead of deploying in this boot.
+    sbEnrollWrote=0
 
     dots "Checking firmware state"
     state=$(sbState)
@@ -656,8 +660,18 @@ sbEnroll() {
     # docs/adr/0019.
     if [[ $state == enforcing || $state == disabled ]]; then
         dots "Checking Microsoft 2023 CAs"
+        # Set before the append, for the reason given at the db write below.
+        # sbMsDbUpdate runs in a subshell, so it cannot set it. When it writes
+        # nothing (rc 0 with nothing added, or rc 2) the value is put back, or
+        # every machine with current CAs would reboot before it deploys.
+        msWrote=$sbEnrollWrote
+        sbEnrollWrote=1
         added=$(sbMsDbUpdate)
-        case $? in
+        msrc=$?
+        if [[ $msrc -eq 2 || ( $msrc -eq 0 && -z $added ) ]]; then
+            sbEnrollWrote=$msWrote
+        fi
+        case $msrc in
             0)
                 [[ -z $added ]] && echo "Present" || echo "Added"
                 for ca in $added; do
@@ -723,6 +737,10 @@ sbEnroll() {
         echo "   needed."
         echo
         dots "Enrolling Secure Boot keys"
+        # Set before the write, not after it: a write that failed part way (rc 2
+        # below) may still have changed firmware state. A wrong 1 costs one
+        # reboot; a wrong 0 deploys on firmware that changed this boot.
+        sbEnrollWrote=1
         sbEnrollDb
         case $? in
             0) ;;
@@ -781,6 +799,8 @@ sbEnroll() {
     fi
 
     dots "Staging MOK enrollment request"
+    # Set before the attempt, for the reason given at the db write above.
+    sbEnrollWrote=1
     if ! sbStageMok "$cert" "$password"; then
         echo "Failed"
         debugPause

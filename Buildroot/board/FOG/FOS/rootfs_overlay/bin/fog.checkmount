@@ -4,11 +4,14 @@ sysuuid=${sysuuid,,}
 dots "Checking Mounted File System"
 if [[ ! -f /images/.mntcheck ]]; then
     count=0
+    blamestring="sysuuid=${sysuuid}&mac=$mac&type=$type"
+    # The boot token finds the hostless task of an unregistered or pending host.
+    [[ -n $fogtoken ]] && blamestring="${blamestring}&fogtoken=$fogtoken"
     while [[ $blame != '##' ]]; do
         # $blame was reported verbatim in the handleError below, so a server
         # that answered with nothing produced "Error during failure
         # notification: " -- an error message about an error, carrying neither.
-        callServer "${web}service/blame.php" "sysuuid=${sysuuid}&mac=$mac&type=$type"
+        callServer "${web}service/blame.php" "$blamestring"
         blame="${serverBody:-$serverReason}"
         case $count in
             [0-8])

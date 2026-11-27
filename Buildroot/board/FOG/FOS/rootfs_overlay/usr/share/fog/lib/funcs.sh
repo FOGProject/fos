@@ -13,6 +13,11 @@ for var in $(cat /proc/cmdline); do
 done
 ### If USB Boot device we need a way to get the kernel args properly
 [[ $boottype == usb && -f /tmp/hinfo.txt ]] && . /tmp/hinfo.txt
+# continueIntoTask() writes this file when a registration runs straight into its
+# deploy. It is read here, after the kernel arguments above, so it overrides them
+# (mode=manreg would otherwise send the deploy back into registration). Every
+# script sources this file again, so the override reaches each of them.
+[[ -f /tmp/hinfo.continue ]] && . /tmp/hinfo.continue
 # Below Are non parameterized functions
 # These functions will run without any arguments
 #
@@ -1872,7 +1877,13 @@ completeTasking() {
                 postdownpath="/images/postdownloadscripts/"
                 . ${postdownpath}fog.postdownload
             fi
-            [[ $capone -eq 1 ]] && exit 0
+            # A capone task with a boot token is a real hostless task on the
+            # server, so it still has to complete there. Without a token there
+            # is nothing to complete against.
+            if [[ $capone -eq 1 ]]; then
+                [[ -n $fogtoken ]] && . /bin/fog.imgcomplete
+                exit 0
+            fi
             # `other` keeps osid 99, which the old +( ) pattern matched as "9" "9".
             # changeHostname() has no 99/other arm, so no registry is written
             # for 99, on the base or now. What 99 keeps is the NTFS mount with
@@ -1941,7 +1952,11 @@ reportToServer() {
     local type="$1"
     local str="$2"
     local report=""
+    local tokenArg=()
     [[ -z $web ]] && return 0
+    # An unregistered or pending host has a hostless task that the server finds
+    # by its boot token, so the report names the task the same way.
+    [[ -n $fogtoken ]] && tokenArg=(--data-urlencode "fogtoken=$fogtoken")
     # printf %b first so the "\n" the callers embed in their message becomes a
     # real newline; the server flattens control characters back to spaces, and
     # would otherwise be handed the two literal characters.
@@ -1952,6 +1967,7 @@ reportToServer() {
         --data-urlencode "type=$type" \
         --data-urlencode "text=$report" \
         --data-urlencode "script=${0##*/}" \
+        "${tokenArg[@]}" \
         "${web}service/taskerror.php" &>/dev/null || :
     return 0
 }
@@ -2038,6 +2054,88 @@ callServer() {
     fi
     return 0
 }
+# Runs the deploy in this session after a registration that asked for one.
+#
+# Registration used to end with a reboot, and the next PXE boot started the
+# deploy. When the server says that boot would be the same as this one
+# (samebootok=1 in service/hostinfo.php: the host and the task type add no
+# kernel, init or kernel arguments), the reboot only costs time, so this goes
+# straight to fog.download.
+#
+# Every other outcome returns and leaves registration to end as it always did:
+# an old server (no samebootok line), samebootok=0, a key or hostinfo call that
+# fails, and a Secure Boot enrollment that wrote firmware state this boot
+# (sbEnrollWrote=1, set in secureboot-funcs.sh), which only takes effect after a
+# reboot. It always returns 0 so it can never fail a registration.
+#
+# hostinfo.php prints "[[ -z $x ]] && export x=..." lines, which keep a kernel
+# argument from being overwritten. Here the host's values have to win over the
+# registration boot's, so the prefix is stripped and mode is cleared. The result
+# is /tmp/hinfo.continue, read at the top of this file by every sub-script.
+continueIntoTask() {
+    local ok=0
+    [[ -z $web ]] && return 0
+    rm -f /tmp/hinfo.continue
+    # "strict": a reply that is not a key ends it here.
+    fetchHostInfo strict || { rm -f /tmp/hinfo.txt; return 0; }
+    # Matched as a whole line and never sourced: an error body is not shell.
+    if grep -Fxq "[[ -z \$samebootok ]] && export samebootok='1'" /tmp/hinfo.txt \
+        && [[ ${sbEnrollWrote:-0} -eq 0 ]]; then
+        # The file holds the join password when the admin allows it, so 0600.
+        (
+            umask 077
+            sed 's/^\[\[ -z \$[A-Za-z_][A-Za-z0-9_]* \]\] && //' /tmp/hinfo.txt > /tmp/hinfo.continue
+            echo "export mode=" >> /tmp/hinfo.continue
+        )
+        ok=1
+    fi
+    # The reply is no longer needed, and it can hold the join password.
+    rm -f /tmp/hinfo.txt
+    [[ $ok -eq 1 ]] && fog.download
+    return 0
+}
+# Fetches this host's key and then its hostinfo reply into /tmp/hinfo.txt.
+#
+# Shared by the USB boot path in bin/fog and by continueIntoTask(), so the two
+# cannot drift. Leaves the MAC in $hostInfoMac and the system UUID in $sysuuid.
+#
+# status/hostgetkey.php answers its refusals ("Invalid Tasking", "Host Invalid",
+# "Host token is currently in use") as a 200 with text, so a body is a key only
+# when it has the shape FOGCore::createSecToken() makes: bin2hex of 64 random
+# bytes, 128 hex digits. The shape is checked rather than the refusal strings,
+# so a new refusal text needs no change here.
+#
+# Without "strict" a missing key only prints a message and the request is still
+# made, which is what the USB boot has always done. With "strict" a reply that
+# is not a key returns 1 before hostinfo is asked. The reply is created 0600
+# because it can hold the AD join password; an older file is removed first so it
+# cannot keep a looser mode.
+#
+# $1 is "strict" or empty
+fetchHostInfo() {
+    local key=""
+    local keyrc=0
+    hostInfoMac=$(getMACAddresses)
+    sysuuid=$(dmidecode -s system-uuid)
+    sysuuid=${sysuuid,,}
+    callServer "${web}status/hostgetkey.php" "mac=$(echo $hostInfoMac | base64)"
+    keyrc=$?
+    key="$serverBody"
+    # Said nothing at all when the key could not be fetched. The next call then
+    # posts an empty hosttoken, and whatever comes back is written to
+    # /tmp/hinfo.txt and SOURCED -- so a failure here surfaced much later, as
+    # missing kernel arguments rather than as a failed request.
+    [[ -z $key && $1 != strict ]] && echo " * Could not get this host's key: ${serverReason:-the server returned no key}"
+    [[ $1 == strict && ( $keyrc -ne 0 || ! $key =~ ^[0-9a-f]{128}$ ) ]] && return 1
+    rm -f /tmp/hinfo.txt
+    # Left as a raw curl deliberately: -o writes a file rather than returning a
+    # body, which is not what callServer is for.
+    (
+        umask 077
+        fog.curl -Ls -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$hostInfoMac&hosttoken=${key}" "${web}service/hostinfo.php" -A ''
+    )
+    [[ -f /tmp/hinfo.txt ]]
+}
 # Prints an error with visible information
 #
 # $1 is the string to inform what went wrong
@@ -2054,7 +2152,8 @@ handleError() {
     echo -e "$str\n"
     reportToServer error "$str"
     echo "Kernel variables and settings:"
-    cat /proc/cmdline | sed 's/ad.*=.* //g'
+    # The boot token is a credential for one active task, so it is masked here.
+    cat /proc/cmdline | sed -e 's/fogtoken=[^ ]*/fogtoken=[hidden]/' -e 's/ad.*=.* //g'
     #
     # expand the file systems in the restored partitions
     #

@@ -2,7 +2,11 @@
 #
 # Reports imaging progress to the server for the life of one task.
 #
-#   fog.statusreporter <mac> <web>
+#   fog.statusreporter <mac> <web> [fogtoken]
+#
+# The optional third argument is the boot token of an unregistered or pending
+# host's hostless task. The server finds that task by the token, so every post
+# carries it when it is set. A registered host has none and sends no field.
 #
 # Started as a background job by fog.download and fog.upload, stopped by
 # killStatusReporter(). It is the ONLY thing that posts to service/progress.php,
@@ -57,6 +61,7 @@
 
 mac="$1"
 web="$2"
+fogtoken="$3"
 
 statusfile="/tmp/status.fog"
 pollsecs=1
@@ -91,11 +96,14 @@ validStatus() {
 
 postStatus() {
     local line="$1"
+    local tokenArg=()
     [[ -z $mac || -z $web ]] && return 0
+    [[ -n $fogtoken ]] && tokenArg=(--data-urlencode "fogtoken=$fogtoken")
     fog.curl -Ls --max-time 5 \
         --data-urlencode "sysuuid=$sysuuid" \
         --data-urlencode "mac=$mac" \
         --data-urlencode "status=$(printf '%s' "$line" | base64 | tr -d '\n')" \
+        "${tokenArg[@]}" \
         "${web}service/progress.php" >/dev/null 2>&1 || :
     lastsent="$line"
     lastpost=$SECONDS
