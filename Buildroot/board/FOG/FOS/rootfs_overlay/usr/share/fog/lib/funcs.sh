@@ -2068,10 +2068,9 @@ callServer() {
 # (sbEnrollWrote=1, set in secureboot-funcs.sh), which only takes effect after a
 # reboot. It always returns 0 so it can never fail a registration.
 #
-# hostinfo.php prints "[[ -z $x ]] && export x=..." lines, which keep a kernel
-# argument from being overwritten. Here the host's values have to win over the
-# registration boot's, so the prefix is stripped and mode is cleared. The result
-# is /tmp/hinfo.continue, read at the top of this file by every sub-script.
+# The host's values go to /tmp/hinfo.continue through writeHostInfoOverride(),
+# which also drops hostadpass and hostproductkey. Here mode is cleared as well, so
+# the sub-script does not re-enter registration. Every sub-script reads the file.
 continueIntoTask() {
     local ok=0
     [[ -z $web ]] && return 0
@@ -2081,17 +2080,101 @@ continueIntoTask() {
     # Matched as a whole line and never sourced: an error body is not shell.
     if grep -Fxq "[[ -z \$samebootok ]] && export samebootok='1'" /tmp/hinfo.txt \
         && [[ ${sbEnrollWrote:-0} -eq 0 ]]; then
-        # The file holds the join password when the admin allows it, so 0600.
-        (
-            umask 077
-            sed 's/^\[\[ -z \$[A-Za-z_][A-Za-z0-9_]* \]\] && //' /tmp/hinfo.txt > /tmp/hinfo.continue
-            echo "export mode=" >> /tmp/hinfo.continue
-        )
+        writeHostInfoOverride
+        echo "export mode=" >> /tmp/hinfo.continue
         ok=1
     fi
     # The reply is no longer needed, and it can hold the join password.
     rm -f /tmp/hinfo.txt
     [[ $ok -eq 1 ]] && fog.download
+    return 0
+}
+# Turns the hostinfo reply in /tmp/hinfo.txt into /tmp/hinfo.continue.
+#
+# hostinfo.php prints "[[ -z $x ]] && export x=..." statements, which keep a
+# kernel argument from being overwritten. The task settings have to win over the
+# kernel arguments, so the prefix is stripped. Only statements of exactly that
+# shape are kept, so an error body or a stray statement never reaches the shell
+# that sources the file. The AD join password and the product key are dropped: FOS never needs
+# them. The file is 0600 because the reply can hold other secrets.
+#
+# The reply is split into shell statements, not lines, because a value is passed
+# through escapeshellarg() and can hold a newline (hostdesc is free text). The awk
+# follows the quoting rules across lines: outside quotes a single quote opens one
+# and a backslash escapes the next character; inside quotes everything is literal
+# up to the next single quote. A statement ends at a newline outside quotes. A
+# statement still open at the end of the file is incomplete and is dropped.
+writeHostInfoOverride() {
+    (
+        umask 077
+        awk '
+            # True when v is one escapeshellarg() token: single-quoted segments joined
+            # only by \047, and nothing else (no ; and no unquoted text).
+            function oneToken(v,    i, j, n) {
+                n = length(v)
+                if (substr(v, 1, 1) != q) return 0
+                i = 1
+                while (1) {
+                    j = index(substr(v, i + 1), q)
+                    if (!j) return 0
+                    i += j
+                    if (i == n) return 1
+                    if (substr(v, i + 1, 3) != "\\" q q) return 0
+                    i += 3
+                }
+            }
+            function emit(s,    p, n1, n2) {
+                if (!match(s, /^\[\[ -z \$[A-Za-z_][A-Za-z0-9_]* \]\] && export [A-Za-z_][A-Za-z0-9_]*=/))
+                    return
+                split(substr(s, 1, RLENGTH), p, " ")
+                n1 = substr(p[3], 2)
+                n2 = substr(p[7], 1, length(p[7]) - 1)
+                if (n1 != n2 || n1 == "hostadpass" || n1 == "hostproductkey")
+                    return
+                if (!oneToken(substr(s, RLENGTH + 1))) return
+                print substr(s, index(s, "&& ") + 3)
+            }
+            BEGIN { q = "\047" }
+            {
+                stmt = stmt $0
+                cont = 0
+                for (i = 1; i <= length($0); i++) {
+                    c = substr($0, i, 1)
+                    if (inq) {
+                        if (c == q) inq = 0
+                    } else if (c == q) {
+                        inq = 1
+                    } else if (c == "\\") {
+                        if (i == length($0)) cont = 1
+                        i++
+                    }
+                }
+                if (inq || cont) { stmt = stmt "\n"; next }
+                emit(stmt)
+                stmt = ""
+            }
+        ' /tmp/hinfo.txt > /tmp/hinfo.continue
+    )
+}
+# Reads the task settings from the server when the kernel line has taskinfo=1.
+#
+# The server adds taskinfo=1 to a registered host's task boot (ADR-0023). The
+# settings then come from service/hostinfo.php, and /tmp/hinfo.continue, which
+# every script sources after the kernel arguments, overrides them. Nothing here
+# can fail the boot: on any problem the kernel arguments stand, as before. An
+# error body has no mac line (hostinfo always sends one), so it is a failure too.
+# It runs from etc/init.d/S99fog, once per boot, before anything reads a task
+# variable. A USB boot already reads hostinfo.php in bin/fog.
+loadTaskInfo() {
+    [[ $taskinfo == 1 && $boottype != usb && -n $web ]] || return 0
+    rm -f /tmp/hinfo.continue
+    if fetchHostInfo strict && grep -q '^\[\[ -z \$mac \]\] && export mac=' /tmp/hinfo.txt; then
+        writeHostInfoOverride
+        echo " * Task settings read from the server"
+    else
+        echo " * Could not read the task settings from the server; using the boot settings"
+    fi
+    rm -f /tmp/hinfo.txt
     return 0
 }
 # Fetches this host's key and then its hostinfo reply into /tmp/hinfo.txt.
@@ -2134,6 +2217,10 @@ fetchHostInfo() {
         umask 077
         fog.curl -Ls -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$hostInfoMac&hosttoken=${key}" "${web}service/hostinfo.php" -A ''
     )
+    # With "strict", a transfer that curl reports as failed is a failure even
+    # when it left a file: a reply cut off mid-stream can still carry the mac
+    # line and end inside a value.
+    [[ $? -ne 0 && $1 == strict ]] && return 1
     [[ -f /tmp/hinfo.txt ]]
 }
 # Prints an error with visible information
