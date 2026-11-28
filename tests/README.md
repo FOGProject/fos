@@ -175,7 +175,14 @@ tests/checks/register-continue.sh
                               # says samebootok='1' and no Secure Boot key was
                               # written; otherwise (or on an old server) it
                               # returns and the host reboots as before. The
-                              # host-info reply stays 0600 and is removed
+                              # host-info reply stays 0600 and is removed. Also
+                              # loadTaskInfo (ADR-0023): with taskinfo=1 on a
+                              # non-USB boot the task settings from hostinfo.php
+                              # override the kernel arguments through
+                              # hinfo.continue (0600, non-export statements and
+                              # hostadpass/hostproductkey dropped); a refused
+                              # key, an error body or a failed request leaves
+                              # the kernel arguments in force
 tests/checks/status-reporting.sh
                               # fog.statusreporter: what actually reaches
                               # service/progress.php while a task images. It

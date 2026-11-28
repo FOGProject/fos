@@ -14,6 +14,12 @@
 [[ ! -h /dev/stdin ]] && ln -s /proc/self/fd/0 /dev/stdin
 [[ ! -h /dev/stdout ]] && ln -s /proc/self/fd/1 /dev/stdout
 [[ ! -h /dev/stderr ]] && ln -s /proc/self/fd/2 /dev/stderr
+# Once per boot, before anything reads a task variable, so isdebug and shutdown
+# come from the server too (ADR-0023). Every script still re-reads the override
+# through funcs.sh. loadTaskInfo does nothing without taskinfo=1.
+. /usr/share/fog/lib/funcs.sh
+loadTaskInfo
+[[ -f /tmp/hinfo.continue ]] && . /tmp/hinfo.continue
 if [[ $mdraid == true ]]; then
     mdadm --auto-detect
     mdadm --assemble --scan

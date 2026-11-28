@@ -196,7 +196,7 @@ tests/checks/secureboot.sh    # firmware-state detection, non-interactive MOK st
 tests/checks/empty-mac-fallback.sh  # $mac resolved from the NICs when the server sent none (fogproject#1767)
 tests/checks/status-reporting.sh    # fog.statusreporter: what reaches service/progress.php, and what must not
 tests/checks/boot-token-reporting.sh  # fogtoken= rides on check-in, progress, completion, errors and blame for an unregistered host (forum 18086)
-tests/checks/register-continue.sh   # continueIntoTask: deploy-now after registration without a reboot, and when it must reboot instead
+tests/checks/register-continue.sh   # continueIntoTask: deploy-now after registration without a reboot, and when it must reboot instead; loadTaskInfo: taskinfo=1 reads the task settings from hostinfo.php (ADR-0023)
 tests/checks/tls-trust.sh           # fog.curl: fogpin= pinning, CA-bundle verification, warn-once -k fallback (fos#102)
 tests/checks/partclone-status-patch.sh  # FOG's partclone patch: fogLogStatusFile() never ends the restore, and the hunks are countable
 
@@ -467,6 +467,17 @@ and add a new ADR for any similarly hard-to-reverse decision:
   another's. Empty family plus unknown osid, or a bad family on a non-frozen
   id, is fatal (ADR-0003). Do not add an osid comparison outside
   `determineOS()`. Guarded by `tests/checks/os-class.sh`.
+- **0023 — task settings from hostinfo.php.** The server adds `taskinfo=1` to
+  a registered host's task boot. `S99fog` then calls `loadTaskInfo()` once.
+  The call comes before `S99fog` reads `isdebug` or `shutdown`. The `hostinfo.php` reply then
+  overrides the kernel line through `/tmp/hinfo.continue`, which `funcs.sh`
+  sources in every script. Phase 1 keeps the kernel line as the fallback: any
+  failure prints one line and changes nothing. `writeHostInfoOverride()` never
+  sources the reply. It splits the reply into shell statements by quoting
+  rules, keeps only `export NAME='one escapeshellarg token'`, and drops
+  `hostadpass` and `hostproductkey`. Do not loosen that filter, and do not
+  call `loadTaskInfo()` from a sub-script. Guarded by
+  `tests/checks/register-continue.sh`.
 
 General conventions to preserve when editing `funcs.sh`/`partition-funcs.sh`:
 
