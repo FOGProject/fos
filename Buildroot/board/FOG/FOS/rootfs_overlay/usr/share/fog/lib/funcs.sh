@@ -2168,10 +2168,9 @@ writeHostInfoOverride() {
 loadTaskInfo() {
     [[ $taskinfo == 1 && $boottype != usb && -n $web ]] || return 0
     rm -f /tmp/hinfo.continue
-    # taskinfo=1 tells hostinfo.php that this boot came through the boot menu,
-    # so it answers with the storage node that boot recorded instead of asking
-    # the plugins again (a registration continuing in the same boot does not
-    # send it, and keeps the plugins' choice).
+    # taskinfo=1 tells hostinfo.php that this boot came through the boot menu.
+    # It then answers with the storage node that boot recorded, and does not
+    # ask the plugins again. A same-boot registration does not send it.
     if fetchHostInfo strict "&taskinfo=1" && grep -q '^\[\[ -z \$mac \]\] && export mac=' /tmp/hinfo.txt; then
         writeHostInfoOverride
         echo " * Task settings read from the server"

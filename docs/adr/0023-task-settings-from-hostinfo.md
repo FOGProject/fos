@@ -34,24 +34,25 @@ arguments.
 - `hostinfo.php` sends the same task values as the kernel line, because one
   function builds both. `BootMenuBase::taskKernelArgs()` returns the task
   arguments, and `flattenKernelArgs()` orders and de-duplicates them.
-  `boot.php` prints the result, and `hostinfo.php` sends it. The node is the
-  one the task recorded at boot. `loadTaskInfo()` posts `taskinfo=1`, so
-  `hostinfo.php` does not ask a plugin such as Location to choose again. A
-  registration that continues in the same boot does not post it. Its task
-  never went through the boot menu, so the plugin's choice still applies.
+  `boot.php` prints the result, and `hostinfo.php` sends it. So the
+  precedence is the same too. The task type's arguments come first, then
+  `FOG_KERNEL_ARGS`, then the host's own kernel arguments. The last one wins.
+- The node is the one the task recorded at boot. `loadTaskInfo()` posts
+  `taskinfo=1`, so `hostinfo.php` does not ask a plugin such as Location to
+  choose again. A registration that continues in the same boot does not post
+  it. Its task never went through the boot menu, so the plugin's choice still
+  applies.
 - For a multicast task, both paths use the session's image when it differs
   from the task's image. Before this change, the kernel line named the task's
-  image while the stream carried the session's. So the precedence is the same too. The task
-  type's arguments come first, then `FOG_KERNEL_ARGS`, then the host's own
-  kernel arguments. The last one wins.
+  image while the stream carried the session's.
 - `hostinfo.php` sends a task variable only when the kernel line carries it.
   One input reaches only the kernel line: the `extraargs` of the iPXE chain,
   which can set `shutdown=1`. `hostinfo.php` then sends no `shutdown`, so the
   kernel's value stands.
 - `S99fog` calls `loadTaskInfo()` once per boot, before it reads `isdebug` and
   `shutdown`. It acts only when `taskinfo=1` and `web=` are set and the boot
-  is not from USB. It then gets the host key and the `hostinfo.php` reply. `writeHostInfoOverride()` writes
-  the reply's values to `/tmp/hinfo.continue`. `S99fog` sources that file, and
+  is not from USB. It then gets the host key and the `hostinfo.php` reply.
+  `writeHostInfoOverride()` writes the reply's values to `/tmp/hinfo.continue`. `S99fog` sources that file, and
   `funcs.sh` sources it in every script after the kernel arguments. So the
   server's values win everywhere, debug tasks included.
 - **Any failure keeps the kernel line.** FOS prints one line and runs on the
@@ -74,16 +75,16 @@ every other statement, so an error body or extra shell never runs.
 It also drops `hostadpass` and `hostproductkey`. FOS does not hold the Active
 Directory join password or the product key. A post-download script that needs
 them asks the server itself (fog-docs `kb/how-tos/post-download-scripts.md`).
-`hostinfo.php` unlocks and rotates the host token after it answers, so that
-script can still get its own token. `continueIntoTask()` uses the same writer,
-so it no longer carries the two values either.
+`hostinfo.php` consumes the host token FOS used, so that script can still get
+its own token. `continueIntoTask()` uses the same writer, so it no longer
+carries the two values either.
 
 Every task boot now asks for a host key, so the key must not stay locked
 after a failure. Before this change, only a successful `hostinfo.php` answer
 unlocked it. A host that lost power between the two requests stayed locked
 until its task ended. Its next boot, and any post-download script, got "Host
-token is currently in use". The server now treats the key as a one-time
-token:
+token is currently in use". A separate fogproject change, which ships
+before phase 1, makes the key a one-time token:
 
 - `hostinfo.php` consumes the key as soon as it matches, before it builds
   the reply. A failure after that point cannot leave it locked.
