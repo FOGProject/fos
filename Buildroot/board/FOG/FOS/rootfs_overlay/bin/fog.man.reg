@@ -165,6 +165,82 @@ setIDs() {
     done
     IFS=$oIFS
 }
+# regfields= names the prompts this screen asks, for example
+# regfields=group,image on an iPXE menu entry's args (fogproject#2189). It
+# reaches this script as a variable, as every kernel argument does. Unset, every
+# prompt is asked, as before. The hostname is always asked: the server needs it.
+# Field names: image location ou group snapin productkey domain primaryuser
+# other1 other2 deploy.
+regShows() {
+    [[ -z $regfields || ,${regfields,,}, == *,$1,* ]]
+}
+# Returns 0 when an optional field should be asked. With regfields set, a
+# listed field is asked with no y/N question first, and any other field is
+# skipped. Without it, the operator answers "$2 (y/N)" as before.
+# deploy and domain are actions, not values: a listed one still asks y/N, so
+# a good FOG login alone never starts a deploy or a domain join.
+wantField() {
+    local field="$1"
+    local question="$2"
+    local answer=""
+    if [[ -n $regfields ]]; then
+        regShows "$field" || return 1
+        [[ $field == deploy || $field == domain ]] || return 0
+    fi
+    while true; do
+        echo -n "    $question (y/N) "
+        read answer
+        case $answer in
+            [Nn]|[Nn][Oo]|"")
+                return 1
+                ;;
+            [Yy]|[Yy][Ee][Ss])
+                return 0
+                ;;
+            *)
+                echo " * Invalid input, please try again"
+                ;;
+        esac
+    done
+}
+# Sets the variable named $1 to the base64 of the $2 ID(s) the operator picks.
+# With regfields set, the pick is a keyboard list of the server's entries:
+# a checklist when $3 is true (several IDs), else a menu. Without regfields,
+# with no whiptail, or with nothing to list, it is the typed-ID prompt above.
+# Esc or Cancel in the list leaves the field empty, which the server reads as
+# no association.
+askIDs() {
+    local varVar="$1"
+    local str="$2"
+    local csvstyle="$3"
+    local line=""
+    local choice=""
+    local -a items=()
+    if [[ -n $regfields ]] && command -v whiptail >/dev/null 2>&1; then
+        callServer "${web}service/${str}listing.php"
+        # The listing writes \t and \n as literal escapes; echo -e expands them.
+        while IFS= read -r line; do
+            [[ $line =~ ID#\ ([0-9]+)[[:space:]]+-[[:space:]]+(.*)$ ]] || continue
+            items+=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}")
+            [[ $csvstyle =~ [Tt][Rr][Uu][Ee] ]] && items+=("OFF")
+        done <<< "$(echo -e "$serverBody")"
+    fi
+    if [[ ${#items[@]} -eq 0 ]]; then
+        setIDs "$varVar" "$str" "$csvstyle" "" 20
+        return
+    fi
+    local kind="--menu"
+    local prompt="Select the $str for this computer."
+    if [[ $csvstyle =~ [Tt][Rr][Uu][Ee] ]]; then
+        kind="--checklist"
+        prompt="Select the ${str}s for this computer. Space marks one, Enter accepts."
+    fi
+    # whiptail draws on stdout and prints the choice on stderr; swap the two.
+    # A checklist prints one ID per line; join them with commas.
+    choice=$(whiptail --title "FOG Registration" --separate-output "$kind" "$prompt" 20 70 12 "${items[@]}" 3>&1 1>&2 2>&3)
+    choice=$(echo $choice | tr ' ' ',')
+    printf -v "$varVar" '%s' "$(checkAndSet "$choice")"
+}
 [[ $exists != "#!ok" ]] && handleError "Unable to register host: $exists ($0)\n   Args Passed: $*"
 host=""
 ip=""
@@ -178,6 +254,9 @@ blDoAddGroup=""
 blDoAddSnapin=""
 keyEnter=""
 blDoAD=""
+# Cleared like the others: funcs.sh exports every kernel argument, so a
+# realdoimage= on the boot line would otherwise start a deploy unasked.
+realdoimage=""
 user64=""
 pass64=""
 fogAuthed=""
@@ -260,165 +339,72 @@ while [[ $res != "#!ok" ]]; do
     [[ $res != "#!ok" ]] && echo "${serverReason:-$res}"
 done
 imageid=""
-setIDs "imageid" "image" "" "" 20
+regShows image && askIDs "imageid" "image" ""
 # The prompt is offered only when the server says "##". A failed call is not
 # "##" either, so this used to skip the question in silence and register the
 # host with no location. Return 2 (answered, empty body) is a legitimate "no
 # locations configured" here and stays quiet; only a real failure is reported,
 # and the default is unchanged so the flow is not blocked by a warning.
-callServer "${web}service/locationcheck.php"
-[[ $? -eq 1 ]] && echo " * Could not ask the server about locations: ${serverReason}"
-if [[ $serverBody == "##" ]]; then
-    while [[ -z $askme ]]; do
-        echo -n "    Would you like to assign a location for this host? (y/N) "
-        read askme
-        case $askme in
-            [Nn]|[Nn][Oo]|"")
-                askme="N"
-                ;;
-            [Yy]|[Yy][Ee][Ss])
-                setIDs "locationid" "location" "" "" 20
-                location64=$locationid
-                ;;
-            *)
-                askme=""
-                echo " * Invalid input, please try again"
-                ;;
-        esac
-    done
+if regShows location; then
+    callServer "${web}service/locationcheck.php"
+    [[ $? -eq 1 ]] && echo " * Could not ask the server about locations: ${serverReason}"
+    if [[ $serverBody == "##" ]] && wantField location "Would you like to assign a location for this host?"; then
+        askIDs "locationid" "location" ""
+        location64=$locationid
+    fi
 fi
-askme=""
-callServer "${web}service/oucheck.php"
-[[ $? -eq 1 ]] && echo " * Could not ask the server about OUs: ${serverReason}"
-if [[ $serverBody == "##" ]]; then
-    while [[ -z $askme ]]; do
-        echo -n "    Would you like to assign an ou for this host? (y/N) "
-        read askme
-        case $askme in
-            [Nn]|[Nn][Oo]|"")
-                askme="N"
-                ;;
-            [Yy]|[Yy][Ee][Ss])
-                setIDs "ouid" "ou" "" "" 20
-                ou64=$ouid
-                ;;
-            *)
-                askme=""
-                echo " * Invalid input, please try again"
-                ;;
-        esac
-    done
+if regShows ou; then
+    callServer "${web}service/oucheck.php"
+    [[ $? -eq 1 ]] && echo " * Could not ask the server about OUs: ${serverReason}"
+    if [[ $serverBody == "##" ]] && wantField ou "Would you like to assign an ou for this host?"; then
+        askIDs "ouid" "ou" ""
+        ou64=$ouid
+    fi
 fi
-askme=""
-while [[ -z $askme ]]; do
-    echo -n "    Would you like to associate this host with groups? (y/N) "
-    read askme
-    case $askme in
-        [Nn]|[Nn][Oo]|"")
-            askme="N"
-            ;;
-        [Yy]|[Yy][Ee][Ss])
-            setIDs "groupid" "group" "true" "" 20
-            group64=$groupid
-            ;;
-        *)
-            askme=""
-            echo " * Invalid input, please try again"
-            ;;
-    esac
-done
-askme=""
-while [[ -z $askme ]]; do
-    echo -n "    Would you like to associate this host with snapins? (y/N) "
-    read askme
-    case $askme in
-        [Nn]|[Nn][Oo]|"")
-            askme="N"
-            ;;
-        [Yy]|[Yy][Ee][Ss])
-            setIDs "snapinid" "snapin" "true" "" 20
-            snapin64=$snapinid
-            ;;
-        *)
-            askme=""
-            echo " * Invalid input, please try again"
-            ;;
-    esac
-done
-askme=""
-while [[ -z $askme ]]; do
-    echo -n "    Would you like to associate a product key to this host? (y/N) "
-    read askme
-    case $askme in
-        [Nn]|[Nn][Oo]|"")
-            askme="N"
-            ;;
-        [Yy]|[Yy][Ee][Ss])
-            echo -n " * Enter the product key for this computer: "
-            read productKey
-            productKey=$(echo $productKey | base64)
-            ;;
-        *)
-            askme=""
-            echo " * Invalid input, please try again"
-            ;;
-    esac
-done
-askme=""
-while [[ -z $askme ]]; do
-    echo -n "    Would you like this host to join a domain, (using default settings)? (y/N) "
-    read askme
-    case $askme in
-        [Nn]|[Nn][Oo]|"")
-            askme="N"
-            ;;
-        [Yy]|[Yy][Ee][Ss])
-            if fogLogin; then
-                blDoAD=$(echo -n 1 | base64)
-            else
-                echo " * This host will be registered without joining a domain."
-            fi
-            askme="Y"
-            ;;
-        *)
-            askme=""
-            echo " * Invalid input, please try again"
-            ;;
-    esac
-done
-echo -n " * Enter the primary user for this computer: "
-read primaryuser
-primaryuser=$(echo $primaryuser | base64)
-echo -n " * Enter the other tag #1 for this computer: "
-read other1
-other1=$(echo $other1 | base64)
-echo -n " * Enter the other tag #2 for this computer: "
-read other2
-other2=$(echo $other2 | base64)
+if wantField group "Would you like to associate this host with groups?"; then
+    askIDs "groupid" "group" "true"
+    group64=$groupid
+fi
+if wantField snapin "Would you like to associate this host with snapins?"; then
+    askIDs "snapinid" "snapin" "true"
+    snapin64=$snapinid
+fi
+if wantField productkey "Would you like to associate a product key to this host?"; then
+    echo -n " * Enter the product key for this computer: "
+    read productKey
+    productKey=$(echo $productKey | base64)
+fi
+if wantField domain "Would you like this host to join a domain, (using default settings)?"; then
+    if fogLogin; then
+        blDoAD=$(echo -n 1 | base64)
+    else
+        echo " * This host will be registered without joining a domain."
+    fi
+fi
+if regShows primaryuser; then
+    echo -n " * Enter the primary user for this computer: "
+    read primaryuser
+    primaryuser=$(echo $primaryuser | base64)
+fi
+if regShows other1; then
+    echo -n " * Enter the other tag #1 for this computer: "
+    read other1
+    other1=$(echo $other1 | base64)
+fi
+if regShows other2; then
+    echo -n " * Enter the other tag #2 for this computer: "
+    read other2
+    other2=$(echo $other2 | base64)
+fi
 echo " * You entered all required information, "
-askme=""
-while [[ -z $askme ]]; do
-    echo -n "    Would you like to deploy image to this computer now? (y/N) "
-    read askme
-    case $askme in
-        [Nn]|[Nn][Oo]|"")
-            askme="N"
-            ;;
-        [Yy]|[Yy][Ee][Ss])
-            if fogLogin; then
-                echo " * Deployment will start (this host may reboot first)"
-                realdoimage=$(echo -n 1 | base64)
-            else
-                echo " * This host will be registered without deploying an image."
-            fi
-            askme="Y"
-            ;;
-        *)
-            askme=""
-            echo " * Invalid input, please try again"
-            ;;
-    esac
-done
+if wantField deploy "Would you like to deploy image to this computer now?"; then
+    if fogLogin; then
+        echo " * Deployment will start (this host may reboot first)"
+        realdoimage=$(echo -n 1 | base64)
+    else
+        echo " * This host will be registered without deploying an image."
+    fi
+fi
 dots "Attempting to register host"
 res=""
 # Unbounded on purpose -- registration is the whole point of this screen and
