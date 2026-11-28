@@ -440,6 +440,13 @@ err=""
 [[ -e $SANDBOX/hinfo.txt ]] && err="$err; hinfo.txt was left behind"
 note "17d. hinfo.continue is 0600 (umask 022) and hinfo.txt is removed" "$err"
 
+# hostinfo.php keeps the boot's storage node only when told the boot came
+# through the boot menu. Check 2 pins the registration call without it.
+err=""
+grep -Fxq "sysuuid=44454c4c-4c00-1034-8044-c4c04f435431&mac=$MAC&hosttoken=$KEY&taskinfo=1" "$SANDBOX/hostinfo.calls" 2>/dev/null \
+    || err="hostinfo was not told taskinfo=1: $(cat "$SANDBOX/hostinfo.calls" 2>/dev/null)"
+note "17d2. loadTaskInfo sends taskinfo=1 to hostinfo" "$err"
+
 # Values as PHP escapeshellarg() prints them: wrapped in single quotes, with each
 # embedded ' written as '\''. A newline stays a newline inside the quotes.
 NLV=$'line one\nline two; echo pwned\n[[ -z $x ]] && export x=1'

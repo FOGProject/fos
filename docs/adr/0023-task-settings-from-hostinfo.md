@@ -35,7 +35,13 @@ arguments.
   function builds both. `BootMenuBase::taskKernelArgs()` returns the task
   arguments, and `flattenKernelArgs()` orders and de-duplicates them.
   `boot.php` prints the result, and `hostinfo.php` sends it. The node is the
-  one the task recorded at boot. So the precedence is the same too. The task
+  one the task recorded at boot. `loadTaskInfo()` posts `taskinfo=1`, so
+  `hostinfo.php` does not ask a plugin such as Location to choose again. A
+  registration that continues in the same boot does not post it. Its task
+  never went through the boot menu, so the plugin's choice still applies.
+- For a multicast task, both paths use the session's image when it differs
+  from the task's image. Before this change, the kernel line named the task's
+  image while the stream carried the session's. So the precedence is the same too. The task
   type's arguments come first, then `FOG_KERNEL_ARGS`, then the host's own
   kernel arguments. The last one wins.
 - `hostinfo.php` sends a task variable only when the kernel line carries it.
@@ -72,13 +78,19 @@ them asks the server itself (fog-docs `kb/how-tos/post-download-scripts.md`).
 script can still get its own token. `continueIntoTask()` uses the same writer,
 so it no longer carries the two values either.
 
-One gap remains. `hostgetkey.php` locks the token when it hands it out, and
-only a successful `hostinfo.php` answer unlocks it. Suppose `hostinfo.php`
-fails after `hostgetkey.php` issues the key. The lock then stays until the
-task ends or someone cancels it.
-A post-download script in that task then gets "Host token is currently in
-use". `continueIntoTask()` in FOS 1.6.1 has the same gap. Closing it is a
-change to the token's lifecycle on the server, so it is decided separately.
+Every task boot now asks for a host key, so the key must not stay locked
+after a failure. Before this change, only a successful `hostinfo.php` answer
+unlocked it. A host that lost power between the two requests stayed locked
+until its task ended. Its next boot, and any post-download script, got "Host
+token is currently in use". The server now treats the key as a one-time
+token:
+
+- `hostinfo.php` consumes the key as soon as it matches, before it builds
+  the reply. A failure after that point cannot leave it locked.
+- A key is valid for 120 seconds. After that, `hostgetkey.php` treats the
+  lock as abandoned and issues a new key, and the old one stops working.
+- The database stores only a hash of the key, and `hostgetkey.php` never
+  hands out a stored key again.
 
 ## Phase 2 (later): the server stops sending the task data
 

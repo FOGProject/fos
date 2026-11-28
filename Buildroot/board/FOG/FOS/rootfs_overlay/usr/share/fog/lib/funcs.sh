@@ -2168,7 +2168,11 @@ writeHostInfoOverride() {
 loadTaskInfo() {
     [[ $taskinfo == 1 && $boottype != usb && -n $web ]] || return 0
     rm -f /tmp/hinfo.continue
-    if fetchHostInfo strict && grep -q '^\[\[ -z \$mac \]\] && export mac=' /tmp/hinfo.txt; then
+    # taskinfo=1 tells hostinfo.php that this boot came through the boot menu,
+    # so it answers with the storage node that boot recorded instead of asking
+    # the plugins again (a registration continuing in the same boot does not
+    # send it, and keeps the plugins' choice).
+    if fetchHostInfo strict "&taskinfo=1" && grep -q '^\[\[ -z \$mac \]\] && export mac=' /tmp/hinfo.txt; then
         writeHostInfoOverride
         echo " * Task settings read from the server"
     else
@@ -2195,6 +2199,7 @@ loadTaskInfo() {
 # cannot keep a looser mode.
 #
 # $1 is "strict" or empty
+# $2 is extra post data for hostinfo.php, starting with "&" (optional)
 fetchHostInfo() {
     local key=""
     local keyrc=0
@@ -2215,7 +2220,7 @@ fetchHostInfo() {
     # body, which is not what callServer is for.
     (
         umask 077
-        fog.curl -Ls -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$hostInfoMac&hosttoken=${key}" "${web}service/hostinfo.php" -A ''
+        fog.curl -Ls -o /tmp/hinfo.txt --data "sysuuid=${sysuuid}&mac=$hostInfoMac&hosttoken=${key}$2" "${web}service/hostinfo.php" -A ''
     )
     # With "strict", a transfer that curl reports as failed is a failure even
     # when it left a file: a reply cut off mid-stream can still carry the mac
