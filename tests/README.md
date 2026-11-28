@@ -126,6 +126,15 @@ tests/checks/empty-mac-fallback.sh
                               # distribution's ip prints -- getMACAddresses
                               # reads field 11, so a stub built from the host's
                               # format returns junk and fails correct code
+tests/checks/man-reg-fields.sh
+                              # regfields= in fog.man.reg (fogproject#2189).
+                              # Without it, every y/N question is asked as
+                              # before. With it, a listed field is asked with no
+                              # y/N question, any other field is skipped, and a
+                              # group or image is picked from a whiptail list.
+                              # The pick reaches the POST as base64. The listing
+                              # double is a capture of grouplisting.php, which
+                              # sends literal \t and \n escapes
 tests/checks/server-post-reporting.sh
                               # callServer() and every script that talks to the
                               # FOG server (fogproject#1380): a connect failure,
