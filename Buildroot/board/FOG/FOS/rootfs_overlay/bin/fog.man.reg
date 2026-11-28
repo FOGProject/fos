@@ -254,6 +254,9 @@ blDoAddGroup=""
 blDoAddSnapin=""
 keyEnter=""
 blDoAD=""
+# Cleared like the others: funcs.sh exports every kernel argument, so a
+# realdoimage= on the boot line would otherwise start a deploy unasked.
+realdoimage=""
 user64=""
 pass64=""
 fogAuthed=""

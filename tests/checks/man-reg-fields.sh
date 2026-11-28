@@ -10,6 +10,8 @@
 #   - without regfields, every y/N question is asked as before;
 #   - with regfields, a listed field is asked with no y/N question, and any
 #     other field is skipped without reading a key;
+#   - a listed deploy or domain still asks y/N, so a FOG login alone never
+#     starts a deploy or a domain join;
 #   - with regfields, groups and images are picked from a whiptail list built
 #     from the server's listing, and the pick reaches the POST as base64;
 #   - Esc in the list leaves the field empty;
@@ -147,7 +149,7 @@ reset
 regfields="group"
 LISTING="There are no groups on this server"
 askIDs picked group true </dev/null
-check "$SETIDS" 'picked group true' 'with nothing listed, the typed-ID prompt shows the server message'
+check "$SETIDS" 'picked group true' 'with nothing listed, the typed-ID prompt is used'
 reset
 regfields="group"
 unset -f whiptail

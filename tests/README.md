@@ -132,6 +132,7 @@ tests/checks/man-reg-fields.sh
                               # before. With it, a listed field is asked with no
                               # y/N question, any other field is skipped, and a
                               # group or image is picked from a whiptail list.
+                              # A listed deploy or domain still asks y/N.
                               # The pick reaches the POST as base64. The listing
                               # double is a capture of grouplisting.php, which
                               # sends literal \t and \n escapes
